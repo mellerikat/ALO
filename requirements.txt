@@ -1,1 +1,2 @@
-alolib @ git+http://mod.lge.com/hub/dxadvtech/alolib-dev.git@develop
+alolib @ git+http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git@develop
+
