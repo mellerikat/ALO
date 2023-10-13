@@ -1,0 +1,1 @@
+alolib @ git+http://mod.lge.com/hub/dxadvtech/alolib-dev.git@develop
