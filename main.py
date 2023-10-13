@@ -24,10 +24,12 @@ SUPPORT_TYPE = ['memory', 'file']
 # FIXME ws 위에 프린트문 출력할 위치에 삽입
 # FIXME ws input artifacts 이름을 data로 변경
 
+####################### ALO master requirements 리스트업 및 설치 #######################
+# ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
 req_list = extract_requirements_txt("master")
 master_req = {"master": req_list}
-
 check_install_requirements(master_req)
+#######################################################################################
 
 # import aiplib
 from alolib.asset import Asset
@@ -99,12 +101,8 @@ class ALOv2(Asset):
         # folder_list = os.listdir(ASSET_HOME)
         # folder_list = [folder for folder in folder_list if os.path.isdir(os.path.join(ASSET_HOME, folder))]
 
-        ####################### ALO master requirements 리스트업 #######################
-        # ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
-        requirements_dict = dict() 
-        requirements_dict['master'] =  extract_requirements_txt(step_name = 'master')
         ####################### Slave Asset 설치 및 Slave requirements 리스트업 #######################
-        
+        requirements_dict = dict() 
         # setup asset (asset을 git clone (or local) 및 requirements 설치)
         get_asset_source = self.controls["get_asset_source"]  # once, every
         for step, asset_config in enumerate(self.pipelines_list[_pipe_num]):
@@ -114,13 +112,13 @@ class ALOv2(Asset):
             requirements_dict[asset_config['step']] = asset_config['source']['requirements']
             # local 모드일 땐 이번 step(=asset)의 종속 package들이 내 환경에 깔려있는 지 항상 체크 후 없으면 설치 
             # git 모드일 땐 every이거나 once면서 첫 실행 시에만 requirements 설치 
-
         ####################### Master & Slave requirements 설치 #######################
         # 이미 asset (step) 폴더들은 input 폴더에 다 setup된 상태 
         # 각 asset의 yaml에 직접 작성 된 패키지들 + asset 내의 requirements.txt를 참고하여 쭉 리스트업 
         # asset 간 중복 패키지 존재 시 먼저 실행되는 pipeline, asset에 대해 우선순위 부여하여 설치되게끔   
         # 패키지 설치 중에 진행중인 asset 단계 표시 및 총 설치 중 몇번 째 설치인지 표시 > pipeline 별로는 별도로 진행 
         self.asset.check_install_requirements(requirements_dict) 
+        
         for step, asset_config in enumerate(self.pipelines_list[_pipe_num]):    
             asset_info(_pipe_num, asset_config['step'])
 
