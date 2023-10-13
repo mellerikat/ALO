@@ -118,7 +118,6 @@ class ALOv2(Asset):
         # asset 간 중복 패키지 존재 시 먼저 실행되는 pipeline, asset에 대해 우선순위 부여하여 설치되게끔   
         # 패키지 설치 중에 진행중인 asset 단계 표시 및 총 설치 중 몇번 째 설치인지 표시 > pipeline 별로는 별도로 진행 
         self.asset.check_install_requirements(requirements_dict) 
-        
         for step, asset_config in enumerate(self.pipelines_list[_pipe_num]):    
             asset_info(_pipe_num, asset_config['step'])
 
@@ -155,6 +154,7 @@ class ALOv2(Asset):
             if self.controls['interface_mode'] == 'file':
                 self.asset.toss(data, config, _pipe_num, envs) # file interface
 
+            self.asset.release(_path)
             sys.path = [item for item in sys.path if envs['step'] not in item]
 
 # --------------------------------------------------------------------------------------------------------------------------
