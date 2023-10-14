@@ -1,10 +1,33 @@
 # AI Learning Organizer (ALO)
 
 #### 설치가이드 
-```bashrc
+###### Sample Titanic 실행하기 
+```console
+git clone http://mod.lge.com/hub/dxadvtech/aicontents-framework/alo.git
+cd alo
+conda create -n alo python=3.10 ## 3.10 필수 
+conda activate alo 
+python main.py --config samples/config/Titanic/experimental_plan.yaml 
+```
+<br/><br/>
 
+###### AI Contents 실행하기 (Example: TCR)
+
+```console
+git clone http://mod.lge.com/hub/dxadvtech/aicontents-framework/alo.git
+cd alo
+conda create -n alo python=3.10 ## 3.10 필수 
+conda activate alo 
+
+## TCR 용 experimental_plan.yaml 을 git 에서 받아와 config 에 저장
+./setup_config.sh http://mod.lge.com/hub/dxadvtech/aicontents/tcr.git
+
+## config/experimental_plan.yaml 을 default 로 인식 함
+python main.py  
 
 ```
+
+<br/><br/>
 <br/><br/>
 
 ------------
