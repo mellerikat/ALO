@@ -1,5 +1,11 @@
 # AI Learning Organizer (ALO)
 
+#### 설치가이드 
+```bashrc
+
+
+```
+<br/><br/>
 
 ------------
 ### asset_{step_name}.py 에 제공되는 사용자 API
@@ -16,7 +22,7 @@ AI Conductor 로 upload 시, 삽입 여부를 check 합니다.
 - default (str) : 사용자 파라미터가 존재하지 않을 경우, 강제로 입력될 값
 - chng_type (str): 타입 변경 list, str, int, float, bool,      
 
-      
+<br/><br/>    
 2. 학습 및 추론 결과값 저장 (필수)
 ```python
 self.asset.save_summary(result='OK', score=0.613, note='aloalo.csv', probability={'OK':0.715, 'NG':0.135, 'NG1':0.15}  )
@@ -27,6 +33,7 @@ self.asset.save_summary(result='OK', score=0.613, note='aloalo.csv', probability
 - score (float, 0 ~ 1.0) : model performance score to be used for model retraining 
 - note (str, length limit: 100): optional & additional info. for inference result (optional)
 - probability (dict - key:str, value:float): Classification Solution의 경우 라벨 별로 확률 값을 제공합니다. (optional) >> (ex) {'OK': 0.6, 'NG':0.4}
+<br/><br/>
 
 3. 학습 및 추론 모델 파일 저장 (필수)
 ```python
@@ -37,6 +44,7 @@ Train pipeline 에서 생성한 모델 파일을 Inference pipeline 에 전달�
 영역에 저장하고 싶을 때 사용     
 ---- Return   
 - model_path (str): 저장 공간 경로를 반환 한다. 
+<br/><br/>
 
 4. 학습 결과 리포트 파일 저장 (옵션)
 
@@ -47,6 +55,7 @@ Train pipeline 에서 생성한 report.html 을 저장하기 위한 사용. html
 
 ---- Return    
 - model_path (str): 저장 공간 경로를 반환 한다. 
+<br/><br/>
 
 5. 학습 및 추론 결과 파일 저장 (추론만 필수)
 
@@ -57,7 +66,8 @@ Train pipeline 또는 Inference pipeline 실행 결과를 저장할 때 사용�
 Inference pipeline 은 output.csv, output.jpg, output.csv & output.jpg 중에 하나를 포함하고 있어야 한다 (필수). Inference 결과는 Model Conductor 로 수집되어 re-train 시 학습데이터롤 사용된다. 
 
 ---- Return   
-- model_path (str): 저장 공간 경로를 반환 한다.        
+- model_path (str): 저장 공간 경로를 반환 한다.  
+<br/><br/>      
 
                
 ------------
