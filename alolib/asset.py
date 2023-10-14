@@ -73,6 +73,8 @@ class Asset:
         self.asset_envs = envs
         # 현재 PROJECT PATH 보다 한 층 위 folder 
         self.project_home = self.asset_envs['project_home']
+        # FIXME  사용자 api 에서 envs 를 arguments로 안받기 위해 artifacts 변수 생성 
+        self.asset_envs["artifacts"] = self.set_artifacts()
         # input 데이터 경로 
         self.input_data_home = self.project_home + "input/"
         # asset 코드들의 위치
@@ -116,37 +118,235 @@ class Asset:
         except Exception as e:
             self._asset_error(str(e))
     
-    def save_summary(self, envs, result, score, inference_date, probability=None):
+##################################################################################################################################################################
+    #                                                                           Slave API
+    ##################################################################################################################################################################
+    def save_summary(self, result, score, note="AI Advisor", probability=None):
+        
+        """ Description
+            -----------
+                - train_summary.yaml (train 시에도 학습을 진행할 시) 혹은 inference_summary.yaml을 저장합니다. 
+                - 참고 CLM: http://collab.lge.com/main/display/LGEPROD/AI+Advisor+Data+Flow#Architecture--1257299622
+                - 숫자 형은 모두 소수점 둘째 자리까지 표시합니다.  
+            Parameters
+            -----------
+                - result: Inference result summarized info. (str, length limit: 12) 
+                - score: model performance score to be used for model retraining (float, 0 ~ 1.0)
+                - note: optional & additional info. for inference result (str, length limit: 100) (optional)
+                - probability: Classification Solution의 경우 라벨 별로 확률 값을 제공합니다. (dict - key:str, value:float) (optional)
+                            >> (ex) {'OK': 0.6, 'NG':0.4}
+            Return
+            -----------
+                - summaray_data: summary yaml 파일에 저장될 데이터 (dict) 
+            Example
+            -----------
+                - summary_data = save_summary(result='OK', score=0.613, note='aloalo.csv', probability={'OK':0.715, 'NG':0.135, 'NG1':0.15})
+        """
         # result는 문자열 12자 이내인지 확인
         if not isinstance(result, str) or len(result) > 12:
-            self._asset_error("result는 문자열이며 12자 이내여야 합니다.")
+            self._asset_error("The length of string argument << result >>  must be within 12 ")
         
         # score는 0 ~ 1.0 사이의 값인지 확인
         if not isinstance(score, (int, float)) or not 0 <= score <= 1.0:
-            self._asset_error("score는 0과 1.0 사이의 숫자여야 합니다.")
-        
-        # inference_date가 datetime.datetime 형식인지 확인
-        if not isinstance(inference_date, datetime.datetime):
-            self._asset_error("inference_date는 datetime.datetime 형식이어야 합니다.")
-        
-        # probability가 list인 경우에만 확인
-        if probability is not None and not isinstance(probability, list):
-            self._asset_error("probability는 list 형식이어야 합니다.")
+            self._asset_error("The value of float (or int) argument << score >> must be between 0.0 and 1.0 ")
 
-        data = {
+        # note는 문자열 100자 이내인지 확인
+        if not isinstance(result, str) or len(note) > 100:
+            self._asset_error("The length of string argument << note >>  must be within 100 ")
+                    
+        # probability가 존재하는 경우 dict인지 확인
+        if (probability is not None) and (not isinstance(probability, dict)):
+            self._asset_error("The type of argument << probability >> must be << dict >>")
+        # probability key는 string이고 value는 float or int인지 확인 
+        key_chk_str_set = set([isinstance(k, str) for k in probability.keys()])
+        value_type_set = set([type(v) for v in probability.values()])
+        if key_chk_str_set != {True}: 
+            self._asset_error("The key of dict argument << probability >> must have the type of << str >> ")
+        if not value_type_set.issubset({float, int}): 
+            self._asset_error("The value of dict argument << probability >> must have the type of << int >> or << float >> ")
+        # probability value 합이 1인지 확인 
+        if sum(probability.values()) != 1: 
+            self._asset_error("The sum of probability dict values must be << 1.0 >>")
+        
+        # FIXME 가령 0.50001, 0.49999 같은건 대응이 안됨 
+        # FIXME 처음에 사용자가 입력한 dict가 합 1인지도 체크필요 > 부동소수 에러 예상
+        def make_addup_1(prob): #inner func. / probability 합산이 1이되도록 가공, 소수 둘째 자리까지 표시 
+            max_value_key = max(prob, key=prob.get) 
+            proc_prob_dict = dict()  
+            for k, v in prob.items(): 
+                if k == max_value_key: 
+                    proc_prob_dict[k] = 0 
+                    continue
+                proc_prob_dict[k] = round(v, 2) # 소수 둘째자리
+            proc_prob_dict[max_value_key] = round(1 - sum(proc_prob_dict.values()), 2)
+            return proc_prob_dict
+                    
+        
+        # FIXME 배포 테스트 시 probability의 key 값 (클래스)도 정확히 모든 값 기입 됐는지 체크 필요     
+        # dict type data to be saved in summary yaml 
+        summary_data = {
             'result': result,
-            'score': score,
-            'inference_date': inference_date.strftime('%Y%m%d-%H%M%S'),
-            'note': os.environ['INFTIME'],
-            'probability': probability
+            'score': round(score, 2), # 소수 둘째자리
+            'date': os.environ['INFTIME'], # UTC TIME 
+            # FIXME note에 input file 명 전달할 방법 고안 필요 
+            'note': note,
+            'probability': make_addup_1(probability)
         }
-
-        file_path = envs['artifacts']['.asset_interface'] + "output/" 'inference_summary.yaml'
-        with open(file_path, 'w') as file:
-            yaml.dump(data, file, default_flow_style=False)
+        # self.asset_envs['pipeline'] 는 main.py에서 설정 
+        if self.asset_envs['pipeline']  == "train_pipeline":
+            file_path = self.asset_envs["artifacts"][".train_artifacts"] + "score/" + "train_summary.yaml" 
+        elif self.asset_envs['pipeline'] == "inference_pipeline":
+            file_path = self.asset_envs["artifacts"][".inference_artifacts"] + "score/" + "inference_summary.yaml" 
+        else: 
+            self._asset_error(f"You have written wrong value for << asset_source  >> in the config yaml file. - { self.asset_envs['pipeline']} \n Only << train_pipeline >> and << inference_pipeline >> are permitted")
         
-        return data
+        # save summary yaml 
+        try:      
+            with open(file_path, 'w') as file:
+                yaml.dump(summary_data, file, default_flow_style=False)
+        except: 
+            self._asset_error(f"Failed to save summary yaml file \n @ << {file_path} >>")
+             
+        return summary_data
 
+    # FIXME 만약 inference pipeline 여러개인 경우 model 파일이름을 사용자가 잘 분리해서 사용해야함 > pipline name 인자 관련 생각필요 
+    # FIXME multi train, inference pipeline 일 때 pipeline name (yaml에 추가될 예정)으로 subfloder 분리해서 저장해야한다. (step이름 중복 가능성 존재하므로)
+    # >> os.envrion 변수에 저장하면 되므로 사용자 파라미터 추가할 필욘 없을 듯
+    # FIXME  step명은 같은걸로 pair, train-inference만 예외 pair / 단, cascaded train같은경우는 train1-inference1, train2-inference2가 pair  식으로
+    def get_model_path(self, use_inference_path=False): # get_model_path 는 inference 시에 train artifacts 접근할 경우도 있으므로 pipeline_mode랑 step_name 인자로 받아야함 
+        """ Description
+            -----------
+                - model save 혹은 load 시 필요한 model path를 반환한다. 
+            Parameters
+            -----------
+                - use_inference_path: default는 False여서, train pipeline이던 inference pipline이던 train model path 반환하고,
+                                      예외적으로 True로 설정하면 inference pipeline이 자기 자신 pipeline name의 subfolder를 반환한다. (bool)
+            Return
+            -----------
+                - model_path: model 경로 
+            Example
+            -----------
+                - model_path = get_model_path(use_inference_path=False)
+        """
+        # use_inference_path type check 
+        if not isinstance(use_inference_path, bool):
+            self._asset_error("The type of argument << use_inference_path >>  must be << boolean >> ")
+        
+        # yaml에 잘 "train_pipeline" or "inference_pipeline" 라고 잘 입력했는지 체크
+        allowed_pipeline_mode_list = ["train_pipeline",  "inference_pipeline"]
+        current_pipe_mode = self.asset_envs['pipeline']
+        if current_pipe_mode not in allowed_pipeline_mode_list: 
+            self._asset_error(f"You entered the wrong parameter for << user_parameters >> in your config yaml file : << {current_pipe_mode} >>. \n L ""You can select the pipeline_mode among << {allowed_pipeline_mode_list} >>"" ")
+        
+        # create step path 
+        # default로는 step name은 train-inference 혹은 inference1-inference2 (추후 pipeline_name 추가 시) 간의 step 명이 같은 것 끼리 pair 
+        # self.asset_envs['step']는 main.py에서 설정 
+        current_step_name = self.asset_envs['step'] 
+        model_path = self.asset_envs["artifacts"][".train_artifacts"] + f"models/{current_step_name}/"
+
+        # inference pipeline 때 train artifacts에 같은 step 이름 없으면 에러 
+        if current_pipe_mode  == "inference_pipeline":
+            if not os.path.exists(model_path):
+                self._asset_error(f"You must execute train pipeline first. There is no model path : \n {model_path}") 
+        
+        # FIXME pipeline name 관련해서 추가 yaml 인자 받아서 추가 개발 필요 
+        if (current_pipe_mode  == "inference_pipeline") and (current_step_name == "inference"):
+            model_path = self.asset_envs["artifacts"][".train_artifacts"] + f"models/train/"
+            if not os.path.exists(model_path): 
+                self._asset_error(f"You must execute train pipeline first. There is no model path : \n {model_path}") 
+            elif (os.path.exists(model_path)) and (len(os.listdir(model_path)) == 0): 
+                self._asset_error(f"You must generate train model first. There is no model in the train model path : \n {model_path}") 
+                    
+        # trian 땐 없으면 폴더 생성 
+        os.makedirs(model_path, exist_ok=True) # exist_ok =True : 이미 존재하면 그대로 둠 
+        print_color(f">> Successfully got model path for saving or loading your AI model: \n {model_path}", "green")
+        
+        return model_path
+
+    # FIXME multi train, inference pipeline 일 때 pipeline name (yaml에 추가될 예정)으로 subfloder 분리해서 저장해야한다. 파일이름이 output.csv, output.jpg로 고정이므로 
+    # >> os.envrion 변수에 저장하면 되므로 사용자 파라미터 추가할 필욘 없을 듯 
+    def get_output_path(self):
+        """ Description
+            -----------
+                - train 혹은 inference artifacts output을 저장할 경로 반환 
+                - 이름은 output.csv, output.jpg 로 고정 (정책)
+            Parameters
+            -----------
+            Return
+            -----------
+                - output_path: 산출물을 저장할 output 경로 
+            Example
+            -----------
+                - output_path = get_output_path("csv")
+        """
+        # yaml에 잘 "train_pipeline" or "inference_pipeline" 라고 잘 입력했는지 체크
+        # self.asset_envs['pipeline'] check 
+        # self.asset_envs['pipeline']은 main.py에서 설정
+        allowed_pipeline_mode_list = ["train_pipeline",  "inference_pipeline"]
+        current_pipe_mode = self.asset_envs['pipeline']
+        if current_pipe_mode  not in allowed_pipeline_mode_list: 
+            self._asset_error(f"You entered the wrong parameter for << user_parameters >> in your config yaml file : << {current_pipe_mode} >>. \n L ""You can select the pipeline_mode among << {allowed_pipeline_mode_list} >>"" ")
+        
+        # create output path 
+        output_path = ""
+        if  current_pipe_mode == "train_pipeline":
+            output_path = self.asset_envs["artifacts"][".train_artifacts"] + f"output/"
+            os.makedirs(output_path, exist_ok=True) # exist_ok =True : 이미 존재하면 그대로 둠 
+        elif current_pipe_mode == 'inference_pipeline': 
+            output_path = self.asset_envs["artifacts"][".inference_artifacts"] + f"output/"
+            os.makedirs(output_path, exist_ok=True)
+            
+        print_color(f">> Successfully got << output path >> for saving your data into csv or jpg file: \n {output_path} \n L [NOTE] ""The names of output file must be fixed as << output.csv, output.jpg >>"" ", "green")
+        
+        return output_path
+
+    def get_report_path(self):
+        """ Description
+            -----------
+                - report 를 저장할 path 반환. report는 train pipeline에서만 생성 (정책)
+                
+            Parameters
+            -----------
+
+            Return
+            -----------
+                - report_path: report.html을 저장할 output 경로 
+            Example
+            -----------
+                - report_path = get_report_path()
+        """
+        
+        # self.asset_envs['pipeline'] check >> train pipeline만 허용! 
+       # self.asset_envs['pipeline']은 main.py에서 설정
+        allowed_pipeline_mode_list = ["train_pipeline"]
+        current_pipe_mode = self.asset_envs['pipeline']
+        if current_pipe_mode  not in allowed_pipeline_mode_list: 
+            self._asset_error(f"You entered the wrong parameter for << user_parameters >> in your config yaml file : << {current_pipe_mode} >>. \n L ""You can select the pipeline_mode among << {allowed_pipeline_mode_list} >>"" ")
+            
+        # create report path 
+        report_path = self.asset_envs["artifacts"][".train_artifacts"] + f"report/"
+        os.makedirs(report_path, exist_ok=True) # exist_ok =True : 이미 존재하면 그대로 둠 
+
+        report_path  = report_path
+        print_color(f">> Successfully got << report path >> for saving your << report.html >> file: \n {report_path}", "green")
+        
+        return report_path
+    
+    
+    ##################################################################################################################################################################
+    
+    ##################################################################################################################################################################
+
+    def release(self, _path):
+        all_files = os.listdir(_path)
+        # .py 확장자를 가진 파일만 필터링하여 리스트에 추가하고 확장자를 제거
+        python_files = [file[:-3] for file in all_files if file.endswith(".py")]
+        try:
+            for module_name in python_files:
+                if module_name in sys.modules:
+                    del sys.modules[module_name]
+        except:
+            self._asset_error("An issue occurred while deleting the module")
 
     def get_toss(self, _pipe_num, envs):
         try:
@@ -531,79 +731,6 @@ class Asset:
             whether_renew_asset = True
         return whether_renew_asset
             
-    def get_model_path(self, pipeline_mode="train", step_name=""):
-        """ Description
-            -----------
-                - model save 혹은 load 시 필요한 model path를 반환한다. 
-            Parameters
-            -----------
-                - pipeline_mode: train, inference
-                - step_name: input, train, inference.. 미입력 시 해당함수 호출한 step 이름 
-            Return
-            -----------
-                - step_path: model 경로 
-            Example
-            -----------
-                - model_path = get_model_path("vision_inference")
-        """
-        # pipeline_mode : 'train', 'inference'
-        # 전제: 기본적으로 save도 load도 다 train artifacts 기준으로 하는게 보통일 테지만 inference 모드도 지원 
-        # step이 비어있으면 해당 함수를 호출한 step (envs['step']) subfolder 생성 후 경로반환 
-        # step_name 미입력 시 기본으로 해당함수 호출한 step 반환 
-        # 즉, 추론 시엔 모델 load하고 싶으면 tcr_train처럼 step_name 필히 입력해야함 
-        step = step_name 
-        if step == "":
-            step = self.asset_envs["step"]
-            
-        if pipeline_mode == "train":
-            # 사용자가 step_name을 yaml에 없는 잘못된 이름으로 입력시 어짜피 save, load 시 에러남 
-            step_path = self.asset_envs["artifacts"][".train_artifacts"] + f"models/{step}/"
-            os.makedirs(step_path, exist_ok=True) # exist_ok =True : 이미 존재하면 그대로 둠 
-        elif pipeline_mode == 'inference': 
-            step_path = self.asset_envs["artifacts"][".inference_artifacts"] + f"models/{step}/"
-            os.makedirs(step_path, exist_ok=True)
-        else: 
-            raise ValueError(f"You have written incorrect arg. <{pipeline_mode}> for the function get_model_path")
-
-        print_color(f"Got model path for saving or loading: \n {step_path}", "blue")
-        return step_path
-    
-    # output 저장 시엔 만약 yaml로부터 pipeline mode를 parse할 수 있으면,
-    # 아래 pipeline_mode는 default로 호출한 step이 속한 pipeline mode로 설정 가능하지만, 
-    # 쥬피터 노트북에서 output 열어보고 싶을 땐 사실 필수로 입력해줘야함.
-    def get_output_path(self, pipeline_mode, step_name=""):
-        """ Description
-            -----------
-                - train 혹은 inference output 경로에 함수를 호출한 step 이름의 subfolder를 생성 후 output path로 반환 
-            Parameters
-            -----------
-                - pipeline_mode: train, inference
-                - step_name: input, train, inference.. 미입력 시 해당함수 호출한 step 이름 
-            Return
-            -----------
-                - step_path: 산출물을 저장할 output 경로 
-            Example
-            -----------
-                - output_path = get_output_path("train", "vision_train")
-        """
-        # pipeline_mode : 'train', 'inference'
-        # step은 본 함수를 호출한 step의 이름 
-        step = step_name 
-        if step == "":
-            step = self.asset_envs["step"]
-            
-        if pipeline_mode == "train":
-            # 사용자가 step_name을 이상한 이름으로 적으면 save, load 시에 똑같이 이상한 이름으로 적어줘야함 
-            step_path = self.asset_envs["artifacts"][".train_artifacts"] + f"output/{step}/"
-            os.makedirs(step_path, exist_ok=True) # exist_ok =True : 이미 존재하면 그대로 둠 
-        elif pipeline_mode == 'inference': 
-            step_path = self.asset_envs["artifacts"][".inference_artifacts"] + f"output/{step}/"
-            os.makedirs(step_path, exist_ok=True)
-        else: 
-            raise ValueError(f"You have written incorrect <{pipeline_mode}> for the function get_output_path")
-
-        print_color(f"Got output path for saving or loading: \n {step_path}", "blue")
-        return step_path
          
     def create_folders(self, dictionary, parent_path=''):
         for key, value in dictionary.items():
@@ -692,108 +819,6 @@ class Asset:
         return self.artifacts_structure
         
 
-    '''
-    # save, load model 관련 CLM : http://clm.lge.com/issue/browse/DXADVTECH-272?attachmentSortBy=dateTime&attachmentOrder=asc
-    1. train_artifacts/model/ 밑에 asset 별로 sub-folders 만들어지던 구조는 없애고 save, load 함수 호출 시 사용자가 파일 이름과 확장자까지 잘 지칭하도록 가이드 (약간 tag 처럼) 
-    - save, load 함수 호출 시 arguments 안 쓰거나 (비워 놓거나), 확장자 안쓰면 에러 띄우고 확장자 쓰라고 가이드 
-    - 같은 이름으로 두 번 저장 (ex. train 시 preprocess step 에서도 model.pkl이란 걸 저장하고, train step에서도 model.pkl이란 걸 저장하고..) 하려고 하면 중복 됐으니 
-        다른 이름으로 저장해 달라고 에러 띄워야 함 
-    2. 우선 pkl 포멧만 save_model, load_model에 지원하고 다른 확장자는 점점 더 업데이트 해나가고 release 노트 발행하는 식으로 진행 
-    3. 일단 joblib compression 등은 신경X ? https://joblib.readthedocs.io/en/latest/generated/joblib.dump.html
-    4. TODO save, load는 추후 score, report, output? 도 구현 필요
-    ''' 
-    '''
-    def save_model(self, model, model_name):
-        """ Description
-            -----------
-                save model at any asset(=step)
-                # 모델 확장자를 집어넣지 않으면 어떤 framework를 써서 save/load해야할 지 알 수 없다. 
-            Parameters
-            -----------
-                - model: model instance(ex. model, encoder, scaler ...)
-                - model_name: model file name (model.pkl, encoder.pkl, scaler.pkl, model.h5, model.pt) 
-            example
-            -----------
-                save_model(model, model_name)
-        """
-            
-        user_extension = os.path.splitext(model_name)[1] #확장자 (ex. .pkl, .pt, .h5 ..)
-        # envs의 dict 구조는 master에서 잡아서 slave로 전달 
-        # [FIXME] 만약 artifacts 구조 추후 변동 사항 있다면 아래처럼 하드코딩하는 구조도 좋진 않음 
-        train_model_path = self.asset_envs["artifacts"][".train_artifacts"] + "models/"
-        # 기존 train artifacts / model 경로 비우기 
-        try: 
-            if os.path.exists(train_model_path):
-                for file in os.scandir(train_model_path):
-                    os.remove(file.path)
-            else: 
-                print('Train artifacts model directory does not exist.')
-        except Exception as e:
-            print('Failed to remove train artifacts model directory files.')
-            
-        # 이미 이전 asset에서 저장해놓은 model artifact와 중복되는 이름인지 체크 
-        if model_name in os.listdir(train_model_path):
-            raise ValueError(f"You have already saved model file with the same file name <{model_name}>. Please use another unique file name.") 
-        # model save 진행 
-        if user_extension in self.supported_extension:
-            if user_extension == ".joblib":
-                joblib.dump(model, train_model_path + model_name) 
-            if user_extension == ".pkl":
-                joblib.dump(model, train_model_path + model_name) 
-            if user_extension == ".pt": # 추가 구현 필요 
-                pass
-            if user_extension == ".h5": # 추가 구현 필요 
-                pass 
-            if user_extension == ".json": # 추가 구현 필요 
-                pass 
-        else: 
-            raise ValueError(f"Your input model name <{model_name}> is not supported yet, or you have not written any extension (.pkl, .pt, .h5 ..). ")
-        
-        # TODO asset_print로 추후 변경 필요 
-        print(f"Your model is saved at {train_model_path}{model_name}")
-    
-    
-     # TODO (230925) .history의 latest train artifacts를 가져와야함. 
-    def load_model(self, model_name):
-        """ Description
-            -----------
-                load model at any asset(=step)
-
-            Parameters
-            -----------
-                - model_name: model file name (model.pkl, encoder.pkl, scaler.pkl, model.h5, model.pt ..) 
-            example
-            -----------
-                loaded_model = load_model(model_name)
-        """
-        model = None 
-        user_extension = os.path.splitext(model_name)[1] #확장자 (ex. .pkl, .pt, .h5 ..)
-        # [FIXME] .history의 latest train artifacts를 가져와야함. 
-        train_model_path = self.asset_envs["artifacts"][".train_artifacts"] + "models/" #self.artifacts["artifacts"]["train_artifacts"]["models"]
-        
-        # 저장해놓은 model_name과 같은 이름의 파일이 없으면 에러 raise 
-        if model_name not in os.listdir(train_model_path):
-            raise ValueError(f"You did not save {model_name} at train time. Please save the model first.") 
-        # model load 진행 
-        if user_extension in self.supported_extension:
-            if user_extension == ".joblib":
-                model = joblib.load(train_model_path  + model_name) 
-            if user_extension == ".pkl":
-                model = joblib.load(train_model_path  + model_name) 
-            if user_extension == ".pt": # 추가 구현 필요 
-                pass
-            if user_extension == ".h5": # 추가 구현 필요 
-                pass 
-            if user_extension == ".json": # 추가 구현 필요 
-                pass 
-        else: 
-            raise ValueError(f"Your input model name <{model_name}> is not supported yet, or you have not written any extension (.pkl, .pt, .h5 ..). ")
-
-        # TODO asset_print로 추후 변경 필요 
-        print(f"Your model is loaded from {train_model_path}{model_name}")
-        
-        return model 
-    '''
     def get_external_path(self):
         self.path_dict = {}
         for external_path in self.exp_plan['external_path']:
