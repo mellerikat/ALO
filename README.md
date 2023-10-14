@@ -13,8 +13,8 @@
 ## 목차 
 1. [설치가이드](#설치가이드)
 2. [파이프라인 설정하기](#파이프라인-설정하기)
-3. [Asset 파일 생성하기](#Asset-파일-생성하기)
-4. [AI Contents 에 Custom Asset 추가하기](#AI-Contents-에-Custom-Asset-추가하기)
+3. [Asset 파일 생성하기](#asset-파일-생성하기)
+4. [AI Contents 에 Custom Asset 추가하기](#ai-contents-에-custom-asset-추가하기)
 
 ## 설치가이드 
 ### Sample Titanic 실행하기 
@@ -160,7 +160,7 @@ control:
 
 <br/><br/>
 
-## Asset 파일 생성하기 
+## Asset 파일 생성하기
 
 ### asset_{step_name}.py 에 제공되는 사용자 API
 1. **user parameter 의 default 값 설정 (필수)**
@@ -279,7 +279,7 @@ if __name__ == "__main__":
 
 ``` 
 ## AI Contents 에 Custom Asset 추가하기
-[파이프라인 설정하기](## 파이프라인 설정하기) 와 [Asset 파일 생성하기](## Asset 파일 생성하기) 를 활용하여 진행 가능합니다. 
+[파이프라인 설정하기](#파이프라인-설정하기) 와 [Asset 파일 생성하기](#asset-파일-생성하기) 를 활용하여 진행 가능합니다. 
 
 ###### Step1. experimental_plan 에 step 을 추가 합니다. 
 ```yaml
