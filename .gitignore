@@ -1,2 +1,8 @@
+assets/
+.train_artifacts/
+.inference_artifacts/
+.history/
+.asset_interface/
+input/
 config/
 __pycache__/
