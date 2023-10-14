@@ -14,6 +14,7 @@
 1. [설치가이드](## 설치가이드)
 2. [파이프라인 설정하기](## 파이프라인 설정하기)
 3. [Asset 파일 생성하기](## Asset 파일 생성하기)
+4. [AI Contents 에 Custom Asset 추가하기](## AI Contents 에 Custom Asset 추가하기)
 
 ## 설치가이드 
 ### Sample Titanic 실행하기 
@@ -24,7 +25,6 @@ conda create -n alo python=3.10 ## 3.10 필수
 conda activate alo 
 python main.py --config samples/config/Titanic/experimental_plan.yaml 
 ```
-<br/><br/>
 
 ### AI Contents 실행하기 (Example: TCR)
 
@@ -34,7 +34,7 @@ cd alo
 conda create -n alo python=3.10 ## 3.10 필수 
 conda activate alo 
 
-## TCR 용 experimental_plan.yaml 을 git 에서 받아와 config 에 저장
+## TCR 용 experimental_plan.yaml 을 git clone 하여 config 에 저장 (다른 contents git 주소로 변경하여 사용 가능)
 ./setup_config.sh http://mod.lge.com/hub/dxadvtech/aicontents/tcr.git
 
 ## config/experimental_plan.yaml 을 default 로 인식 함
@@ -278,7 +278,91 @@ if __name__ == "__main__":
     ua.run()
 
 ``` 
+## AI Contents 에 Custom Asset 추가하기
+[파이프라인 설정하기](## 파이프라인 설정하기) 와 [Asset 파일 생성하기](## Asset 파일 생성하기) 를 활용하여 진행 가능합니다. 
 
+###### Step1. experimental_plan 에 step 을 추가 합니다. 
+```yaml
+...
+user_parameters:
+    - train_pipeline:
+        - step: input  ## step_name 입력 
+          args:
+            - input_path: train/ #load_train_data 의 마지막 폴명. 하위폴더 선택 가능 
+              x_columns: ["Pclass", "Sex", "SibSp", "Parch"] # table 데이터의 column
+           
+        - step: custom_preprcoess  ## 자유롭게 기술 가능 
+          args:
+            - new_param: "test" 
+
+...
+asset_source:
+    - train_pipeline:
+        - step: input
+          source:  ## git / local 지원
+            code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/input.git
+            # code: local  -- local 에서 asset 개발을 진행할 때 사용
+            branch: tabular
+            requirements:
+              - pandas==1.5.3
+
+        - step: custom_preprocess ## user_parameter 에서의 step name 과 동일해야 함 
+          source:
+            code: local ## git 없이 local 경로에서 제작
+            branch: main  ## local 일 경우 참조되지 않음
+            requirements:
+              - pandas==1.5.3
+              - scikit-learn
+```
+###### Step 2. user_asset 을 copy 하기 
+```console
+## mina.py 위치에서 시작 
+cd assets 
+mkdir custom_preprcoess  ## step name 과 동일 폴더 생성 
+cd custom_preprcoess 
+cp ../../samples/user_asset/asset_stepname.py ./asset_custom_preprocess.py 
+
+## asset_custom_preprocess 파일을 수정합니다. 
+```
+
+###### Step 3. user_asset 파일 수정 
+```python
+# -*- coding: utf-8 -*-
+import os
+import sys
+from alolib.asset import Asset
+import alolib.common as common
+from alolib.exception import * 
+
+import pandas as pd 
+
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+class UserAsset(Asset):
+    def __init__(self, envs, argv, data, config):
+        super().__init__(envs, argv, version=1.0)
+
+        self.args = self.asset.load_config('args') 
+        self.config = config
+        self.input_data = data['dataframe']  
+
+    @Asset.decorator_run
+    def run(self):
+
+        #####################        
+        #### 내용추가하기 ####
+        ##################### 
+
+
+        output_data = pd.dataframe() ## 생성된 dataframe 을 output 으로 전달한다.  
+
+        return output_data, self.config
+        
+if __name__ == "__main__":
+    ua = UserAsset(envs={}, argv={}, data={}, config={})
+    ua.run()
+
+``` 
 
 ## License
 ALO is Free software, and may be redistributed under the terms of specified in the [LICENSE]() file.
