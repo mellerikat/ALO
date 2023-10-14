@@ -1,7 +1,22 @@
-# AI Learning Organizer (ALO)
+# Welcome to ALO (AI Learning Organizer)
 
-#### 설치가이드 
-###### Sample Titanic 실행하기 
+⚡ AI Advisor 에서 AI Solution 이 실행 가능하게 하는 ML framework 입니다. ⚡
+
+[![Generic badge](https://img.shields.io/badge/release-v1.0.0-green.svg?style=for-the-badge)](http://링크)
+[![Generic badge](https://img.shields.io/badge/last_update-2023.10.16-002E5F?style=for-the-badge)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![Generic badge](https://img.shields.io/badge/python-3.10.12-purple.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Generic badge](https://img.shields.io/badge/dependencies-up_to_date-green.svg?style=for-the-badge&logo=python&logoColor=white)](requirement링크)
+[![Generic badge](https://img.shields.io/badge/collab-blue.svg?style=for-the-badge)](http://collab.lge.com/main/display/AICONTENTS)
+[![Generic badge](https://img.shields.io/badge/request_clm-green.svg?style=for-the-badge)](http://collab.lge.com/main/pages/viewpage.action?pageId=2157128981)
+
+## 목차 
+1. [설치가이드](## 설치가이드)
+2. [파이프라인 설정하기](## 파이프라인 설정하기)
+3. [Asset 파일 생성하기](## Asset 파일 생성하기)
+
+## 설치가이드 
+### Sample Titanic 실행하기 
 ```console
 git clone http://mod.lge.com/hub/dxadvtech/aicontents-framework/alo.git
 cd alo
@@ -11,7 +26,7 @@ python main.py --config samples/config/Titanic/experimental_plan.yaml
 ```
 <br/><br/>
 
-###### AI Contents 실행하기 (Example: TCR)
+### AI Contents 실행하기 (Example: TCR)
 
 ```console
 git clone http://mod.lge.com/hub/dxadvtech/aicontents-framework/alo.git
@@ -24,13 +39,12 @@ conda activate alo
 
 ## config/experimental_plan.yaml 을 default 로 인식 함
 python main.py  
-
 ```
 
 <br/><br/>
-------------
-### experimental_plan.yaml 의 구성요소
-Train/Inference pipeline 을 어떻게 구성할지를 결정하는 configuration 파일 입니다. 4종류로 구성됩니다. 
+## 파이프라인 설정하기 
+### experimental_plan.yaml 구성요소
+Train/Inference pipeline 을 어떻게 구성할지를 결정하는 configuration 파일 입니다. 4 가지 파트로 구성됩니다. 
 1. **external_path** : 외부에 데이터를 내부로 copy 하며, nas/s3 를 지원합니다. 
   - s3 에 접근해야 할 경우 s3_private_key_file 에 access & sceret key 를 기록해 두어야 합니다. 
 
@@ -38,7 +52,11 @@ Train/Inference pipeline 을 어떻게 구성할지를 결정하는 configuratio
 
 3. **asset_source** : step name 별 source code 의 위치를 지정합니다. 설치하고 싶은 패키지를 지정할 수 있으며, requirements.txt 로 작성할 경우 git 에 존재하는 파일을 읽어와서 설치합니다. 
 
-4. **control** : resource 제어 용이며, 설치과정을 중복 실행하지 않도록 하여 파이프라일 실행 속도를 빠르게 합니다. 
+4. **control** : resource 제어 용이며, 설치과정을 중복 실행하지 않도록 하여 파이프라일 실행 속도를 빠르게 합니다.
+
+<br/><br/>
+### experimental_plan.yaml 의 template 
+./config/experimental_plan.yaml 
 
 ```yaml 
 ## 외부에서 데이터 가져오기 / 결과 저장하는 경우 해당 위치에 지정
@@ -142,9 +160,10 @@ control:
 
 <br/><br/>
 
-------------
+## Asset 파일 생성하기 
+
 ### asset_{step_name}.py 에 제공되는 사용자 API
-1. user parameter 의 default 값 설정 (필수)
+1. **user parameter 의 default 값 설정 (필수)**
 ```python
 self.asset.check_args(arg_key, is_required=False, default="", chng_type="str" )
 ``` 
@@ -158,7 +177,7 @@ AI Conductor 로 upload 시, 삽입 여부를 check 합니다.
 - chng_type (str): 타입 변경 list, str, int, float, bool,      
 
 <br/><br/>    
-2. 학습 및 추론 결과값 저장 (필수)
+2. **학습 및 추론 결과값 저장 (필수)**
 ```python
 self.asset.save_summary(result='OK', score=0.613, note='aloalo.csv', probability={'OK':0.715, 'NG':0.135, 'NG1':0.15}  )
 ``` 
@@ -170,7 +189,7 @@ self.asset.save_summary(result='OK', score=0.613, note='aloalo.csv', probability
 - probability (dict - key:str, value:float): Classification Solution의 경우 라벨 별로 확률 값을 제공합니다. (optional) >> (ex) {'OK': 0.6, 'NG':0.4}
 <br/><br/>
 
-3. 학습 및 추론 모델 파일 저장 (필수)
+3. **학습 및 추론 모델 파일 저장 (필수)**
 ```python
 model_path = self.asset.get_model_path(use_inference_path=False)     
 ```
@@ -181,7 +200,7 @@ Train pipeline 에서 생성한 모델 파일을 Inference pipeline 에 전달�
 - model_path (str): 저장 공간 경로를 반환 한다. 
 <br/><br/>
 
-4. 학습 결과 리포트 파일 저장 (옵션)
+4. **학습 결과 리포트 파일 저장 (옵션)**
 
 ```python
 report_path = self.asset.get_report_path() 
@@ -192,7 +211,7 @@ Train pipeline 에서 생성한 report.html 을 저장하기 위한 사용. html
 - model_path (str): 저장 공간 경로를 반환 한다. 
 <br/><br/>
 
-5. 학습 및 추론 결과 파일 저장 (추론만 필수)
+5. **학습 및 추론 결과 파일 저장 (추론만 필수)**
 
 ```python
 output_path = self.asset.get_output_path()
@@ -204,8 +223,6 @@ Inference pipeline 은 output.csv, output.jpg, output.csv & output.jpg 중에 �
 - model_path (str): 저장 공간 경로를 반환 한다.  
 <br/><br/>      
 
-               
-------------
 ### asset_{step_name}.py 의 skeleton code
 ./samles/user_asset/asset_stepname.py 를 copy 하여 사용
 
@@ -260,16 +277,8 @@ if __name__ == "__main__":
     ua = UserAsset(envs={}, argv={}, data={}, config={})
     ua.run()
 
-```
+``` 
 
-
-
------------- 
-
-
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
 
 ## License
 ALO is Free software, and may be redistributed under the terms of specified in the [LICENSE]() file.
