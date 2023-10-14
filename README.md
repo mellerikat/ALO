@@ -28,6 +28,118 @@ python main.py
 ```
 
 <br/><br/>
+------------
+### experimental_plan.yaml 의 구성요소
+Train/Inference pipeline 을 어떻게 구성할지를 결정하는 configuration 파일 입니다. 4종류로 구성됩니다. 
+1. **external_path** : 외부에 데이터를 내부로 copy 하며, nas/s3 를 지원합니다. 
+  - s3 에 접근해야 할 경우 s3_private_key_file 에 access & sceret key 를 기록해 두어야 합니다. 
+
+2. **user_parameters** : asset 내부에서 사용할 변수값을 지정합니다. dict, list, str 을 지원합니다. 
+
+3. **asset_source** : step name 별 source code 의 위치를 지정합니다. 설치하고 싶은 패키지를 지정할 수 있으며, requirements.txt 로 작성할 경우 git 에 존재하는 파일을 읽어와서 설치합니다. 
+
+4. **control** : resource 제어 용이며, 설치과정을 중복 실행하지 않도록 하여 파이프라일 실행 속도를 빠르게 합니다. 
+
+```yaml 
+## 외부에서 데이터 가져오기 / 결과 저장하는 경우 해당 위치에 지정
+external_path:
+    - load_train_data_path: /nas001/users/ruci.sung/alo_sample_data/titanic_data/train/
+    - load_inference_data_path: /nas001/users/ruci.sung/alo_sample_data/titanic_data/test/
+    - save_train_artifacts_path:
+    - save_inference_artifacts_path:
+
+external_path_permission:
+    - s3_private_key_file:
+
+## 실험에 필요한 파라미터를 설정함 
+## - 해당 위치에서 삭제되면, code 의 default 로 실행
+user_parameters:
+    - train_pipeline:
+        - step: input  ## step_name 입력 
+          args:
+            - input_path: train/ #load_train_data 의 마지막 폴더명. 하위폴더 선택 가능 
+              x_columns: ["Pclass", "Sex", "SibSp", "Parch"] # table 데이터의 column
+              use_all_x: False  ## 모든 column 을 x 로 지정
+              y_column: Survived # y 값이 있을 경우 사용
+              groupkey_columns:   ## group 별 모델링이 필요한 경우
+              drop_columns:  ## 삭제할 column 이 있을 경우 
+              time_column:  ## time column 이 있을 경우 (single)
+
+        - step: train ## 필수
+          args:
+            - model_type: regression ## asset 의 설정값. dict, list, str 을 지원
+
+    - inference_pipeline:
+      - step: input  
+        args:
+          - input_path: train
+            x_columns: ["Pclass", "Sex", "SibSp", "Parch"]
+            use_all_x: False
+            y_column: Survived 
+            groupkey_columns:
+            drop_columns:
+            time_column:
+      
+      - step: inference 
+        args:
+          - model_type: regression 
+ 
+## asset 의 설치 정보를 기록       
+asset_source:
+    - train_pipeline:
+        - step: input
+          source:  ## git / local 지원
+            code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/input.git
+            # code: local  -- local 에서 asset 개발을 진행할 때 사용
+            branch: tabular
+            requirements:
+              - pandas==1.5.3
+
+        - step: train
+          source:
+            code: http://mod.lge.com/hub/dxadvtech/assets/titanic_tutorial.git
+            # code: local
+            branch: main
+            requirements:
+              - pandas==1.5.3
+              - scikit-learn
+      
+    - inference_pipeline:
+      - step: input
+        source:  ## git / local 지원
+          code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/input.git
+          # code: local
+          branch: tabular
+          requirements:
+            - pandas==1.5.3
+
+      - step: inference
+        source:
+          code: http://mod.lge.com/hub/dxadvtech/assets/titanic_tutorial.git
+          # code: local
+          branch: main
+          requirements:
+            - pandas==1.5.3
+
+control:
+    ## 1. 패키지 설치 및 asset 존재 여부를 실험 시마다 체크할지, 한번만 할지 결정
+    ## 1-2 requirements.txt 및 종속 패키지들 한번만 설치할 지 매번 설치할지도 결정 
+    - get_asset_source: once ## once, every
+    # pipeline 실행 할 때 마다 데이터 가져올지를 결정 
+    - get_external_data: once ## once, every
+    ## 2. 생성된 artifacts 를 backup 할지를 결정 True/False
+    - backup_artifacts: True
+    ## 3. pipeline 로그를 backup 할지를 결정 True/False
+    - backup_log: True
+    ## 4. 저장 공간 사이즈를 결정 (단위 MB)
+    - backup_size: 1000
+ 
+    ## 5. Asset 사이 데이터 전달 방법으로 memory, file 를 지원
+    - interface_mode: memory
+
+```
+
+
 <br/><br/>
 
 ------------
