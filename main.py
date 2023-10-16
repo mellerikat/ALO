@@ -47,10 +47,11 @@ class ALOv2(Asset):
 
         if 'STTIME' in os.environ:
             self.inference_start_time = os.environ['STTIME']
-            print(self.inference_start_time)
+            print_color(self.inference_start_time, 'yellow')
         else:
-            print('STTIME does not exist. instead get current time')
+            print_color('>> STTIME does not exist. Instead, get current time as << start time >>', 'yellow')
             current_time = datetime.now()
+            # FIXME : inference_start_time이 아니라 alo start time 아닌가? 이 시간은 어디쓰이는 건지? 
             self.inference_start_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
 
         # TODO 현재 ALO master 버전의 체크
@@ -71,11 +72,13 @@ class ALOv2(Asset):
         self.controls = self.asset.get_control()
         self.artifacts = self.asset.set_artifacts()
         
-        # 외부 데이터 다운로드 (input 폴더에)
-        self.asset.external_load_data(self.external_path, self.external_path_permission)
-        
         # pipe_mode : train, inference
         for pipe_mode in self.pipelines_list:
+            print_color("\n================================================================================================================================================================================================================================================", "bold")
+            print_color(f"                                                                                                        pipeline : < {pipe_mode} >                                                                                                             ", "bold")
+            print_color("================================================================================================================================================================================================================================================\n", "bold")
+            # 외부 데이터 다운로드 (input 폴더에) - 하나의 pipeline
+            self.asset.external_load_data(pipe_mode, self.external_path, self.external_path_permission)
             matching_strings = find_matching_strings(list(self.artifacts.keys()), pipe_mode.split('_')[0])
             log_filename = self.artifacts[matching_strings] + "log/pipeline.log"
             logging.basicConfig(filename=log_filename, level=logging.INFO)
@@ -83,9 +86,6 @@ class ALOv2(Asset):
             logger = Logger(log_filename)
             sys.stdout = logger
 
-            print_color("================================================================================================================================================================================================================================================", "bold")
-            print_color(f"                                                                                                        pipeline : < {pipe_mode} >                                                                                                             ", "bold")
-            print_color("================================================================================================================================================================================================================================================ \n", "bold")
             # scripts 폴더없으면 만들고 있으면 그냥 두고
             os.makedirs(PROJECT_HOME + "scripts/", exist_ok=True)
             self._run_import(pipe_mode)

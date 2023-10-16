@@ -283,7 +283,7 @@ def _install_packages(dup_checked_requirements_dict, dup_chk_set):
     count = 1
     # 사용자 환경에 priority_sorted_pkg_list의 각 패키지 존재 여부 체크 및 없으면 설치
     for step_name, package_list in dup_checked_requirements_dict.items(): # 마지막 step_name 은 force-reinstall 
-        print_color(f"======================================== Start dependency installation : << {step_name} >> ========================================", 'green')
+        print_color(f"======================================== Start dependency installation : << {step_name} >> ", 'blue')
         for package in package_list:
             print_color(f'>> Start checking existence & installing package - {package} | Progress: ( {count} / {total_num_install} total packages )', 'yellow')
             count += 1
@@ -325,7 +325,7 @@ def _install_packages(dup_checked_requirements_dict, dup_chk_set):
             except pkg_resources.UnknownExtra: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
                 raise NotImplementedError(f'UnknownExtra occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')   
             
-    print_color(f"======================================== Finish dependency installation ======================================== \n", 'green')
+    print_color(f"======================================== Finish dependency installation \n", 'blue')
     
     return 
 
