@@ -150,11 +150,23 @@ if __name__ == "__main__":
 
 
 
-
 <br/><br/>
 # 신규 AI Contents 제작 가이드
-## 파이프라인 설정하기 
-### experimental_plan.yaml 구성요소
+쉽게 접근할 수 있는 Titanic 예제를 이용하여 신규 AI Contents 제작을 따라해 볼 수 있습니다. 
+
+### Sample Titanic 실행하기 
+ALO 기본 설치 ([설치가이드](#설치가이드)) 이후 진행합니다. 
+```console
+## ALO 기본 설치 이후 진행
+
+python main.py --config samples/config/Titanic/experimental_plan.yaml 
+```
+
+
+### 파이프라인 설정하기 
+AI Contents 는 Asset 들의 집합인 파이프라인 형태로 구동되는데, ./config/experimental_plan.yaml 에 작성할 수 있습니다. 
+
+##### experimental_plan.yaml 구성요소
 Train/Inference pipeline 을 어떻게 구성할지를 결정하는 configuration 파일 입니다. 4 가지 파트로 구성됩니다. 
 1. **external_path** : 외부에 데이터를 내부로 copy 하며, nas/s3 를 지원합니다. 
   - s3 에 접근해야 할 경우 s3_private_key_file 에 access & sceret key 를 기록해 두어야 합니다. 
@@ -166,8 +178,8 @@ Train/Inference pipeline 을 어떻게 구성할지를 결정하는 configuratio
 4. **control** : resource 제어 용이며, 설치과정을 중복 실행하지 않도록 하여 파이프라일 실행 속도를 빠르게 합니다.
 
 <br/><br/>
-### experimental_plan.yaml 의 template 
-./config/experimental_plan.yaml 
+##### experimental_plan.yaml 의 template 
+아무 내용도 기술되어 있지 않은 파이프라인은  [config/experimental_plan.yaml](./config/experimental_plan.yaml) 를 참조하면 됩니다. 아래는 Titanic sample 로 각 기능을 설명합니다. 
 
 ```yaml 
 ## 외부에서 데이터 가져오기 / 결과 저장하는 경우 해당 위치에 지정
@@ -267,11 +279,12 @@ control:
     - interface_mode: memory
 
 ```
-
-
+[:point_up: Go First ~ ](#alo-manual)
 <br/><br/>
 
 ## Asset 파일 생성하기
+
+파이프라인의 실행 결과를 저장하기 위해서는 ALO 가 제공하는 API 를 이용하여 코딩해야 합니다. Train 파이프라인은 /.train_artifacts/* 에 결과물을 저장하고 Inference 파이프라인은 /.inference_artifacts/* 에 결과물을 저장합니다. 결과물 별 저장 방법은 아래 API 를 참조 하세요. 
 
 ### asset_{step_name}.py 에 제공되는 사용자 API
 1. **user parameter 의 default 값 설정 (필수)**
@@ -331,11 +344,14 @@ Train pipeline 또는 Inference pipeline 실행 결과를 저장할 때 사용�
 Inference pipeline 은 output.csv, output.jpg, output.csv & output.jpg 중에 하나를 포함하고 있어야 한다 (필수). Inference 결과는 Model Conductor 로 수집되어 re-train 시 학습데이터롤 사용된다. 
 
 ---- Return   
-- model_path (str): 저장 공간 경로를 반환 한다.  
+- model_path (str): 저장 공간 경로를 반환 한다.     
+
+[:point_up: Go First ~ ](#alo-manual)
 <br/><br/>      
 
+
 ### asset_{step_name}.py 의 skeleton code
-./samles/user_asset/asset_stepname.py 를 copy 하여 사용
+Sample 로 제공되는 [./samles/user_asset/asset_stepname.py](./samles/user_asset/asset_stepname.py) 파일를 copy 하여 제작하시기 바랍니다. 
 
 ```python
 # -*- coding: utf-8 -*-
@@ -389,19 +405,12 @@ if __name__ == "__main__":
     ua.run()
 
 ``` 
+[:point_up: Go First ~ ](#alo-manual)
+
+## 문제 해결 방법
+(TBD)
 
 
-
-
-
-### Sample Titanic 실행하기 
-```console
-git clone http://mod.lge.com/hub/dxadvtech/aicontents-framework/alo.git
-cd alo
-conda create -n alo python=3.10 ## 3.10 필수 
-conda activate alo 
-python main.py --config samples/config/Titanic/experimental_plan.yaml 
-```
 
 
 
