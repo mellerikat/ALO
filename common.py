@@ -4,7 +4,7 @@ import pkg_resources
 import subprocess
 import sys
 import re
-
+import shutil
 from datetime import datetime
 #from pytz import timezone
 
@@ -50,7 +50,81 @@ color_dict = {
 }
 
 COLOR_END = '\033[0m'
+# yaml 및 artifacts 백업
+# [230927] train과 inference 구분하지 않으면 train ~ inference pipline 연속 실행시 초단위까지 중복돼서 에러 발생가능하므로 구분 
+# FIXME current_pipline --> pipeline_name으로 변경 필요 
+def backup_artifacts(pipelines, exp_plan_file):
+    """ Description
+        -----------
+            - 파이프라인 실행 종료 후 사용한 yaml과 결과 artifacts를 .history에 백업함 
+        Parameters
+        -----------
+            - pipelines: pipeline mode (train, inference)
+            - exp_plan_file: 사용자가 입력한, 혹은 default (experimental_plan.yaml) yaml 파일의 절대경로 
+        Return
+        -----------
+            - 
+        Example
+        -----------
+            - backup_artifacts(pipe_mode)
+    """
 
+    current_pipeline = pipelines.split("_pipelines")[0]
+    # artifacts_home_생성시간 폴더를 제작
+    timestamp_option = True
+    hms_option = True
+
+    if timestamp_option == True:  
+        if hms_option == True : 
+            timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+        else : 
+            timestamp = datetime.now().strftime("%y%m%d")     
+        # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
+        backup_folder= '{}_artifacts'.format(timestamp) + f"_{current_pipeline}/"
+    
+    # TODO current_pipelines 는 차후에 workflow name으로 변경이 필요
+    temp_backup_artifacts_dir = PROJECT_HOME + backup_folder
+    try: 
+        os.mkdir(temp_backup_artifacts_dir)
+    except: 
+        raise NotImplementedError(f"Failed to make {temp_backup_artifacts_dir} directory") 
+    # 이전에 실행이 가능한 환경을 위해 yaml 백업
+    try: 
+        shutil.copy(exp_plan_file, temp_backup_artifacts_dir)
+    except: 
+        shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
+        raise NotImplementedError(f"Failed to copy << {exp_plan_file} >> into << {temp_backup_artifacts_dir} >>")
+    # artifacts 들을 백업
+    
+    if current_pipeline == "train_pipeline":
+        try: 
+            os.mkdir(temp_backup_artifacts_dir + ".train_artifacts")
+            shutil.copytree(PROJECT_HOME + ".train_artifacts", temp_backup_artifacts_dir + ".train_artifacts", dirs_exist_ok=True)
+        except: 
+            shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
+            raise NotImplementedError(f"Failed to copy << .train_artifacts >> into << {temp_backup_artifacts_dir} >>")
+            
+    elif current_pipeline == "inference_pipeline":
+        try: 
+            os.mkdir(temp_backup_artifacts_dir + ".inference_artifacts")
+            shutil.copytree(PROJECT_HOME + ".inference_artifacts", temp_backup_artifacts_dir + ".inference_artifacts", dirs_exist_ok=True)
+        except: 
+            shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
+            raise NotImplementedError(f"Failed to copy << .inference_artifacts >> into << {temp_backup_artifacts_dir} >>")
+    else:
+        shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
+        raise ValueError(f"You entered wrong pipeline in the experimental yaml file: << {current_pipeline} >> \n Only << train_pipeline >> or << inference_pipeline>> is allowed.")
+    
+    # backup artifacts를 .history로 이동 
+    try: 
+        shutil.move(temp_backup_artifacts_dir, PROJECT_HOME + ".history/")
+    except: 
+        shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
+        raise NotImplementedError(f"Failed to move {temp_backup_artifacts_dir} into {PROJECT_HOME}/.history/")
+    # 잘 move 됐는 지 확인  
+    if os.path.exists(PROJECT_HOME + ".history/" + backup_folder):
+        print_color(">> [DONE] << .history >> backup (config yaml & artifacts) completes successfully.", "green")
+            
 def print_color(msg, _color):
     """ Description
         -----------
@@ -118,6 +192,8 @@ def extract_requirements_txt(step_name):
     else: 
         ValueError(f"<< {fixed_txt_name} >> dose not exist in << scripts/{step_name} folder >>. However, you have written {fixed_txt_name} at that step in << config/experimental_plan.yaml >>. Please remove {fixed_txt_name} in the yaml file.")
 
+## FIXME 사용자 환경의 패키지 설치 여부를 매 실행마다 체크하는 것을 on, off 하는 기능이 필요할 지?   
+# FIXME aiplib @ git+http://mod.lge.com/hub/smartdata/aiplatform/module/aip.lib.git@ver2 같은 이름은 아예 미허용 
 def check_install_requirements(requirements_dict):
     """ Description
         -----------
@@ -144,19 +220,29 @@ def check_install_requirements(requirements_dict):
     for step_name, requirements_list in requirements_dict.items(): 
         # yaml의 requirements에 requirements.txt를 적었다면, 해당 step 폴더에 requirements.txt가 존재하는 지 확인하고 존재한다면 내부에 작성된 패키지 명들을 추출하여 아래 loop에서 check & install 수행 
         if fixed_txt_name in requirements_list:
-            extracted_requirements_dict[step_name] = list(set(requirements_list + extract_requirements_txt(step_name))) # 이번 step 내의 패키지들 중 사용자가 실수로 완전 같은 패키지,버전을 두번 쓴 경우 중복제거 
-            extracted_requirements_dict[step_name].remove(fixed_txt_name) # requirements.txt라는 이름은 삭제 
+            requirements_txt_list = extract_requirements_txt(step_name)
+            requirements_txt_list = sorted(set(requirements_txt_list), key = lambda x: requirements_txt_list.index(x)) 
+            yaml_written_list = sorted(set(requirements_list), key = lambda x: requirements_list.index(x)) 
+            fixed_txt_index = yaml_written_list.index(fixed_txt_name)                
+            extracted_requirements_dict[step_name] = yaml_written_list[ : fixed_txt_index] + requirements_txt_list + yaml_written_list[fixed_txt_index + 1 : ]
         else: #requirements.txt 를 해당 step에 미기입한 경우 (yaml에서)
-            extracted_requirements_dict[step_name] = list(set(requirements_list)) 
+            extracted_requirements_dict[step_name] = sorted(set(requirements_list), key = lambda x: requirements_list.index(x)) 
 
     # yaml 수동작성과 requirements.txt 간, 혹은 서로다른 asset 간에 같은 패키지인데 version이 다른 중복일 경우 아래 우선순위에 따라 한번만 설치하도록 지정         
     # 우선순위 : 1. ALO master 종속 패키지 / 2. 이번 파이프라인의 먼저 오는 step (ex. input asset) / 3. 같은 step이라면 requirements.txt보다는 yaml에 직접 작성한 패키지 우선 
     # 위 우선순위는 이미 main.py에서 requirements_dict 만들 때 부터 반영돼 있음 
-    dup_checked_requirements_dict = defaultdict(list)
+    dup_checked_requirements_dict = defaultdict(list) # --force-reinstall 인자 붙은 건 중복 패키지여도 별도로 마지막에 재설치 
     dup_chk_set = set() 
+    force_reinstall_list = [] 
     for step_name, requirements_list in extracted_requirements_dict.items(): 
         for pkg in requirements_list: 
             pkg_name = pkg.replace(" ", "") # 모든 공백 제거후, 비교 연산자, version 말고 패키지의 base name를 아래 조건문에서 구할 것임
+            # force reinstall은 별도 저장 
+            if "--force-reinstall" in pkg_name: 
+                force_reinstall_list.append(pkg) # force reinstall 은 numpy==1.25.2--force-reinstall 처럼 붙여서 쓰면 인식못하므로 pkg_name이 아닌 pkg로 기입 
+                dup_chk_set.add(pkg)
+                continue 
+            # 버전 및 주석 등을 제외한, 패키지의 base 이름 추출 
             base_pkg_name = "" 
             if pkg_name.startswith("#") or pkg_name == "": # requirements.txt에도 주석 작성했거나 빈 줄을 첨가한 경우는 패스 
                 continue 
@@ -171,52 +257,76 @@ def check_install_requirements(requirements_dict):
             else: # version 명시 안한 케이스 
                 base_pkg_name = pkg_name  
                 
+            # package명 위가 아니라 옆 쪽에 주석 달은 경우, 제거  
+            if '#' in base_pkg_name: 
+                base_pkg_name = base_pkg_name[ : base_pkg_name.index('#')]
+            if '#' in pkg_name: 
+                pkg_name = pkg_name[ : pkg_name.index('#')]
+                                
             # ALO master 및 모든 asset들의 종속 패키지를 취합했을 때 버전 다른 중복 패키지 존재 시 먼저 진행되는 step(=asset)의 종속 패키지만 설치  
             if base_pkg_name in dup_chk_set: 
-                print_color(f'Ignored installing << {pkg_name} >>. Another version will be installed in the previous step.', 'red')
+                print_color(f'>> Ignored installing << {pkg_name} >>. Another version will be installed in the previous step.', 'yellow')
             else: 
                 dup_chk_set.add(base_pkg_name)
                 dup_checked_requirements_dict[step_name].append(pkg_name)
-                
-    ####################
+    
+    # force reinstall은 마지막에 한번 다시 설치 하기 위해 추가 
+    dup_checked_requirements_dict['force-reinstall'] = force_reinstall_list
+    
+    # 패키지 설치 
+    _install_packages(dup_checked_requirements_dict, dup_chk_set)
+
+    return     
+
+def _install_packages(dup_checked_requirements_dict, dup_chk_set): 
     total_num_install = len(dup_chk_set)
     count = 1
     # 사용자 환경에 priority_sorted_pkg_list의 각 패키지 존재 여부 체크 및 없으면 설치
-    for step_name, package_list in dup_checked_requirements_dict.items(): 
-        print_color(f"======================================== Start dependency installation - step : << {step_name} >> ========================================", 'green')
+    for step_name, package_list in dup_checked_requirements_dict.items(): # 마지막 step_name 은 force-reinstall 
+        print_color(f"======================================== Start dependency installation : << {step_name} >> ========================================", 'green')
         for package in package_list:
             print_color(f'>> Start checking existence & installing package - {package} | Progress: ( {count} / {total_num_install} total packages )', 'yellow')
             count += 1
-            try: 
+            
+            if "--force-reinstall" in package: 
+                try: 
+                    print_color(f'- Start installing package - {package}', 'yellow')
+                    subprocess.check_call([sys.executable, '-m', 'pip', 'install', package.replace('--force-reinstall', '').strip(), '--force-reinstall'])            
+                except OSError as e:
+                    raise NotImplementedError(f"Error occurs while --force-reinstalling {package} ~ " + e)  
+                continue 
+                    
+            try: # 이미 같은 버전 설치 돼 있는지 
                 # [pkg_resources 관련 참고] https://stackoverflow.com/questions/44210656/how-to-check-if-a-module-is-installed-in-python-and-if-not-install-it-within-t 
                 # 가령 aiplib @ git+http://mod.lge.com/hub/smartdata/aiplatform/module/aip.lib.git@ver2  같은 version 표기가 requirements.txt에 존재해도 conflict 안나는 것 확인 완료 
                 # FIXME 사용자가 가령 pandas 처럼 (==version 없이) 작성하여도 아래 코드는 통과함 
                 pkg_resources.get_distribution(package) # get_distribution tact-time 테스트: 약 0.001s
-                print_color(f'- << {package} >> already exists', 'blue')
+                print_color(f'- << {package} >> already exists', 'green')
             except pkg_resources.DistributionNotFound: # 사용자 가상환경에 해당 package 설치가 아예 안 돼있는 경우 
                 try: # nested try/except 
-                    print_color(f'- Start installing package - {package}', 'green')
+                    print_color(f'- Start installing package - {package}', 'yellow')
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
-                except OSError as e: 
+                except OSError as e:
                     # 가령 asset을 만든 사람은 abc.txt라는 파일 기반으로 pip install -r abc.txt 하고 싶었는데, 우리는 requirements.txt 라는 이름만 허용하므로 관련 안내문구 추가  
-                    self._asset_error(f"Error occurs while installing {package}. If you want to install from packages written file, make sure that your file name is << {fixed_txt_name} >> ~ " + e)
+                    raise NotImplementedError(f"Error occurs while installing {package}. If you want to install from packages written file, make sure that your file name is << {fixed_txt_name} >> ~ " + e)
             except pkg_resources.VersionConflict: # 설치 돼 있지만 버전이 다른 경우 재설치 
                 try: # nested try/except 
-                    print_color(f'- VersionConflict occurs. Start re-installing package << {package} >>. You should check the dependency for the package among assets.', 'red')
+                    print_color(f'- VersionConflict occurs. Start re-installing package << {package} >>. You should check the dependency for the package among assets.', 'yellow')
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
-                except OSError as e: 
-                    self._asset_error(f"Error occurs while re-installing {package} ~ " + e)
+                except OSError as e:
+                    raise NotImplementedError(f"Error occurs while re-installing {package} ~ " + e)  
             # FIXME 그 밖의 에러는 아래에서 그냥 에러 띄우고 프로세스 kill 
             # pkg_resources의 exception 참고 코드 : https://github.com/pypa/pkg_resources/blob/main/pkg_resources/__init__.py#L315
             except pkg_resources.ResolutionError: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
-                self._asset_error(f'ResolutionError occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')
+                raise NotImplementedError(f'ResolutionError occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')
             except pkg_resources.ExtractionError: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
-                self._asset_error(f'ExtractionError occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')    
+                raise NotImplementedError(f'ExtractionError occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')
             # FIXME 왜 unrechable 이지? https://github.com/pypa/pkg_resources/blob/main/pkg_resources/__init__.py#L315
             except pkg_resources.UnknownExtra: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
-                self._asset_error(f'UnknownExtra occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')
-            # 위 try 코드 에러 없이 통과 했다면 해당 버전의 package 존재하니까 그냥 return 하면됨  
+                raise NotImplementedError(f'UnknownExtra occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')   
+            
     print_color(f"======================================== Finish dependency installation ======================================== \n", 'green')
+    
     return 
 
 def is_git_url(url):
@@ -245,117 +355,6 @@ def _renew_asset(step_path):
         whether_renew_asset = True
     return whether_renew_asset
 
-# [FIXME] 23.09.27 기준 scripts 폴더 내의 asset (subfolders) 유무 여부로만 check_asset_source 판단    
-def setup_asset(asset_config, check_asset_source='once'): 
-    """ Description
-        -----------
-            - scripts 폴더 내의 asset들을 code가 local인지 git인지, check_asset_source가 once인지 every인지에 따라 setup  
-        Parameters
-        -----------
-            - asset_config: 현재 step의 asset config (dict 형) 
-            - check_asset_source: git을 매번 당겨올지 최초 1회만 당겨올지 ('once', 'every')
-        Return
-        -----------
-            - 
-        Example
-        -----------
-            - setup_asset(asset_config, check_asset_source='once')
-    """
-    asset_source_code = asset_config['source']['code'] # local, git url
-    step_name = asset_config['step']
-    git_branch = asset_config['source']['branch']
-    step_path = os.path.join(ASSET_HOME, asset_config['step'])
-    
-    # 현재 yaml의 source_code가 git일 땐 control의 check_asset_source가 once이면 한번만 requirements 설치, every면 매번 설치하게 끔 돼 있음 
-    ## [FIXME] ALOv2에서 기본으로 필요한 requirements.txt는 사용자가 알아서 설치 (git clone alov2 후 pip install로 직접) 
-    ## asset 배치 (@ scripts 폴더)
-    # local 일때는 check_asset_source 가 local인지 git url인지 상관 없음 
-    if asset_source_code == "local":
-        if step_name in os.listdir(ASSET_HOME): 
-            print_color(f"@ local asset_source_code mode: <{step_name}> asset exists.", "green") 
-            pass 
-        else: 
-            self._asset_error(f'@ local asset_source_code mode: <{step_name}> asset folder \n does not exist in <assets> folder.')
-    else: # git url & branch 
-        # git url 확인
-        if is_git_url(asset_source_code):
-            # _renew_asset(): 다시 asset 당길지 말지 여부 (bool)
-            if (check_asset_source == "every") or (check_asset_source == "once" and _renew_asset(step_path)): 
-                print_color(f">> Start renewing asset : {step_path}", "blue") 
-                # git으로 또 새로 받는다면 현재 존재 하는 폴더를 제거 한다
-                if os.path.exists(step_path):
-                    shutil.rmtree(step_path)  # 폴더 제거
-                os.makedirs(step_path)
-                os.chdir(PROJECT_HOME)
-                repo = git.Repo.clone_from(asset_source_code, step_path)
-                try: 
-                    repo.git.checkout(git_branch)
-                    print_color(f"{step_path} successfully pulled.", "green") 
-                except: 
-                    raise ValueError(f"Your have written incorrect git branch: {git_branch}")
-            # 이미 scripts내에 asset 폴더들 존재하고, requirements.txt도 설치된 상태 
-            elif (check_asset_source == "once" and not _renew_asset(step_path)):
-                modification_time = os.path.getmtime(step_path)
-                modification_time = datetime.fromtimestamp(modification_time) # 마지막 수정시간 
-                print_color(f"{step_name} asset has already been created at {modification_time}", "blue") 
-                pass  
-            else: 
-                self._asset_error(f'You have written incorrect check_asset_source: {check_asset_source}')
-        else: 
-            self._asset_error(f'You have written incorrect git url: {asset_source_code}')
-    
-    return 
-
-# yaml 및 artifacts 백업
-# [230927] train과 inference 구분하지 않으면 train ~ inference pipline 연속 실행시 초단위까지 중복돼서 에러 발생가능하므로 구분 
-def backup_artifacts(pipelines, control):
-    """ Description
-        -----------
-            - 파이프라인 실행 종료 후 사용한 yaml과 결과 artifacts를 .history에 백업함 
-        Parameters
-        -----------
-            - pipelines: pipeline mode (train, inference)
-        Return
-        -----------
-            - 
-        Example
-        -----------
-            - backup_artifacts(pipe_mode)
-    """
-    if control['backup_artifacts'] == True:
-        current_pipelines = pipelines.split("_pipelines")[0]
-        # artifacts_home_생성시간 폴더를 제작
-        timestamp_option = True
-        hms_option = True
-    
-        if timestamp_option == True:  
-            if hms_option == True : 
-                timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-            else : 
-                timestamp = datetime.now().strftime("%y%m%d")     
-            # [FIXME] 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 수정 필요    
-            backup_folder= '{}_artifacts'.format(timestamp) + f"_{current_pipelines}/"
-        
-        # TODO current_pipelines 는 차후에 workflow name으로 변경이 필요
-        backup_artifacts_home = PROJECT_HOME + backup_folder
-        os.mkdir(backup_artifacts_home)
-        
-        # 이전에 실행이 가능한 환경을 위해 yaml 백업
-        shutil.copy(PROJECT_HOME + "config/experimental_plan.yaml", backup_artifacts_home)
-        # artifacts 들을 백업
-        for dir_name in list(artifacts_structure.keys()):
-            if dir_name == ".history" or dir_name == "input":
-                continue 
-            else:
-                os.mkdir(backup_artifacts_home + dir_name)
-                shutil.copytree(PROJECT_HOME + dir_name, backup_artifacts_home + dir_name, dirs_exist_ok=True)
-        # backup artifacts를 .history로 이동 
-        try: 
-            shutil.move(backup_artifacts_home, PROJECT_HOME + ".history/")
-        except: 
-            self._asset_error(f"Failed to move {bakcup_artifacts_home} into {PROJECT_HOME}/.history/")
-        if os.path.exists(PROJECT_HOME + ".history/" + backup_folder):
-            print_color("[Done] .history backup (config yaml & artifacts) complete", "green")
 
 
 # TODO logger 코드 정리하기

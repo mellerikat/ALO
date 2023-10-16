@@ -6,14 +6,11 @@ import argparse
 import logging
 
 # local import
-from common import Logger, print_color, find_matching_strings, asset_info, extract_requirements_txt, check_install_requirements
+from common import Logger, print_color, find_matching_strings, asset_info, extract_requirements_txt, check_install_requirements, backup_artifacts
 from datetime import datetime
 
 # 현재 PROJECT PATH
 PROJECT_HOME = os.path.dirname(os.path.realpath(__file__)) + "/"
-
-# experimental plan yaml의 위치
-EXP_PLAN = PROJECT_HOME + "config/experimental_plan.yaml"
 
 # asset 코드들의 위치
 # FIXME wj mnist, titanic example을 만들기 사용하는 함수 리스트를 작성
@@ -36,7 +33,7 @@ from alolib.asset import Asset
 # import alolib.common as common
 
 class ALOv2(Asset):
-    def __init__(self, exp_plan = 0):
+    def __init__(self, exp_plan_file = "config/experimental_plan.yaml"):
         
         # TODO ALOv2 class 자체를 제거 하는게 필요함
         envs = {}
@@ -45,7 +42,8 @@ class ALOv2(Asset):
         super().__init__(envs=envs, argv=0, version=0.1)  # Asset 초기화
         # self.artifacts는 asset.Asset에서 정의 및 set
         # self.artifacts = self.asset.set_artifact(PROJECT_HOME, True, True)
-        self.exp_plan = exp_plan
+        self.exp_plan_file = exp_plan_file
+        self.exp_plan = None # get_yaml 할 때 채워짐 
 
         if 'STTIME' in os.environ:
             self.inference_start_time = os.environ['STTIME']
@@ -58,17 +56,14 @@ class ALOv2(Asset):
         # TODO 현재 ALO master 버전의 체크
 
     def runs(self):
-        
         if not os.path.exists(ASSET_HOME):
             os.makedirs(ASSET_HOME)
-            print("폴더가 생성되었습니다.")
+            print_color(f">> Created << {ASSET_HOME} >> directory.", "green")
         else:
-            print("이미 폴더가 존재합니다.")
+            print_color(f">> << {ASSET_HOME} >> directory already exists.", "green")
         
-        if self.exp_plan == 0:
-            self.asset.get_yaml(EXP_PLAN)
-        else:
-            self.asset.get_yaml(self.exp_plan)
+        # get_yaml 시 self.exp_plan 변수에 내용 dict로 채워짐 
+        self.asset.get_yaml(PROJECT_HOME + self.exp_plan_file)
         self.external_path = self.asset.get_external_path()
         self.external_path_permission = self.asset.get_external_path_permission()
         self.pipelines_list = self.asset.get_pipeline()
@@ -77,7 +72,7 @@ class ALOv2(Asset):
         self.artifacts = self.asset.set_artifacts()
         
         # 외부 데이터 다운로드 (input 폴더에)
-        self.asset.fetch_data(self.external_path, self.external_path_permission)
+        self.asset.external_load_data(self.external_path, self.external_path_permission)
         
         # pipe_mode : train, inference
         for pipe_mode in self.pipelines_list:
@@ -94,7 +89,9 @@ class ALOv2(Asset):
             # scripts 폴더없으면 만들고 있으면 그냥 두고
             os.makedirs(PROJECT_HOME + "scripts/", exist_ok=True)
             self._run_import(pipe_mode)
-            self.asset.backup_artifacts(pipe_mode)
+            
+            if self.control['backup_artifacts'] == True:
+                backup_artifacts(pipe_mode, PROJECT_HOME + self.exp_plan_file)
             
     def _run_import(self, _pipe_num):
         # scripts 폴더에 폴더가 있는지 확인
