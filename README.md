@@ -52,7 +52,7 @@ python main.py  ## cf.: config/experimental_plan.yaml 를 실행
 ## AI Contents 에 Custom Asset 추가하기
 AI Contents 가 과제 진행하는데 기능 추가를 해야 할 경우 AI Contents 제작자에게 의뢰 ([기능개발 의뢰하기](http://collab.lge.com/main/pages/viewpage.action?pageId=2157128981))를 하거나, 파이프라인에 Asset 을 추가하여 과제를 진행 할 수 있습니다. 
 
-ALO 기본 설명은 [파이프라인 설정하기](#파이프라인-설정하기) 와 [Asset 파일 생성하기](#asse-파일-생성하기) 를 참조하세요. 
+ALO 기본 설명은 [파이프라인 설정하기](#파이프라인-설정하기) 와 [Asset 파일 생성하기](#asset-파일-생성하기) 를 참조하세요. 
 
 #### Step1. experimental_plan.yaml 에 step 을 추가 합니다. 
 custom_preprocss 이라는 Asset 을 추가 하고 싶은 경우, user_parameters 와 asset_source 에 동일한 step name 으로 추가 합니다. 
