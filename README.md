@@ -50,55 +50,61 @@ python main.py  ## cf.: config/experimental_plan.yaml 를 실행
 
 
 ## AI Contents 에 Custom Asset 추가하기
-AI Contents 가 과제 진행하는데 기능 추가를 해야 할 경우 AI Contents 제작자에게 의뢰 ([기능개발 의뢰하기](http://collab.lge.com/main/pages/viewpage.action?pageId=2157128981))를 하거나, 파이프라인에 Asset 을 추가하여 과제를 진행 할 수 있습니다.  
+AI Contents 가 과제 진행하는데 기능 추가를 해야 할 경우 AI Contents 제작자에게 의뢰 ([기능개발 의뢰하기](http://collab.lge.com/main/pages/viewpage.action?pageId=2157128981))를 하거나, 파이프라인에 Asset 을 추가하여 과제를 진행 할 수 있습니다. 
 
 ALO 기본 설명은 [파이프라인 설정하기](#파이프라인-설정하기) 와 [새로운 Asset 제작하기](#새로운-asset-제작하기) 를 참조하세요. 
 
-###### Step1. experimental_plan 에 step 을 추가 합니다. 
+#### Step1. experimental_plan.yaml 에 step 을 추가 합니다. 
+custom_preprocss 이라는 Asset 을 추가 하고 싶은 경우, user_parameters 와 asset_source 에 동일한 step name 으로 추가 합니다. 
+- asset_source 의 requirements 에 requirements.txt 를 작성할 경우 git 에 존재하는 requirements 를 추가로 설치 합니다. 
 ```yaml
 ...
+## TCR 일부 내용 .... 
 user_parameters:
     - train_pipeline:
-        - step: input  ## step_name 입력 
+        - step: input  
           args:
-            - input_path: train/ #load_train_data 의 마지막 폴명. 하위폴더 선택 가능 
-              x_columns: ["Pclass", "Sex", "SibSp", "Parch"] # table 데이터의 column
-           
-        - step: custom_preprcoess  ## 자유롭게 기술 가능 
-          args:
-            - new_param: "test" 
+            - input_path: train_multiclass
+              x_columns: [input_x0, input_x1, input_x2, input_x3]
+              use_all_x: False
+              y_column: target 
+              groupkey_columns:
+              drop_columns:
+              time_column:
 
+        - step: custom_preprocess  ## <- 추가 Asset 
+          args:
+            - handling_missing: dropna 
+
+## (내용 생략)
 ...
 asset_source:
     - train_pipeline:
         - step: input
-          source:  ## git / local 지원
+          source:  
             code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/input.git
-            # code: local  -- local 에서 asset 개발을 진행할 때 사용
             branch: tabular
             requirements:
               - pandas==1.5.3
 
-        - step: custom_preprocess ## user_parameter 에서의 step name 과 동일해야 함 
-          source:
-            code: local ## git 없이 local 경로에서 제작
-            branch: main  ## local 일 경우 참조되지 않음
+        - step: custom_preprocess ## <-추가 Asset
+          source:  
+            code: http://mod.lge.com/hub/smartdata/custom-preprocess.git
+            branch: master 
             requirements:
               - pandas==1.5.3
-              - scikit-learn
-```
-###### Step 2. user_asset 을 copy 하기 
-```console
-## mina.py 위치에서 시작 
-cd assets 
-mkdir custom_preprcoess  ## step name 과 동일 폴더 생성 
-cd custom_preprcoess 
-cp ../../samples/user_asset/asset_stepname.py ./asset_custom_preprocess.py 
-
-## asset_custom_preprocess 파일을 수정합니다. 
+              - requirements.txt
+        
+## (내용 생략)
 ```
 
-###### Step 3. user_asset 파일 수정 
+#### Step 2. user_asset 제작하기  
+추가하려는 asset 파일은 아래와 같은 규칙으로 코딩 되어야 합니다. 
+- :warning: **규칙1** : asset_{step_name}.py 파일명을 유지해야 합니다.    
+  - Ex: asset_custom_preprocess.py  
+- :warning: **규칙2** : python=3.10 으로 작성되어야 합니다.
+- 아래의 skeleton code 를 사용합니다. 
+
 ```python
 # -*- coding: utf-8 -*-
 import os
@@ -127,7 +133,8 @@ class UserAsset(Asset):
         ##################### 
 
 
-        output_data = pd.dataframe() ## 생성된 dataframe 을 output 으로 전달한다.  
+        df = pd.dataframe() 
+        output_data = {'dataframe': df} ## dict 형태로 전달한다. (key 명은 dataframe 을 사용한다.)
 
         return output_data, self.config
         
@@ -136,14 +143,16 @@ if __name__ == "__main__":
     ua.run()
 
 ``` 
+[:point_up: Go First ~ ](#alo-manual)
 
-
-
+--------------
+--------------
 
 
 
 
 <br/><br/>
+# 신규 AI Contents 제작 가이드
 ## 파이프라인 설정하기 
 ### experimental_plan.yaml 구성요소
 Train/Inference pipeline 을 어떻게 구성할지를 결정하는 configuration 파일 입니다. 4 가지 파트로 구성됩니다. 
