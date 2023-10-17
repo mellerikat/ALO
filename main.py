@@ -80,6 +80,7 @@ class ALOv2(Asset):
             print_color(f"                                                                                                        pipeline : < {pipe_mode} >                                                                                                             ", "bold")
             print_color("================================================================================================================================================================================================================================================\n", "bold")
             # 외부 데이터 다운로드 (input 폴더에) - 하나의 pipeline
+            # FIXME self.asset.~ 이런 함수들 일단 common으로 다 빼고 리팩토링 필요할 듯 
             self.asset.external_load_data(pipe_mode, self.external_path, self.external_path_permission)
             matching_strings = find_matching_strings(list(self.artifacts.keys()), pipe_mode.split('_')[0])
             log_filename = self.artifacts[matching_strings] + "log/pipeline.log"
@@ -94,6 +95,9 @@ class ALOv2(Asset):
             
             if self.control['backup_artifacts'] == True:
                 backup_artifacts(pipe_mode, PROJECT_HOME + self.exp_plan_file)
+            
+            self.asset.external_save_artifacts(pipe_mode, self.external_path, self.external_path_permission)
+            
             
     def _run_import(self, _pipe_num):
         # scripts 폴더에 폴더가 있는지 확인
