@@ -6,7 +6,7 @@ import argparse
 import logging
 
 # local import
-from common import Logger, print_color, find_matching_strings, asset_info, extract_requirements_txt, check_install_requirements, backup_artifacts
+from common import Logger, print_color, find_matching_strings, asset_info, extract_requirements_txt, check_install_requirements, backup_artifacts, match_steps 
 from datetime import datetime
 
 # 현재 PROJECT PATH
@@ -67,11 +67,13 @@ class ALOv2(Asset):
         self.asset.get_yaml(PROJECT_HOME + self.exp_plan_file)
         self.external_path = self.asset.get_external_path()
         self.external_path_permission = self.asset.get_external_path_permission()
-        self.pipelines_list = self.asset.get_pipeline()
+        self.pipelines_list = self.asset.get_pipeline() # asset source - dict(list(dict)) 
         self.user_parameters = self.asset.get_user_parameters()
         self.controls = self.asset.get_control()
         self.artifacts = self.asset.set_artifacts()
-        
+        # yaml의 user parameters과 asset source 간 step 명들 일치여부 체크 
+        # FIXME multi pipeline 지원 시, pipeline name matching까지 추가개발 필요 
+        match_steps(self.user_parameters, self.pipelines_list) 
         # pipe_mode : train, inference
         for pipe_mode in self.pipelines_list:
             print_color("\n================================================================================================================================================================================================================================================", "bold")

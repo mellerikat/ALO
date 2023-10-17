@@ -53,6 +53,31 @@ COLOR_END = '\033[0m'
 # yaml 및 artifacts 백업
 # [230927] train과 inference 구분하지 않으면 train ~ inference pipline 연속 실행시 초단위까지 중복돼서 에러 발생가능하므로 구분 
 # FIXME current_pipline --> pipeline_name으로 변경 필요 
+
+# FIXME pipeline name 추가 시 추가 고려 필요 
+def match_steps(user_parameters, asset_source):
+    """ Description
+        -----------
+            - experimental_plan.yaml에 적힌 user_parameters와 asset_source 내의 steps들이 일치하는 지 확인 
+        Parameters
+        -----------
+            - user_parameters: (dict)
+            - asset_source: (dict)
+        Return
+        -----------
+
+        Example
+        -----------
+            - match_steps(user_parameters, asset_source)
+    """
+    for pipe, steps_dict in asset_source.items(): 
+        param_steps = sorted([i['step'] for i in user_parameters[pipe]])
+        source_steps = sorted([i['step'] for i in asset_source[pipe]])
+        if param_steps != source_steps:
+            raise ValueError(f"@ << {pipe} >> - You have entered unmatching steps between << user_parameters >> and << asset_source >> in your experimental_plan.yaml. \n - steps in user_parameters: {param_steps} \n - steps in asset_source: {source_steps}")
+    
+    return 
+
 def backup_artifacts(pipelines, exp_plan_file):
     """ Description
         -----------
