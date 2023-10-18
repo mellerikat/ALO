@@ -15,13 +15,11 @@ color_dict = {
 
 COLOR_END = '\033[0m'
 
-def _asset_error(self, msg):
+def asset_error(msg):
     # time_utc = datetime.now(timezone('UTC')).strftime('%Y-%m-%d %H:%M:%S')
     # time_kst = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')
     print('\n\n')
     print_color("============================= ASSET ERROR =============================", 'red')
-    if self.debug_mode == True:
-        print_color(f"DEBUG MODE   : TRUE", 'red')
     # print_color(f"TIME(UTC)    : {time_utc} (KST : {time_kst})", 'red')
     # print_color(f"PIPELINES    : {self.asset_envs['pipeline']}", 'red')
     # print_color(f"ASSETS     : {self.asset_envs['step']}", 'red')

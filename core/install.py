@@ -4,7 +4,7 @@ import subprocess
 import sys
 from collections import defaultdict
 
-from core import message
+from core.message import *
 
 # 현재 PROJECT PATH
 PROJECT_HOME = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) + "/"
