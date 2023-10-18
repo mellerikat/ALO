@@ -15,7 +15,7 @@ PROJECT_HOME = os.path.dirname(os.path.realpath(__file__)) + "/"
 EXP_PLAN = PROJECT_HOME + "config/tsc_experimental_plan.yaml"
 
 # asset 코드들의 위치
-# FIXME wj mnist, titanic example을 만들기 사용하는 함수 리스트를 작성
+# FIXME (swj) mnist, titanic example을 만들기 사용하는 함수 리스트를 작성
 ASSET_HOME = PROJECT_HOME + "assets/"
 
 artifacts_structure = {
@@ -50,9 +50,6 @@ color_dict = {
 }
 
 COLOR_END = '\033[0m'
-# yaml 및 artifacts 백업
-# [230927] train과 inference 구분하지 않으면 train ~ inference pipline 연속 실행시 초단위까지 중복돼서 에러 발생가능하므로 구분 
-# FIXME current_pipline --> pipeline_name으로 변경 필요 
 
 # FIXME pipeline name 추가 시 추가 고려 필요 
 def match_steps(user_parameters, asset_source):
@@ -104,10 +101,10 @@ def backup_artifacts(pipelines, exp_plan_file):
             timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
         else : 
             timestamp = datetime.now().strftime("%y%m%d")     
-        # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
+        # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 좀 더 기획 및 고민 필요    
         backup_folder= '{}_artifacts'.format(timestamp) + f"_{current_pipeline}/"
     
-    # TODO current_pipelines 는 차후에 workflow name으로 변경이 필요
+    # TODO current_pipelines 는 차후에 workflow name으로 변경이 필요? >> 응? workflow name?  
     temp_backup_artifacts_dir = PROJECT_HOME + backup_folder
     try: 
         os.mkdir(temp_backup_artifacts_dir)
@@ -217,8 +214,8 @@ def extract_requirements_txt(step_name):
     else: 
         ValueError(f"<< {fixed_txt_name} >> dose not exist in << scripts/{step_name} folder >>. However, you have written {fixed_txt_name} at that step in << config/experimental_plan.yaml >>. Please remove {fixed_txt_name} in the yaml file.")
 
-## FIXME 사용자 환경의 패키지 설치 여부를 매 실행마다 체크하는 것을 on, off 하는 기능이 필요할 지?   
-# FIXME aiplib @ git+http://mod.lge.com/hub/smartdata/aiplatform/module/aip.lib.git@ver2 같은 이름은 아예 미허용 
+# FIXME 현재 사용자 환경의 패키지 설치 여부를 매 실행마다 체크하는 것을 on, off 하는 기능이 필요할 지?   
+# FIXME aiplib @ git+http://mod.lge.com/hub/smartdata/aiplatform/module/aip.lib.git@ver2 같은 이름은 아예 미허용 할지 ? 
 def check_install_requirements(requirements_dict):
     """ Description
         -----------
@@ -324,7 +321,7 @@ def _install_packages(dup_checked_requirements_dict, dup_chk_set):
             try: # 이미 같은 버전 설치 돼 있는지 
                 # [pkg_resources 관련 참고] https://stackoverflow.com/questions/44210656/how-to-check-if-a-module-is-installed-in-python-and-if-not-install-it-within-t 
                 # 가령 aiplib @ git+http://mod.lge.com/hub/smartdata/aiplatform/module/aip.lib.git@ver2  같은 version 표기가 requirements.txt에 존재해도 conflict 안나는 것 확인 완료 
-                # FIXME 사용자가 가령 pandas 처럼 (==version 없이) 작성하여도 아래 코드는 통과함 
+                # 사용자가 가령 pandas 처럼 (==version 없이) 작성하여도 아래 코드는 통과함 
                 pkg_resources.get_distribution(package) # get_distribution tact-time 테스트: 약 0.001s
                 print_color(f'- << {package} >> already exists', 'green')
             except pkg_resources.DistributionNotFound: # 사용자 가상환경에 해당 package 설치가 아예 안 돼있는 경우 
@@ -340,7 +337,7 @@ def _install_packages(dup_checked_requirements_dict, dup_chk_set):
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
                 except OSError as e:
                     raise NotImplementedError(f"Error occurs while re-installing {package} ~ " + e)  
-            # FIXME 그 밖의 에러는 아래에서 그냥 에러 띄우고 프로세스 kill 
+            # FIXME 그 밖의 에러는 아래에서 그냥 에러 띄우고 프로세스 kill >> 아래에 걸리는 케이스 어떻게 테스트해볼지 ?
             # pkg_resources의 exception 참고 코드 : https://github.com/pypa/pkg_resources/blob/main/pkg_resources/__init__.py#L315
             except pkg_resources.ResolutionError: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
                 raise NotImplementedError(f'ResolutionError occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')
@@ -358,7 +355,7 @@ def is_git_url(url):
     git_url_pattern = r'^(https?|git)://[^\s/$.?#].[^\s]*$'
     return re.match(git_url_pattern, url) is not None
 
-# [FIXME] 추후 단순 폴더 존재 유무 뿐 아니라 이전 실행 yaml과 비교하여 git주소, branch 등도 체크해야함
+# FIXME 추후 단순 폴더 존재 유무 뿐 아니라 이전 실행 yaml과 비교하여 git주소, branch 등도 체크해야함
 def _renew_asset(step_path): 
     """ Description
         -----------

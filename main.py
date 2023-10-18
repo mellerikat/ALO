@@ -18,8 +18,8 @@ ASSET_HOME = PROJECT_HOME + "assets/"
 
 SUPPORT_TYPE = ['memory', 'file']
 # FIXME wj aiplib lib으로 이동 후 req에 추가
-# FIXME ws 위에 프린트문 출력할 위치에 삽입
-# FIXME ws input artifacts 이름을 data로 변경
+# FIXME ws 위에 프린트문 출력할 위치에 삽입 ?
+# FIXME ws input artifacts 이름을 data로 변경 필수 ?
 
 ####################### ALO master requirements 리스트업 및 설치 #######################
 # ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
