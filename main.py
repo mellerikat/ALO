@@ -33,7 +33,7 @@ from alolib.asset import Asset
 # import alolib.common as common
 
 class ALOv2(Asset):
-    def __init__(self, exp_plan_file = "config/vision_plan.yaml"):
+    def __init__(self, exp_plan_file = "config/experimental_plan.yaml"):
         
         # TODO ALOv2 class 자체를 제거 하는게 필요함
         envs = {}
