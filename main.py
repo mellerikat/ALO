@@ -33,7 +33,7 @@ from alolib.asset import Asset
 # import alolib.common as common
 
 class ALOv2(Asset):
-    def __init__(self, exp_plan_file = "config/experimental_plan.yaml"):
+    def __init__(self, exp_plan_file = "config/vision_plan.yaml"):
         
         # TODO ALOv2 class 자체를 제거 하는게 필요함
         envs = {}
@@ -91,6 +91,7 @@ class ALOv2(Asset):
 
             # scripts 폴더없으면 만들고 있으면 그냥 두고
             os.makedirs(PROJECT_HOME + "scripts/", exist_ok=True)
+            
             self._run_import(pipe_mode)
             
             if self.control['backup_artifacts'] == True:

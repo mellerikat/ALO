@@ -51,6 +51,20 @@ color_dict = {
 
 COLOR_END = '\033[0m'
 
+
+def get_yaml(_yaml_file):
+    exp_plan = dict()
+
+    try:
+        with open(_yaml_file, encoding='UTF-8') as f:
+            exp_plan = yaml.load(f, Loader=yaml.FullLoader)
+    except FileNotFoundError:
+        raise ValueError(f"Not Found : {_yaml_file}")
+    except:
+        raise ValueError(f"Check yaml format : {_yaml_file}")
+
+    return exp_plan
+
 # FIXME pipeline name 추가 시 추가 고려 필요 
 def match_steps(user_parameters, asset_source):
     """ Description
