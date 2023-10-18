@@ -8,11 +8,14 @@ from core.install import *
 from core.message import print_color
 from datetime import datetime
 
+from collections import Counter
+
+
 # 현재 PROJECT PATH
 PROJECT_HOME = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) + "/"
 
 # experimental plan yaml의 위치
-EXP_PLAN = PROJECT_HOME + "config/vision_plan.yaml"
+EXP_PLAN = PROJECT_HOME + "config/experimental_plan.yaml"
 
 # asset 코드들의 위치
 # FIXME wj mnist, titanic example을 만들기 사용하는 함수 리스트를 작성
@@ -32,7 +35,7 @@ master_req = {"master": req_list}
 check_install_requirements(master_req)
 #######################################################################################
 
-from core.common import Logger, setup_asset, get_yaml, set_artifacts, match_steps, external_load_data, find_matching_strings, asset_info, import_asset, release
+from core.common import Logger, setup_asset, get_yaml, set_artifacts, match_steps, external_load_data, find_matching_strings, asset_info, asset_error, import_asset, release, compare_yaml_dicts
 
 class ALOv2:
     def __init__(self, exp_plan_file = EXP_PLAN):
@@ -79,13 +82,14 @@ class ALOv2:
             logger = Logger(log_filename)
             sys.stdout = logger
 
-            # assets 폴더없으면 만들고 있으면 그냥 두고
-            os.makedirs(ASSET_HOME, exist_ok=True)
-
             self._run_import(pipeline_name)
 
     def read_yaml(self):
         self.exp_plan = get_yaml(self.exp_plan_file)
+        yaml_v2_11 = get_yaml(PROJECT_HOME + "config/temp.yaml")
+
+        # TODO dict로 되어 있는 경우 yaml과 비교를 할 수 있는지 확인, 추가로 어떻게 할지 확인
+        compare_yaml_dicts(yaml_v2_11, self.exp_plan)
 
         def get_yaml_data(key):
             data_dict = {}
@@ -103,6 +107,13 @@ class ALOv2:
         # setup asset (asset을 git clone (or local) 및 requirements 설치)
         get_asset_source = self.control["get_asset_source"]  # once, every
 
+        # TODO 현재 pipeline에서 중복된 step 이 있는지 확인
+        step_values = [item['step'] for item in self.asset_source[pipeline_name]]
+        step_counts = Counter(step_values)
+        for value, count in step_counts.items():
+            if count > 1:
+                asset_error(f"Duplicate value found: {value}")
+
         for step, asset_config in enumerate(self.asset_source[pipeline_name]):
             # self.asset.setup_asset 기능 :
             # local or git pull 결정 및 scripts 폴더 내에 위치시킴 
@@ -116,8 +127,9 @@ class ALOv2:
 
             _path = ASSET_HOME + asset_config['step'] + "/"
             _file = "asset_" + asset_config['step']
+            # TODO asset2등을 asset으로 수정하는 코드
+            _file = ''.join(filter(lambda x: x.isalpha() or x == '_', _file))
             user_asset = import_asset(_path, _file)
-
             envs = {}
 
             if self.control['interface_mode'] in SUPPORT_TYPE:
