@@ -1,6 +1,7 @@
 import argparse
 import time
 
+# TODO ALO class 이름 변경
 from core.alo import ALOv2
 # from alolib.asset import Asset
 

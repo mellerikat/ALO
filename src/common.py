@@ -7,7 +7,7 @@ from datetime import datetime
 import yaml
 import git
 
-from core.message import _asset_error, print_color
+from core.message import asset_error, print_color
 
 #from pytz import timezone
 
@@ -41,6 +41,22 @@ artifacts_structure = {
     '.asset_interface': {},
     '.history': {}
 }
+
+def compare_yaml_dicts(dict1, dict2):
+    # 두 딕셔너리의 키를 비교
+    keys1 = set(dict1.keys())
+    keys2 = set(dict2.keys())
+    if keys1 != keys2:
+        return False
+
+    # 모든 키에 대해 재귀적으로 하위 딕셔너리 비교
+    for key in keys1:
+        if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
+            if not compare_yaml_dicts(dict1[key], dict2[key]):
+                return False
+        elif dict1[key] != dict2[key]:
+            return False
+    return True
 
 
 # yaml 및 artifacts 백업
@@ -134,7 +150,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission):
         # FIXME input 폴더가 비어있으면 프로세스 종료, 뭔가 서브폴더가 있으면 사용자한테 존재하는 서브폴더 notify 후 yaml의 input_path에는 그 서브폴더들만 활용 가능하다고 notify
         # 만약 input 폴더에 존재하지 않는 서브폴더 명을 yaml의 input_path에 작성 시 input asset에서 에러날 것임   
         if len(os.listdir(INPUT_DATA_HOME)) == 0: # input 폴더 빈 경우 
-            _asset_error(f'External path (load_train_data_path, load_inference_data_path) in experimental_plan.yaml are not written & << input >> folder is empty.') 
+            asset_error(f'External path (load_train_data_path, load_inference_data_path) in experimental_plan.yaml are not written & << input >> folder is empty.') 
         else: 
             print_color('[NOTICE] You can write only one of the << {} >> at << input_path >> parameter in your experimental_plan.yaml'.format(os.listdir(INPUT_DATA_HOME)), 'yellow')
         return
@@ -147,7 +163,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission):
     elif pipe_mode == "inference_pipeline":
         load_data_path = external_path['load_inference_data_path']
     else: 
-        _asset_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
+        asset_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
 
     print_color(f">> Start loading external << {load_data_path} >> data into << input >> directory.", "blue")
     
@@ -169,9 +185,9 @@ def external_load_data(pipe_mode, external_path, external_path_permission):
         elif os.path.isabs(_ext_path) == True: # 절대경로. nas, local 둘다 가능 
             return 'absolute'
         elif os.path.isabs(_ext_path) == False: 
-            _asset_error(f'<< {_ext_path} >> is relative path. This is unsupported type of external load data path. Please enter the absolute path.')
+            asset_error(f'<< {_ext_path} >> is relative path. This is unsupported type of external load data path. Please enter the absolute path.')
         else: 
-            _asset_error(f'<< {_ext_path} >> is unsupported type of external load data path.')
+            asset_error(f'<< {_ext_path} >> is unsupported type of external load data path.')
     
     # 1개여서 str인 경우도 list로 바꾸고, 여러개인 경우는 그냥 그대로 list로 
     # None (미입력) 일 땐 별도처리 필요 
@@ -190,10 +206,10 @@ def external_load_data(pipe_mode, external_path, external_path_permission):
                 # [참고] https://stackoverflow.com/questions/3925096/how-to-get-only-the-last-part-of-a-path-in-python
                 mother_path = os.path.basename(os.path.normpath(ext_path)) # 가령 /nas001/test/ 면 test가 mother_path, ./이면 .가 mother_path 
                 if mother_path in os.listdir(INPUT_DATA_HOME): 
-                    _asset_error(f"You already have duplicated sub-folder name << {mother_path} >> in the << input >> folder. Please rename your sub-folder name if you use multiple data sources.")
+                    asset_error(f"You already have duplicated sub-folder name << {mother_path} >> in the << input >> folder. Please rename your sub-folder name if you use multiple data sources.")
                 shutil.copytree(ext_path, PROJECT_HOME + f"input/{mother_path}", dirs_exist_ok=True) # 중복 시 덮어쓰기 됨 
             except: 
-                _asset_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong NAS path (must be existing directory!) \n / or You do not have permission to access \n / or You used duplicated sub-folder names for multiple data sources.')
+                asset_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong NAS path (must be existing directory!) \n / or You do not have permission to access \n / or You used duplicated sub-folder names for multiple data sources.')
         elif ext_type  == 's3':  
             # s3 key path가 yaml에 작성 돼 있으면 해당 key 읽어서 s3 접근, 작성 돼 있지 않으면 사용자 환경 aws config 체크 후 key 설정 돼 있으면 사용자 notify 후 활용, 없으면 에러 발생 
             # 해당 s3 경로에 데이터 폴더 존재하는지 확인 후 폴더 통째로 가져오기, 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
@@ -203,10 +219,10 @@ def external_load_data(pipe_mode, external_path, external_path_permission):
             try: 
                 s3_downloader.download_folder(INPUT_DATA_HOME)
             except:
-                _asset_error(f'Failed to download s3 data folder from << {ext_path} >>')
+                asset_error(f'Failed to download s3 data folder from << {ext_path} >>')
         else: 
             # 미지원 external data storage type
-            _asset_error(f'{ext_path} is unsupported type of external data path.') 
+            asset_error(f'{ext_path} is unsupported type of external data path.') 
             
     return 
 
@@ -268,7 +284,7 @@ def setup_asset(asset_config, check_asset_source='once'):
             print_color(f"@ local asset_source_code mode: <{step_name}> asset exists.", "green") 
             pass 
         else: 
-            _asset_error(f'@ local asset_source_code mode: <{step_name}> asset folder \n does not exist in <assets> folder.')
+            asset_error(f'@ local asset_source_code mode: <{step_name}> asset folder \n does not exist in <assets> folder.')
     else: # git url & branch 
         # git url 확인
         if is_git_url(asset_source_code):
@@ -293,9 +309,9 @@ def setup_asset(asset_config, check_asset_source='once'):
                 print_color(f"[NOTICE] << {step_name} >> asset had already been created at {modification_time}", "yellow") 
                 pass  
             else: 
-                _asset_error(f'You have written incorrect check_asset_source: {check_asset_source}')
+                asset_error(f'You have written incorrect check_asset_source: {check_asset_source}')
         else: 
-            _asset_error(f'You have written incorrect git url: {asset_source_code}')
+            asset_error(f'You have written incorrect git url: {asset_source_code}')
     
     return 
 
@@ -466,4 +482,4 @@ def release(_path):
             if module_name in sys.modules:
                 del sys.modules[module_name]
     except:
-        _asset_error("An issue occurred while deleting the module")
+        asset_error("An issue occurred while deleting the module")
