@@ -94,10 +94,6 @@ class ALO:
 
     def read_yaml(self):
         self.exp_plan = get_yaml(self.exp_plan_file)
-        yaml_v2_11 = get_yaml(PROJECT_HOME + "config/temp.yaml")
-
-        # TODO dict로 되어 있는 경우 yaml과 비교를 할 수 있는지 확인, 추가로 어떻게 할지 확인
-        compare_yaml_dicts(yaml_v2_11, self.exp_plan)
 
         def get_yaml_data(key):
             data_dict = {}
