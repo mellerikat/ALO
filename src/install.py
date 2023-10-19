@@ -4,19 +4,8 @@ import subprocess
 import sys
 from collections import defaultdict
 
-from core.message import *
-
-# 현재 PROJECT PATH
-PROJECT_HOME = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) + "/"
-
-# experimental plan yaml의 위치
-EXP_PLAN = PROJECT_HOME + "config/tsc_experimental_plan.yaml"
-
-# asset 코드들의 위치
-# FIXME wj mnist, titanic example을 만들기 사용하는 함수 리스트를 작성
-ASSET_HOME = PROJECT_HOME + "assets/"
-
-INPUT_DATA_HOME = PROJECT_HOME + "input/"
+from src.message import *
+from src.constants import *
 
 def extract_requirements_txt(step_name): 
     """ Description
@@ -192,3 +181,4 @@ def check_install_requirements(requirements_dict):
     _install_packages(dup_checked_requirements_dict, dup_chk_set)
 
     return     
+

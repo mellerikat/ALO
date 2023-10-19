@@ -2,12 +2,16 @@ import argparse
 import time
 
 # TODO ALO class 이름 변경
-from core.alo import ALOv2
+from src.alo import ALO
 # from alolib.asset import Asset
 
 # --------------------------------------------------------------------------------------------------------------------------
 #    MAIN
 # --------------------------------------------------------------------------------------------------------------------------
+
+
+
+
 if __name__ == "__main__":
     # while(1):
 
@@ -21,9 +25,9 @@ if __name__ == "__main__":
     start_time = time.time()
 
     try:
-        alo = ALOv2(exp_plan = args.config)  # exp plan path
+        alo = ALO(exp_plan = args.config)  # exp plan path
     except:
-        alo = ALOv2()  # exp plan path
+        alo = ALO()  # exp plan path
     alo.runs()
     end_time = time.time()
     execution_time = end_time - start_time

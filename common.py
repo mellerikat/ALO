@@ -12,7 +12,7 @@ from datetime import datetime
 PROJECT_HOME = os.path.dirname(os.path.realpath(__file__)) + "/"
 
 # experimental plan yaml의 위치
-EXP_PLAN = PROJECT_HOME + "config/tsc_experimental_plan.yaml"
+EXP_PLAN = PROJECT_HOME + "config/experimental_plan.yaml"
 
 # asset 코드들의 위치
 # FIXME (swj) mnist, titanic example을 만들기 사용하는 함수 리스트를 작성
