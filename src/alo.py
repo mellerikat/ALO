@@ -40,6 +40,15 @@ check_install_requirements(master_req)
 from src.utils import Logger, set_artifacts, get_yaml, setup_asset, match_steps, find_matching_strings, import_asset, release, compare_yaml_dicts, backup_artifacts
 from src.external import external_load_data, external_save_artifacts
 from src.message import asset_info, asset_error
+
+
+class AssetStructure: 
+    def __init__(self, envs, args, data, config):
+        self.envs = envs
+        self.args = args
+        self.data = data 
+        self.config = config
+        
 class ALO:
     def __init__(self, exp_plan_file = EXP_PLAN):
         envs = {}
@@ -156,11 +165,15 @@ class ALO:
             envs['pipeline'] = pipeline
             envs['step'] = self.user_parameters[pipeline][step]['step']
             envs['artifacts'] = self.artifacts
-
-            ua = user_asset(envs, args[0], data, config) # mem interface
+            # FIXME 버전 관리 체계 필요 
+            envs['version'] = 0.1 
+            
+            asset_structure = AssetStructure(envs, args[0], data, config)
+            ua = user_asset(asset_structure) # mem interface
             data, config = ua.run()
-
+            print(data, config)
             # config
+            # FIXME 구조체 형태로 toss 재개발 필요 
             if self.control['interface_mode'] == 'file':
                 toss(data, config, pipeline, envs) # file interface
 
