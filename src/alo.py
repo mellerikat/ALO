@@ -171,7 +171,7 @@ class ALO:
             asset_structure = AssetStructure(envs, args[0], data, config)
             ua = user_asset(asset_structure) # mem interface
             data, config = ua.run()
-            print(data, config)
+  
             # config
             # FIXME 구조체 형태로 toss 재개발 필요 
             if self.control['interface_mode'] == 'file':
