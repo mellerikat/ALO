@@ -23,8 +23,7 @@ artifacts_structure = {
     '.inference_artifacts': {
         'score': {},
         'output': {},
-        'log': {},
-        'report': {}
+        'log': {}
     },
     '.asset_interface': {},
     '.history': {}
