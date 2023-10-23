@@ -146,7 +146,7 @@ class ALO:
             if self.control['interface_mode'] in SUPPORT_TYPE:
                 # 첫 동작시에는 초기화하여 사용 
                 if step == 0:
-                    data = 0
+                    data = {} 
                     config = {}
                 else:
                     if self.control['interface_mode'] == 'memory':
