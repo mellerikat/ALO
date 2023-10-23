@@ -9,7 +9,6 @@ from src.message import print_color
 from datetime import datetime
 
 from collections import Counter
-
 from src.constants import *
 
 
@@ -166,7 +165,7 @@ class ALO:
             envs['step'] = self.user_parameters[pipeline][step]['step']
             envs['artifacts'] = self.artifacts
             # FIXME 버전 관리 체계 필요 
-            envs['version'] = 0.1 
+            envs['alo_version'] = 'develop' 
             
             asset_structure = AssetStructure(envs, args[0], data, config)
             ua = user_asset(asset_structure) # mem interface
