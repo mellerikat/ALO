@@ -166,6 +166,7 @@ class ALO:
             envs['artifacts'] = self.artifacts
             # FIXME 버전 관리 체계 필요 
             envs['alo_version'] = 'develop' 
+            envs['asset_branch'] = asset_config['source']['branch']
             
             asset_structure = AssetStructure(envs, args[0], data, config)
             ua = user_asset(asset_structure) # mem interface
