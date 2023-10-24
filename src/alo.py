@@ -104,6 +104,19 @@ class ALO:
 
     def read_yaml(self):
         self.exp_plan = get_yaml(self.exp_plan_file)
+        compare_yaml = get_yaml(PROJECT_HOME + "config/compare.yaml")
+
+        def compare_dict_keys(dict1, dict2):
+            keys1 = set(key for d in dict1 for key in d.keys())
+            keys2 = set(key for d in dict2 for key in d.keys())
+            
+            keys_only_in_dict2 = keys2 - keys1
+            
+            if keys_only_in_dict2:
+                asset_error("Keys only in dict2: " + ", ".join(keys_only_in_dict2))
+
+        for key in self.exp_plan:
+            compare_dict_keys(self.exp_plan[key], compare_yaml[key])
 
         def get_yaml_data(key):
             data_dict = {}
