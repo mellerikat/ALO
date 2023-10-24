@@ -5,7 +5,7 @@ from src.s3handler import *
 from src.message import print_color, asset_error
 
 # FIXME pipeline name까지 추후 반영해야할지? http://clm.lge.com/issue/browse/DXADVTECH-352?attachmentSortBy=dateTime&attachmentOrder=asc
-def external_load_data(pipe_mode, external_path, external_path_permission): 
+def external_load_data(pipe_mode, external_path, external_path_permission, get_external_data): 
     """ Description
         -----------
             - external_path로부터 데이터를 다운로드 
@@ -14,56 +14,75 @@ def external_load_data(pipe_mode, external_path, external_path_permission):
             - pipe_mode: 호출 시의 파이프라인 (train_pipeline, inference_pipeline)
             - external_path: experimental_plan.yaml에 적힌 external_path 전체를 dict로 받아옴 
             - external_path_permission: experimental_plan.yaml에 적힌 external_path_permission 전체를 dict로 받아옴 
+            - get_external_data: external data를 load하는 행위를 한 번만 할 지 여러번 할지 (once, every)
         Return
         -----------
             - 
         Example
         -----------
-            - load_data(self.external_path, self.external_path_permission)
+            - external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
     """
+    # None일 시, 혹은 str로 입력 시 type을 list로 통일하여 내부 변수화 
+    ################################################################################################################
+    train_data_path = [] if external_path['load_train_data_path'] is None else external_path['load_train_data_path']
+    inference_data_path = [] if external_path['load_inference_data_path'] is None else external_path['load_inference_data_path']
+    # 1개여서 str인 경우도 list로 바꾸고, 여러개인 경우는 그냥 그대로 list로 
+    train_data_path = [train_data_path] if type(train_data_path) == str else train_data_path
+    inference_data_path = [inference_data_path] if type(inference_data_path) == str else inference_data_path
     
-    ## FIXME 진짜 input 데이터 지우고 시작하는게 맞을지 검토필요 
-    # fetch_data 할 때는 항상 input 폴더 비우고 시작한다 
-    if os.path.exists(INPUT_DATA_HOME):
-        for file in os.scandir(INPUT_DATA_HOME):
-            print_color(f">> Start removing pre-existing input data before fetching external data: {file.name}", "blue") # os.DirEntry.name 
-            shutil.rmtree(file.path)
-            
-    # external path가 train, inference 둘다 존재 안하는 경우 
-    if ( external_path['load_train_data_path'] is None) and (external_path['load_inference_data_path'] is None): 
+    # yaml 오기입 관련 체크 
+    ################################################################################################################
+    # external path가 train, inference 둘다 존재 안하고, input 폴더도 비워져 있는 경우 체크 
+    if (len(train_data_path) == 0) and (len(inference_data_path) == 0): 
         # 이미 input 폴더는 무조건 만들어져 있는 상태임 
         # FIXME input 폴더가 비어있으면 프로세스 종료, 뭔가 서브폴더가 있으면 사용자한테 존재하는 서브폴더 notify 후 yaml의 input_path에는 그 서브폴더들만 활용 가능하다고 notify
         # 만약 input 폴더에 존재하지 않는 서브폴더 명을 yaml의 input_path에 작성 시 input asset에서 에러날 것임   
         if len(os.listdir(INPUT_DATA_HOME)) == 0: # input 폴더 빈 경우 
             asset_error(f'External path (load_train_data_path, load_inference_data_path) in experimental_plan.yaml are not written & << input >> folder is empty.') 
         else: 
-            print_color('[NOTICE] You can write only one of the << {} >> at << input_path >> parameter in your experimental_plan.yaml'.format(os.listdir(INPUT_DATA_HOME)), 'yellow')
+            print_color('[INFO] You can write only one of the << {} >> at << input_path >> parameter in your experimental_plan.yaml \n'.format(os.listdir(INPUT_DATA_HOME)), 'yellow')
         return
+    else: # load_train_data_path나 load_train_data_path 둘 중 하나라도 존재시 
+        # load_train_data_path와 load_train_data_path 내 중복 mother path (마지막 서브폴더 명) 존재 시 에러 
+        all_data_path = train_data_path + inference_data_path
+        base_dir_list = [] 
+        for ext_path in all_data_path: 
+            base_dir = os.path.basename(os.path.normpath(ext_path)) 
+            base_dir_list.append(base_dir)
+        if len(set(base_dir_list)) != len(base_dir_list): # 중복 mother path 존재 경우 
+            asset_error(f"You may have entered paths which have duplicated base directory names. \n For example, these are not allowed: \n \
+        - load_train_data_path: /users/train/data/ \n \
+        - load_inference_data_path: /users/inference/data/ \n \
+        which have << data >> as duplicated base directory name.")
     
-    # load할 데이터 경로 가져오기 
+    # 미입력 시 every로 default 설정 
+    if get_external_data is None:
+        get_external_data = 'every'
+        print_color('[INFO] You did not entered << get_external_data >> control parameter in your experimental_plan.yaml \n << every >> is automatically set as default. \n', 'yellow') 
+    # once 나 every로 입력하지 않고 이상한 값 입력 시 혹은 비워놨을 시 에러 
+    if get_external_data not in ['once', 'every']:
+        asset_error(f"Check your << get_external_data >> control parameter in experimental_plan.yaml. \n You entered: {get_external_data}. Only << once >> or << every >> is allowed.")
+    ################################################################################################################
+    # 현재 pipeline에 대해서 load할 데이터 경로 가져오기 
     # 대전제 : 중복 이름의 데이터 폴더명은 복사 허용 x 
     load_data_path = None 
     if pipe_mode == "train_pipeline": 
-        load_data_path = external_path['load_train_data_path'] # 0개 일수도(None), 한 개 일수도(str), 두 개 이상 일수도 있음(list) 
+        load_data_path = train_data_path # 0개 일수도(None), 한 개 일수도(str), 두 개 이상 일수도 있음(list) 
     elif pipe_mode == "inference_pipeline":
-        load_data_path = external_path['load_inference_data_path']
+        load_data_path = inference_data_path
     else: 
         asset_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
 
-    print_color(f">> Start loading external << {load_data_path} >> data into << input >> directory.", "blue")
-    
-    try:
-        load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
-        print_color(f'>> s3 private key file << load_s3_key_path >> loaded successfully.', 'green')   
-    except:
-        print_color('[NOTICE] You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment.' , 'yellow')
-        load_s3_key_path = None
+    # s3 key 경로 가져오기 
+    load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str) or None 
+    if load_s3_key_path is None: 
+        print_color('[INFO] You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' , 'yellow')
+    else: 
+        if type(load_s3_key_path) != str: 
+            asset_error(f"You entered wrong type of << s3_private_key_file >> in your expermimental_plan.yaml: << {load_s3_key_path} >>. \n Only << str >> type is allowed.")
         
-    # None일 시 type을 list로 통일 
-    if load_data_path is None:
-        load_data_path = []
-
-    # external path가 존재하는 경우 
+    ################################################################################################################
+    #  load external data 
     def _get_ext_path_type(_ext_path: str): # inner function 
         if 's3:/' in _ext_path: 
             return 's3'
@@ -73,41 +92,52 @@ def external_load_data(pipe_mode, external_path, external_path_permission):
             asset_error(f'<< {_ext_path} >> is relative path. This is unsupported type of external load data path. Please enter the absolute path.')
         else: 
             asset_error(f'<< {_ext_path} >> is unsupported type of external load data path.')
-    
-    # 1개여서 str인 경우도 list로 바꾸고, 여러개인 경우는 그냥 그대로 list로 
-    # None (미입력) 일 땐 별도처리 필요 
-    load_data_path = [load_data_path] if type(load_data_path) == str else load_data_path
 
+    # copy (절대경로) or download (s3) data (input 폴더로)
+    # get_external_data (once, every) 관련 처리
     for ext_path in load_data_path: 
-        print_color(f'>> [@ {pipe_mode}] Start fetching external data from << {ext_path} >> into << input >> directory.', 'blue')
-        ext_type = _get_ext_path_type(ext_path) # absolute / s3
-        
-        if ext_type  == 'absolute':
-            # 해당 nas 경로에 데이터 폴더 존재하는지 확인 후 폴더 통째로 가져오기, 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
-            # nas 접근권한 없으면 에러 발생 
-            # 기존에 사용자 환경 input 폴더에 외부 데이터 경로 폴더와 같은 이름의 폴더가 있으면 notify 후 덮어 씌우기 
-            try: 
-                # 사용자가 실수로 yaml external path에 마지막에 '/' 쓰든 안쓰든, (즉 아래 코드에서 '/'이든 '//' 이든 동작엔 이상X)
-                # [참고] https://stackoverflow.com/questions/3925096/how-to-get-only-the-last-part-of-a-path-in-python
-                mother_path = os.path.basename(os.path.normpath(ext_path)) # 가령 /nas001/test/ 면 test가 mother_path, ./이면 .가 mother_path 
-                if mother_path in os.listdir(INPUT_DATA_HOME): 
-                    asset_error(f"You already have duplicated sub-folder name << {mother_path} >> in the << input >> folder. Please rename your sub-folder name if you use multiple data sources.")
-                shutil.copytree(ext_path, PROJECT_HOME + f"input/{mother_path}", dirs_exist_ok=True) # 중복 시 덮어쓰기 됨 
-            except: 
-                asset_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong NAS path (must be existing directory!) \n / or You do not have permission to access \n / or You used duplicated sub-folder names for multiple data sources.')
-        elif ext_type  == 's3':  
-            # s3 key path가 yaml에 작성 돼 있으면 해당 key 읽어서 s3 접근, 작성 돼 있지 않으면 사용자 환경 aws config 체크 후 key 설정 돼 있으면 사용자 notify 후 활용, 없으면 에러 발생 
-            # 해당 s3 경로에 데이터 폴더 존재하는지 확인 후 폴더 통째로 가져오기, 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
-            # s3 접근권한 없으면 에러 발생 
-            # 기존에 사용자 환경 input 폴더에 외부 데이터 경로 폴더와 같은 이름의 폴더가 있으면 notify 후 덮어 씌우기 
-            s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
-            try: 
-                s3_downloader.download_folder(INPUT_DATA_HOME)
-            except:
-                asset_error(f'Failed to download s3 data folder from << {ext_path} >>')
-        else: 
-            # 미지원 external data storage type
-            asset_error(f'{ext_path} is unsupported type of external data path.') 
+        ext_type = _get_ext_path_type(ext_path)
+        base_dir = os.path.basename(os.path.normpath(ext_path)) 
+        if (base_dir in os.listdir(INPUT_DATA_HOME)) and (get_external_data == 'once'): # 이미 input 폴더에 존재하고, once인 경우 
+            print_color(f"[INFO] Skip loading external data. << {ext_path} >> \n << {base_dir} >> already exists in << {INPUT_DATA_HOME} >>. \n & << get_external_data >> is set as << once >>. \n", 'yellow')
+            continue 
+        elif (base_dir in os.listdir(INPUT_DATA_HOME)) and (get_external_data == 'every'): # 이미 input 폴더에 존재하고, every인 경우 기존 거 지우고 다시 다운로드 
+            print_color(f"[INFO] << {base_dir} >> already exists in << {INPUT_DATA_HOME} >>. \n & << get_external_data >> is set as << every >>. \n Start re-loading external data. << {ext_path} >> : pre-existing directory is deleted ! \n", 'yellow')
+            shutil.rmtree(INPUT_DATA_HOME + base_dir)
+            _load_data(ext_type, ext_path, load_s3_key_path)
+        elif (base_dir not in os.listdir(INPUT_DATA_HOME)): # input 폴더에 부재하면, once던 every던 무조건 loading 함
+            print_color(f"[INFO] Start loading external data. << {ext_path} >>  \n << {base_dir} >> does not exist in << {INPUT_DATA_HOME} >>. \n & << get_external_data >> is set as << {get_external_data} >>. \n", 'yellow')
+            _load_data(ext_type, ext_path, load_s3_key_path)
+     
+    return             
+
+            
+def _load_data(ext_type, ext_path, load_s3_key_path): 
+    # 실제로 데이터 복사 (절대 경로) or 다운로드 (s3) 
+    if ext_type  == 'absolute':
+        # 해당 nas 경로에 데이터 폴더 존재하는지 확인 후 폴더 통째로 가져오기, 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
+        # nas 접근권한 없으면 에러 발생 
+        # 기존에 사용자 환경 input 폴더에 외부 데이터 경로 폴더와 같은 이름의 폴더가 있으면 notify 후 덮어 씌우기 
+        try: 
+            # 사용자가 실수로 yaml external path에 마지막에 '/' 쓰든 안쓰든, (즉 아래 코드에서 '/'이든 '//' 이든 동작엔 이상X)
+            # [참고] https://stackoverflow.com/questions/3925096/how-to-get-only-the-last-part-of-a-path-in-python
+            base_dir = os.path.basename(os.path.normpath(ext_path)) # 가령 /nas001/test/ 면 test가 mother_path, ./이면 .가 mother_path 
+            shutil.copytree(ext_path, PROJECT_HOME + f"input/{base_dir}", dirs_exist_ok=True) # 중복 시 덮어쓰기 됨 
+        except: 
+            asset_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong absolute path (must be existing directory!) \n / or You do not have permission to access.')
+    elif ext_type  == 's3':  
+        # s3 key path가 yaml에 작성 돼 있으면 해당 key 읽어서 s3 접근, 작성 돼 있지 않으면 사용자 환경 aws config 체크 후 key 설정 돼 있으면 사용자 notify 후 활용, 없으면 에러 발생 
+        # 해당 s3 경로에 데이터 폴더 존재하는지 확인 후 폴더 통째로 가져오기, 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
+        # s3 접근권한 없으면 에러 발생 
+        # 기존에 사용자 환경 input 폴더에 외부 데이터 경로 폴더와 같은 이름의 폴더가 있으면 notify 후 덮어 씌우기 
+        s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
+        try: 
+            s3_downloader.download_folder(INPUT_DATA_HOME)
+        except:
+            asset_error(f'Failed to download s3 data folder from << {ext_path} >>')
+    else: 
+        # 미지원 external data storage type
+        asset_error(f'{ext_path} is unsupported type of external data path.') 
             
     return 
 
@@ -130,7 +160,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     
     # external path가 train, inference 둘다 존재 안하는 경우 
     if (external_path['save_train_artifacts_path'] is None) and (external_path['save_inference_artifacts_path'] is None): 
-        print_color('[NOTICE] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path.', 'yellow')
+        print_color('[INFO] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n', 'yellow')
         return
     
     save_artifacts_path = None 
@@ -142,15 +172,15 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
         asset_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
 
     if save_artifacts_path == None: 
-        print_color('f[NOTICE][@{pipe_mode}] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path.', 'yellow')
+        print_color('f[INFO][@{pipe_mode}] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n', 'yellow')
         return  
         
     # get s3 key 
     try:
         load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
-        print_color(f'>> s3 private key file << load_s3_key_path >> loaded successfully.', 'green')   
+        print_color(f'[INFO] s3 private key file << load_s3_key_path >> loaded successfully. \n', 'green')   
     except:
-        print_color('[NOTICE] You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment.' , 'yellow')
+        print_color('[INFO] You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' , 'yellow')
         load_s3_key_path = None
 
     # external path가 존재하는 경우 
@@ -165,7 +195,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
             asset_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path.')
 
     # save artifacts 
-    print_color(f">> Start saving generated artifacts into external path << {save_artifacts_path} >>.", "blue")
+    print_color(f"[INFO] Start saving generated artifacts into external path << {save_artifacts_path} >>. \n", "blue")
     ext_path = save_artifacts_path
     ext_type = _get_ext_path_type(ext_path) # absolute / s3
     tar_path = None 
@@ -196,7 +226,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
         # 미지원 external data storage type
         asset_error(f'{ext_path} is unsupported type of external data path.') 
     
-    print_color(f">> Successfully done saving << {tar_path} >> into << {save_artifacts_path} >> \n & removing << {tar_path} >>.", "green")  
+    print_color(f"[INFO] Successfully done saving << {tar_path} >> into << {save_artifacts_path} >> \n & removing << {tar_path} >>. \n", "green")  
     return 
 
 def _tar_dir(_path): # inner function 

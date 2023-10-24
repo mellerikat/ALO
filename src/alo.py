@@ -72,6 +72,7 @@ class ALO:
         else:
             print_color(f">> << {ASSET_HOME} >> directory already exists.", "green")
 
+        # yaml에 있는 내용들 self.control 등 클래스 파라미터로 setting  
         self.read_yaml()
 
         # artifacts 세팅
@@ -83,9 +84,10 @@ class ALO:
             print_color("\n===============================================================================================================================", "bold")
             print_color(f"                                                 pipeline : < {pipeline} >                                                 ", "bold")
             print_color("===============================================================================================================================\n", "bold")
-            # 외부 데이터 다운로드 (input 폴더에) - 하나의 pipeline
-            # FIXME self.asset.~ 이런 함수들 일단 common으로 다 빼고 리팩토링 필요할 듯 
-            external_load_data(pipeline, self.external_path, self.external_path_permission)
+            # 외부 데이터 다운로드 (input 폴더에) - 하나의 pipeline 실행 시 마다 input 폴더 비우고 다운로드 
+
+            external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
+
             matching_strings = find_matching_strings(list(self.artifacts.keys()), pipeline.split('_')[0])
             log_filename = self.artifacts[matching_strings] + "log/pipeline.log"
             logging.basicConfig(filename=log_filename, level=logging.INFO)

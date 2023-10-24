@@ -37,14 +37,13 @@ def asset_error(msg):
 def asset_info(pipelines, step):
     #time_utc = datetime.now(timezone('UTC')).strftime('%Y-%m-%d %H:%M:%S')
     #time_kst = datetime.now(timezone('Asia/Seoul')).strftime('%Y-%m-%d %H:%M:%S')
-    print('\n\n')
-    print_color("============================= ASSET INFO =============================", 'blue')
+    print('\n')
+    print_color("============================= ASSET INFO ==============================", 'blue')
 
     #print_color(f"TIME(UTC)    : {time_utc} (KST : {time_kst})", 'blue')
     print_color(f"PIPELINES    : {pipelines}", 'blue')
     print_color(f"ASSETS       : {step}", 'blue')
     print_color("=======================================================================", 'blue')
-    print('\n\n')
 
 def print_color(msg, _color):
     """ Description

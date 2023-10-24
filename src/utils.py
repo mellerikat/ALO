@@ -164,7 +164,7 @@ def setup_asset(asset_config, check_asset_source='once'):
             elif (check_asset_source == "once" and not renew_asset(step_path)):
                 modification_time = os.path.getmtime(step_path)
                 modification_time = datetime.fromtimestamp(modification_time) # 마지막 수정시간 
-                print_color(f"[NOTICE] << {step_name} >> asset had already been created at {modification_time}", "yellow") 
+                print_color(f"[INFO] << {step_name} >> asset had already been created at {modification_time}", "yellow") 
                 pass  
             else: 
                 asset_error(f'You have written incorrect check_asset_source: {check_asset_source}')

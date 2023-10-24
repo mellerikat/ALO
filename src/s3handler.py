@@ -69,16 +69,15 @@ class S3Handler:
     def download_folder(self, input_path):
         s3 = self.create_s3_session_resource() # session resource 만들어야함 
         bucket = s3.Bucket(self.bucket)
-        mother_folder = self.s3_folder.partition('/')[-1] 
-        if os.path.exists(input_path + mother_folder):
-            raise ValueError(f"{mother_folder} already exists in the << input >> folder.")
+        base_dir = self.s3_folder.partition('/')[-1] 
+        if os.path.exists(input_path + base_dir):
+            raise ValueError(f"{base_dir} already exists in the << input >> folder.")
         for obj in bucket.objects.filter(Prefix=self.s3_folder):
             # 아래처럼 쓰면 해당 폴더 아래에 있는 것 전부 input 폴더로 복사 (폴더든, 파일이든) 
             # 따라서 single external path일 때 사용 가능 
             # multi s3인 경우 input 폴더 밑에 여러 폴더들 배치될 수 있으므로 mother 폴더로 한번 감싸서 서로 구분한다             
-            target = os.path.join(input_path + mother_folder, os.path.relpath(obj.key, self.s3_folder)) 
-            # FIXME 일단 중복 폴더 이름 허용했음 
-            os.makedirs(os.path.dirname(target), exist_ok=True)
+            target = os.path.join(input_path + base_dir, os.path.relpath(obj.key, self.s3_folder)) 
+            os.makedirs(os.path.dirname(target), exist_ok=True) # 덮어쓰기 ok
             bucket.download_file(obj.key, target)
 
     def upload_file(self, file_path):
