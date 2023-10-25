@@ -1,16 +1,11 @@
 import argparse
 import time
 
-# TODO ALO class 이름 변경
 from src.alo import ALO
-# from alolib.asset import Asset
 
 # --------------------------------------------------------------------------------------------------------------------------
 #    MAIN
 # --------------------------------------------------------------------------------------------------------------------------
-
-
-
 
 if __name__ == "__main__":
     # while(1):
@@ -32,4 +27,4 @@ if __name__ == "__main__":
     end_time = time.time()
     execution_time = end_time - start_time
 
-    # print_color(f"Total Program run-time: {execution_time} sec", 'yellow')
+    print(f"\033[33mTotal Program run-time: {execution_time} sec\033[0m") # Yellow
