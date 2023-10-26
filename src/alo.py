@@ -1,7 +1,7 @@
 import os
 import sys
 import logging
-
+import subprocess
 # local import
 
 from src.install import *
@@ -36,7 +36,7 @@ master_req = {"master": req_list}
 check_install_requirements(master_req)
 #######################################################################################
 
-from src.utils import Logger, set_artifacts, get_yaml, setup_asset, match_steps, find_matching_strings, import_asset, release, compare_yaml_dicts, backup_artifacts
+from src.utils import Logger, save_data, load_data, set_artifacts, get_yaml, setup_asset, match_steps, find_matching_strings, import_asset, release, compare_yaml_dicts, backup_artifacts
 from src.external import external_load_data, external_save_artifacts
 from src.message import asset_info, asset_error
 
@@ -153,45 +153,51 @@ class ALO:
 
             _path = ASSET_HOME + asset_config['step'] + "/"
             _file = "asset_" + asset_config['step']
-            # TODO asset2등을 asset으로 수정하는 코드
+            # asset2등을 asset으로 수정하는 코드
             _file = ''.join(filter(lambda x: x.isalpha() or x == '_', _file))
             user_asset = import_asset(_path, _file)
-            envs = {}
 
             if self.control['interface_mode'] in SUPPORT_TYPE:
                 # 첫 동작시에는 초기화하여 사용 
                 if step == 0:
-                    data = {} 
-                    config = {}
-                else:
-                    if self.control['interface_mode'] == 'memory':
-                        pass
-                    elif self.control['interface_mode'] == 'file':
-                        data, config = get_toss(pipeline, envs) # file interface
+                    data, envs, config  = {}, {}, {}
+                # else:
+                    # if self.control['interface_mode'] == 'memory':
+                    #     pass
+                    # elif self.control['interface_mode'] == 'file':
+                    #     data, config = load_data(pipeline, envs) # file interface
             else:
-                return ValueError("only file and memory")
+                return ValueError(f"Only << file >> or << memory >> is supported for << interface_mode >>")
 
             args = self.user_parameters[pipeline][step]['args']
             # envs에 만들어진 artifacts 폴더 구조 전달 (to slave)
             # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
-            
+        
+
             envs['project_home'] = PROJECT_HOME
             envs['pipeline'] = pipeline
+            # asset.py에서 load config, load data 할때 필요 
+            if step > 0: 
+                envs['prev_step'] = self.user_parameters[pipeline][step-1]['step']
             envs['step'] = self.user_parameters[pipeline][step]['step']
+            envs['num_step'] = step # int  
             envs['artifacts'] = self.artifacts
-            # FIXME 버전 관리 체계 필요 
-            envs['alo_version'] = 'develop' 
+
+            alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE)
+            envs['alo_version'] = alo_version.stdout.decode('utf-8').strip()
             envs['asset_branch'] = asset_config['source']['branch']
+            envs['interface_mode'] = self.control['interface_mode']
             
             asset_structure = AssetStructure(envs, args[0], data, config)
             ua = user_asset(asset_structure) # mem interface
             data, config = ua.run()
   
-            # config
-            # FIXME 구조체 형태로 toss 재개발 필요 
-            if self.control['interface_mode'] == 'file':
-                toss(data, config, pipeline, envs) # file interface
+            # # config
+            # # FIXME 구조체 형태로 toss 재개발 필요 
+            # if self.control['interface_mode'] == 'file':
+            #     save_data(data, config, pipeline, envs) # file interface
 
+            # FIXME memory release : on/off 필요 
             release(_path)
             sys.path = [item for item in sys.path if envs['step'] not in item]
         
