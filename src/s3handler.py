@@ -3,8 +3,15 @@ import boto3
 from boto3.session import Session
 from botocore.client import Config
 from botocore.handlers import set_list_objects_encoding_type_url
-import tarfile
+from src.constants import *
 from urllib.parse import urlparse
+from alolib import logger 
+#--------------------------------------------------------------------------------------------------------------------------
+#    GLOBAL VARIABLE
+#--------------------------------------------------------------------------------------------------------------------------
+PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
+
+#--------------------------------------------------------------------------------------------------------------------------
 
 class S3Handler:
     def __init__(self, s3_uri, load_s3_key_path):
@@ -24,13 +31,13 @@ class S3Handler:
                         keys.append(key.strip())
                 return tuple(keys)
             except: 
-                raise ValueError(f'Failed to get s3 key from {s3_key_path}. The shape of contents in the S3 key file may be incorrect.')
+                PROC_LOGGER.process_error(f'Failed to get s3 key from {s3_key_path}. The shape of contents in the S3 key file may be incorrect.')
         else: # yaml에 s3 key path 입력 안한 경우는 한 번 시스템 환경변수에 사용자가 key export 해둔게 있는지 확인 후 있으면 반환 없으면 에러  
             access_key, secret_key = os.getenv("ACCESS_KEY"), os.getenv("SECRET_KEY")
             if (access_key != None) and (secret_key != None):
                 return access_key, secret_key 
             else: # 둘 중 하나라도 None 이거나 둘 다 None 이면 에러 
-                raise ValueError('<< ACCESS_KEY >> or << SECRET_KEY >> is not defined on your system environment.')  
+                PROC_LOGGER.process_error('<< ACCESS_KEY >> or << SECRET_KEY >> is not defined on your system environment.')  
 
     def parse_s3_url(self, uri):
         parts = urlparse(uri)
@@ -52,7 +59,7 @@ class S3Handler:
                     session = boto3.session.Session()
                     return session.client('s3', aws_access_key_id=self.access_key, aws_secret_access_key=self.secret_key)
         except Exception as e:
-            raise Exception("S3 CONNECTION ERROR %s" % e)
+            PROC_LOGGER.process_error("S3 CONNECTION ERROR %s" % e)
 
     def create_s3_session_resource(self):
         try:
@@ -63,7 +70,7 @@ class S3Handler:
             else:
                 return boto3.resource('s3', aws_access_key_id=self.access_key, aws_secret_access_key=self.secret_key)
         except Exception as e:
-            raise Exception("S3 CONNECTION ERROR %s" % e)
+            PROC_LOGGER.process_error("S3 CONNECTION ERROR %s" % e)
         
     # https://saturncloud.io/blog/downloading-a-folder-from-s3-using-boto3-a-comprehensive-guide-for-data-scientists/
     def download_folder(self, input_path):
@@ -71,7 +78,7 @@ class S3Handler:
         bucket = s3.Bucket(self.bucket)
         base_dir = self.s3_folder.partition('/')[-1] 
         if os.path.exists(input_path + base_dir):
-            raise ValueError(f"{base_dir} already exists in the << input >> folder.")
+            PROC_LOGGER.process_error(f"{base_dir} already exists in the << input >> folder.")
         for obj in bucket.objects.filter(Prefix=self.s3_folder):
             # 아래처럼 쓰면 해당 폴더 아래에 있는 것 전부 input 폴더로 복사 (폴더든, 파일이든) 
             # 따라서 single external path일 때 사용 가능 
@@ -89,6 +96,6 @@ class S3Handler:
             with open(f'{file_path}', 'rb') as tar_file:  
                 bucket.put_object(Key=bucket_upload_path, Body=tar_file, ContentType='artifacts/gzip')
         except: 
-            raise NotImplementedError(f"Failed to upload << {file_path} >> onto << {self.s3_uri} >>.")
+            PROC_LOGGER.process_error(f"Failed to upload << {file_path} >> onto << {self.s3_uri} >>.")
         
         

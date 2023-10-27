@@ -4,8 +4,14 @@ import subprocess
 import sys
 from collections import defaultdict
 
-from src.message import *
 from src.constants import *
+from alolib import logger 
+#--------------------------------------------------------------------------------------------------------------------------
+#    GLOBAL VARIABLE
+#--------------------------------------------------------------------------------------------------------------------------
+PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
+
+#--------------------------------------------------------------------------------------------------------------------------
 
 def extract_requirements_txt(step_name): 
     """ Description
@@ -32,7 +38,7 @@ def extract_requirements_txt(step_name):
                     packages_in_txt.append(pkg)
             return packages_in_txt        
         except: 
-            ValueError(f'Failed to install basic dependency. You may have removed requirements.txt in project home.')
+            PROC_LOGGER.process_error(f'Failed to install basic dependency. You may have removed requirements.txt in project home.')
     # step (=asset) 종속  패키지 리스트업 
     if fixed_txt_name in os.listdir(ASSET_HOME + step_name):
         with open(ASSET_HOME + step_name + '/' + fixed_txt_name, 'r') as req_txt:  
@@ -41,7 +47,9 @@ def extract_requirements_txt(step_name):
                 packages_in_txt.append(pkg)
         return packages_in_txt
     else: 
-        ValueError(f"<< {fixed_txt_name} >> dose not exist in << scripts/{step_name} folder >>. However, you have written {fixed_txt_name} at that step in << config/experimental_plan.yaml >>. Please remove {fixed_txt_name} in the yaml file.")
+        PROC_LOGGER.process_error(f"<< {fixed_txt_name} >> dose not exist in << scripts/{step_name} folder >>. \n \
+            However, you have written {fixed_txt_name} at that step in << config/experimental_plan.yaml >>. \n \
+            Please remove {fixed_txt_name} in the yaml file.")
 
 def _install_packages(dup_checked_requirements_dict, dup_chk_set): 
     fixed_txt_name  = 'requirements.txt'
@@ -50,17 +58,17 @@ def _install_packages(dup_checked_requirements_dict, dup_chk_set):
     count = 1
     # 사용자 환경에 priority_sorted_pkg_list의 각 패키지 존재 여부 체크 및 없으면 설치
     for step_name, package_list in dup_checked_requirements_dict.items(): # 마지막 step_name 은 force-reinstall 
-        print_color(f"======================================== Start dependency installation : << {step_name} >> ", 'blue')
+        PROC_LOGGER.process_info(f"======================================== Start dependency installation : << {step_name} >> ", 'blue')
         for package in package_list:
-            print_color(f'>> Start checking existence & installing package - {package} | Progress: ( {count} / {total_num_install} total packages )', 'yellow')
+            PROC_LOGGER.process_info(f"Start checking existence & installing package - {package} | Progress: ( {count} / {total_num_install} total packages ) ", 'blue')
             count += 1
             
             if "--force-reinstall" in package: 
                 try: 
-                    print_color(f'- Start installing package - {package}', 'yellow')
+                    PROC_LOGGER.process_info(f'>>> Start installing package - {package}', 'blue')
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package.replace('--force-reinstall', '').strip(), '--force-reinstall'])            
                 except OSError as e:
-                    raise NotImplementedError(f"Error occurs while --force-reinstalling {package} ~ " + e)  
+                    PROC_LOGGER.process_error(f"Error occurs while --force-reinstalling {package} ~ " + e)  
                 continue 
                     
             try: # 이미 같은 버전 설치 돼 있는지 
@@ -68,31 +76,31 @@ def _install_packages(dup_checked_requirements_dict, dup_chk_set):
                 # 가령 aiplib @ git+http://mod.lge.com/hub/smartdata/aiplatform/module/aip.lib.git@ver2  같은 version 표기가 requirements.txt에 존재해도 conflict 안나는 것 확인 완료 
                 # FIXME 사용자가 가령 pandas 처럼 (==version 없이) 작성하여도 아래 코드는 통과함 
                 pkg_resources.get_distribution(package) # get_distribution tact-time 테스트: 약 0.001s
-                print_color(f'- << {package} >> already exists', 'green')
+                PROC_LOGGER.process_info(f'[OK] << {package} >> already exists', 'green')
             except pkg_resources.DistributionNotFound: # 사용자 가상환경에 해당 package 설치가 아예 안 돼있는 경우 
                 try: # nested try/except 
-                    print_color(f'- Start installing package - {package}', 'yellow')
+                    PROC_LOGGER.process_info(f'>>> Start installing package - {package}', 'blue')
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
                 except OSError as e:
                     # 가령 asset을 만든 사람은 abc.txt라는 파일 기반으로 pip install -r abc.txt 하고 싶었는데, 우리는 requirements.txt 라는 이름만 허용하므로 관련 안내문구 추가  
-                    raise NotImplementedError(f"Error occurs while installing {package}. If you want to install from packages written file, make sure that your file name is << {fixed_txt_name} >> ~ " + e)
+                    PROC_LOGGER.process_error(f"Error occurs while installing {package}. If you want to install from packages written file, make sure that your file name is << {fixed_txt_name} >> ~ " + e)
             except pkg_resources.VersionConflict: # 설치 돼 있지만 버전이 다른 경우 재설치 
                 try: # nested try/except 
-                    print_color(f'- VersionConflict occurs. Start re-installing package << {package} >>. You should check the dependency for the package among assets.', 'yellow')
+                    PROC_LOGGER.process_warning(f'VersionConflict occurs. Start re-installing package << {package} >>. \n You should check the dependency for the package among assets.')
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
                 except OSError as e:
-                    raise NotImplementedError(f"Error occurs while re-installing {package} ~ " + e)  
+                    PROC_LOGGER.process_error(f"Error occurs while re-installing {package} ~ " + e)  
             # FIXME 그 밖의 에러는 아래에서 그냥 에러 띄우고 프로세스 kill 
             # pkg_resources의 exception 참고 코드 : https://github.com/pypa/pkg_resources/blob/main/pkg_resources/__init__.py#L315
             except pkg_resources.ResolutionError: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
-                raise NotImplementedError(f'ResolutionError occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')
+                PROC_LOGGER.process_error(f'ResolutionError occurs while installing package {package} @ {step_name} step. \n Please check the package name or dependency with other asset.')
             except pkg_resources.ExtractionError: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
-                raise NotImplementedError(f'ExtractionError occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')
-            # FIXME 왜 unrechable 이지? https://github.com/pypa/pkg_resources/blob/main/pkg_resources/__init__.py#L315
-            except pkg_resources.UnknownExtra: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
-                raise NotImplementedError(f'UnknownExtra occurs while installing package {package} @ {step_name} step. Please check the package name or dependency with other asset.')   
+                PROC_LOGGER.process_error(f'ExtractionError occurs while installing package {package} @ {step_name} step. \n Please check the package name or dependency with other asset.')
+            # # FIXME 왜 unrechable 이지? https://github.com/pypa/pkg_resources/blob/main/pkg_resources/__init__.py#L315
+            # except pkg_resources.UnknownExtra: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
+            #     PROC_LOGGER.process_error(f'UnknownExtra occurs while installing package {package} @ {step_name} step. \n Please check the package name or dependency with other asset.')   
             
-    print_color(f"======================================== Finish dependency installation \n", 'blue')
+    PROC_LOGGER.process_info(f"======================================== Finish dependency installation \n", 'blue')
     
     return 
 
@@ -116,7 +124,7 @@ def check_install_requirements(requirements_dict):
     # 0. asset_source_code가 local이든 git이든, check_asset_source가 once든 every든 모두 동일하게 항상 모듈의 설치여부는 패키지명, 버전 check 후 없으면 설치 (ver 다르면 notify 후 설치) 
     # 1. 한 pipline 내의 각 step을 루프 돌면서 직접 작성된 패키지 (ex. pandas==3.4)는 직접 설치하고
     # 2. experimental_plan.yaml에 requirements.txt가 기입 돼 있다면 먼저 scripts 폴더 내 해당 asset 폴더 밑에 requirements.txt가 존재하는 지 확인 (없으면 에러)
-    # 3. 만약 이미 설치돼 있는 패키지 중 버전이 달라서 재설치 하는 경우는 (pandas==3.4 & pandas==3.2) print_color로 사용자 notify  
+    # 3. 만약 이미 설치돼 있는 패키지 중 버전이 달라서 재설치 하는 경우는 (pandas==3.4 & pandas==3.2) PROC_LOGGER.process_info로 사용자 notify  
     fixed_txt_name = 'requirements.txt'
 
     # 어떤 step에 requirements.txt가 존재하면, scripts/asset폴더 내에 txt파일 존재유무 확인 후 그 내부에 기술된 패키지들을 추출  
@@ -169,7 +177,7 @@ def check_install_requirements(requirements_dict):
                                 
             # ALO master 및 모든 asset들의 종속 패키지를 취합했을 때 버전 다른 중복 패키지 존재 시 먼저 진행되는 step(=asset)의 종속 패키지만 설치  
             if base_pkg_name in dup_chk_set: 
-                print_color(f'>> Ignored installing << {pkg_name} >>. Another version will be installed in the previous step.', 'yellow')
+                PROC_LOGGER.process_info(f'>>> Ignored installing << {pkg_name} >>. Another version would be installed in the previous step.', 'blue')
             else: 
                 dup_chk_set.add(base_pkg_name)
                 dup_checked_requirements_dict[step_name].append(pkg_name)

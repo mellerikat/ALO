@@ -5,11 +5,16 @@ import re
 import shutil
 from datetime import datetime
 import git
-import tarfile
 import yaml
 
 from src.constants import *
-from src.message import asset_error, print_color
+from alolib import logger 
+#--------------------------------------------------------------------------------------------------------------------------
+#    GLOBAL VARIABLE
+#--------------------------------------------------------------------------------------------------------------------------
+PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
+
+#--------------------------------------------------------------------------------------------------------------------------
 
 def get_yaml(_yaml_file):
     exp_plan = dict()
@@ -18,14 +23,13 @@ def get_yaml(_yaml_file):
         with open(_yaml_file, encoding='UTF-8') as f:
             exp_plan = yaml.load(f, Loader=yaml.FullLoader)
     except FileNotFoundError:
-        raise ValueError(f"Not Found : {_yaml_file}")
+        PROC_LOGGER.process_error(f"Not Found : {_yaml_file}")
     except:
-        raise ValueError(f"Check yaml format : {_yaml_file}")
+        PROC_LOGGER.process_error(f"Check yaml format : {_yaml_file}")
 
     return exp_plan
 
 def set_artifacts():
-
     def create_folders(dictionary, parent_path=''):
         for key, value in dictionary.items():
             folder_path = os.path.join(parent_path, key)
@@ -37,7 +41,7 @@ def set_artifacts():
     try:
         create_folders(artifacts_structure, PROJECT_HOME)
     except:
-        ValueError("Artifacts folder not generated!")
+        PROC_LOGGER.process_error("[PROCESS][ERROR] Artifacts folder not generated!")
 
     for dir_name in list(artifacts_structure.keys()):
         artifacts_structure[dir_name] = PROJECT_HOME + "/"  + dir_name + "/"
@@ -80,7 +84,7 @@ def match_steps(user_parameters, asset_source):
         param_steps = sorted([i['step'] for i in user_parameters[pipe]])
         source_steps = sorted([i['step'] for i in asset_source[pipe]])
         if param_steps != source_steps:
-            raise ValueError(f"@ << {pipe} >> - You have entered unmatching steps between << user_parameters >> and << asset_source >> in your experimental_plan.yaml. \n - steps in user_parameters: {param_steps} \n - steps in asset_source: {source_steps}")
+            PROC_LOGGER.process_error(f"@ << {pipe} >> - You have entered unmatching steps between << user_parameters >> and << asset_source >> in your experimental_plan.yaml. \n - steps in user_parameters: {param_steps} \n - steps in asset_source: {source_steps}")
     
     return
 
@@ -132,23 +136,23 @@ def setup_asset(asset_config, check_asset_source='once'):
     step_name = asset_config['step']
     git_branch = asset_config['source']['branch']
     step_path = os.path.join(ASSET_HOME, asset_config['step'])
-    print_color(f">> Start setting-up << {step_name} >> asset @ << assets >> directory.", "blue")
+    PROC_LOGGER.process_info(f"Start setting-up << {step_name} >> asset @ << assets >> directory.", "blue")
     # 현재 yaml의 source_code가 git일 땐 control의 check_asset_source가 once이면 한번만 requirements 설치, every면 매번 설치하게 끔 돼 있음 
     ## FIXME ALOv2에서 기본으로 필요한 requirements.txt는 사용자가 알아서 설치 (git clone alov2 후 pip install로 직접) 
     ## asset 배치 (@ scripts 폴더)
     # local 일때는 check_asset_source 가 local인지 git url인지 상관 없음 
     if asset_source_code == "local":
         if step_name in os.listdir(ASSET_HOME): 
-            print_color(f"@ local asset_source_code mode: <{step_name}> asset exists.", "green") 
+            PROC_LOGGER.process_info(f"Now << local >> asset_source_code mode: <{step_name}> asset exists.", "green") 
             pass 
         else: 
-            asset_error(f'@ local asset_source_code mode: <{step_name}> asset folder \n does not exist in <assets> folder.')
+            PROC_LOGGER.process_error(f'Now << local >> asset_source_code mode: \n <{step_name}> asset folder does not exist in <assets> folder.')
     else: # git url & branch 
         # git url 확인
         if is_git_url(asset_source_code):
             # _renew_asset(): 다시 asset 당길지 말지 여부 (bool)
             if (check_asset_source == "every") or (check_asset_source == "once" and renew_asset(step_path)): 
-                print_color(f">> Start renewing asset : {step_path}", "blue") 
+                PROC_LOGGER.process_info(f"Start renewing asset : {step_path}", "blue") 
                 # git으로 또 새로 받는다면 현재 존재 하는 폴더를 제거 한다
                 if os.path.exists(step_path):
                     shutil.rmtree(step_path)  # 폴더 제거
@@ -157,19 +161,19 @@ def setup_asset(asset_config, check_asset_source='once'):
                 repo = git.Repo.clone_from(asset_source_code, step_path)
                 try: 
                     repo.git.checkout(git_branch)
-                    print_color(f"{step_path} successfully pulled.", "green") 
+                    PROC_LOGGER.process_info(f"{step_path} successfully pulled.", "green") 
                 except: 
-                    raise ValueError(f"Your have written incorrect git branch: {git_branch}")
+                    PROC_LOGGER.process_error(f"Your have written incorrect git branch: {git_branch}")
             # 이미 scripts내에 asset 폴더들 존재하고, requirements.txt도 설치된 상태 
             elif (check_asset_source == "once" and not renew_asset(step_path)):
                 modification_time = os.path.getmtime(step_path)
                 modification_time = datetime.fromtimestamp(modification_time) # 마지막 수정시간 
-                print_color(f"[INFO] << {step_name} >> asset had already been created at {modification_time}", "yellow") 
+                PROC_LOGGER.process_info(f"<< {step_name} >> asset had already been created at {modification_time}", "blue") 
                 pass  
             else: 
-                asset_error(f'You have written incorrect check_asset_source: {check_asset_source}')
+                PROC_LOGGER.process_error(f'You have written wrong check_asset_source: {check_asset_source}')
         else: 
-            asset_error(f'You have written incorrect git url: {asset_source_code}')
+            PROC_LOGGER.process_error(f'You have written wrong git url: {asset_source_code}')
     
     return 
 
@@ -207,13 +211,13 @@ def backup_artifacts(pipelines, exp_plan_file):
     try: 
         os.mkdir(temp_backup_artifacts_dir)
     except: 
-        raise NotImplementedError(f"Failed to make {temp_backup_artifacts_dir} directory") 
+        PROC_LOGGER.process_error(f"Failed to make {temp_backup_artifacts_dir} directory") 
     # 이전에 실행이 가능한 환경을 위해 yaml 백업
     try: 
         shutil.copy(exp_plan_file, temp_backup_artifacts_dir)
     except: 
         shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
-        raise NotImplementedError(f"Failed to copy << {exp_plan_file} >> into << {temp_backup_artifacts_dir} >>")
+        PROC_LOGGER.process_error(f"Failed to copy << {exp_plan_file} >> into << {temp_backup_artifacts_dir} >>")
     # artifacts 들을 백업
     
     if current_pipeline == "train_pipeline":
@@ -222,7 +226,7 @@ def backup_artifacts(pipelines, exp_plan_file):
             shutil.copytree(PROJECT_HOME + ".train_artifacts", temp_backup_artifacts_dir + ".train_artifacts", dirs_exist_ok=True)
         except: 
             shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
-            raise NotImplementedError(f"Failed to copy << .train_artifacts >> into << {temp_backup_artifacts_dir} >>")
+            PROC_LOGGER.process_error(f"Failed to copy << .train_artifacts >> into << {temp_backup_artifacts_dir} >>")
             
     elif current_pipeline == "inference_pipeline":
         try: 
@@ -230,20 +234,20 @@ def backup_artifacts(pipelines, exp_plan_file):
             shutil.copytree(PROJECT_HOME + ".inference_artifacts", temp_backup_artifacts_dir + ".inference_artifacts", dirs_exist_ok=True)
         except: 
             shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
-            raise NotImplementedError(f"Failed to copy << .inference_artifacts >> into << {temp_backup_artifacts_dir} >>")
+            PROC_LOGGER.process_error(f"Failed to copy << .inference_artifacts >> into << {temp_backup_artifacts_dir} >>")
     else:
         shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
-        raise ValueError(f"You entered wrong pipeline in the experimental yaml file: << {current_pipeline} >> \n Only << train_pipeline >> or << inference_pipeline>> is allowed.")
+        PROC_LOGGER.process_error(f"You entered wrong pipeline in the experimental yaml file: << {current_pipeline} >> \n Only << train_pipeline >> or << inference_pipeline>> is allowed.")
     
     # backup artifacts를 .history로 이동 
     try: 
         shutil.move(temp_backup_artifacts_dir, PROJECT_HOME + ".history/")
     except: 
         shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
-        raise NotImplementedError(f"Failed to move {temp_backup_artifacts_dir} into {PROJECT_HOME}/.history/")
+        PROC_LOGGER.process_error(f"Failed to move {temp_backup_artifacts_dir} into {PROJECT_HOME}/.history/")
     # 잘 move 됐는 지 확인  
     if os.path.exists(PROJECT_HOME + ".history/" + backup_folder):
-        print_color(">> [DONE] << .history >> backup (config yaml & artifacts) completes successfully.", "green")
+        PROC_LOGGER.process_info("Successfully completes << .history >> backup (experimental_plan.yaml & artifacts)", "green")
             
 
 
@@ -251,18 +255,6 @@ def is_git_url(url):
     git_url_pattern = r'^(https?|git)://[^\s/$.?#].[^\s]*$'
     return re.match(git_url_pattern, url) is not None
 
-# TODO logger 코드 정리하기
-class Logger(object):
-    def __init__(self, filename):
-        self.terminal = sys.stdout
-        self.log = open(filename, "a")
-
-    def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-
-    def flush(self):
-        pass
 
 def find_matching_strings(lst, keyword):
     matching_strings = []
@@ -282,7 +274,7 @@ def import_asset(_path, _file):
         sys.path.append(_path)
         mod = importlib.import_module(_file)
     except ModuleNotFoundError:
-        raise ValueError(f'Not Found : {_path}{_file}.py')
+        PROC_LOGGER.process_error(f'Failed to import asset. Not Found : {_path}{_file}.py')
 
     # UserAsset 클래스 획득
     _user_asset = getattr(mod, "UserAsset")
@@ -298,45 +290,20 @@ def release(_path):
             if module_name in sys.modules:
                 del sys.modules[module_name]
     except:
-        asset_error("An issue occurred while deleting the module")
-
-def load_data(_pipe_num, envs):
-    try:
-        file_path = envs['artifacts']['.asset_interface'] + _pipe_num + "/" + envs['step'] + ".pkl"
-        data = load_file(file_path)
-        config = data.pop('config')
-
-        return data, config
-
-    except Exception as e:
-        asset_error(str(e))
-
-def save_data(data, config, pipe_num, envs):
-    # yaml에서 interface를 받아와서 사용할것
-    try:
-        data['config'] = config
-        folder_path = envs['artifacts']['.asset_interface'] + pipe_num + "/"
-        # if os.path.exists(folder_path):
-        #     shutil.rmtree(folder_path)
-        #     print(f"{folder_path} 폴더를 제거했습니다.")
-
-        # 폴더 생성
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-            print(f"{folder_path} 폴더가 생성되었습니다.")
-        else:
-            print(f"{folder_path} 폴더는 이미 존재합니다.")
+        PROC_LOGGER.process_error("An issue occurred while releasing the memory of module")
         
-        # os.makedirs(folder_path)
-        # print(f"{folder_path} 폴더가 생성되었습니다.")
 
-        data_file = folder_path + envs['step']
-        if type(data) == dict:
-            data_file = data_file + ".pkl"
-        else:
-            asset_error("아직 지원하지 않는 기능입니다")
-        # if type(data) == pd.DataFrame:
-        #     data_file = data_file + ".csv"
-        save_file(data, data_file)
-    except Exception as e:
-        asset_error(str(e))
+### LEGACY
+
+# # TODO logger 코드 정리하기
+# class Logger:
+#     def __init__(self, filename):
+#         self.terminal = sys.stdout
+#         self.log = open(filename, "a")
+
+#     def write(self, message):
+#         self.terminal.write(message)
+#         self.log.write(message)
+
+#     def flush(self):
+#         pass

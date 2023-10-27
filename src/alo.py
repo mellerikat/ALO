@@ -1,33 +1,14 @@
 import os
 import sys
-import logging
 import subprocess
 # local import
 
 from src.install import *
-from src.message import print_color
 from datetime import datetime
 
 from collections import Counter
 from src.constants import *
 
-
-# # 현재 PROJECT PATH
-# PROJECT_HOME = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) + "/"
-
-# # experimental plan yaml의 위치
-# EXP_PLAN = PROJECT_HOME + "config/experimental_plan.yaml"
-
-# # asset 코드들의 위치
-# # FIXME wj mnist, titanic example을 만들기 사용하는 함수 리스트를 작성
-# ASSET_HOME = PROJECT_HOME + "assets/"
-
-# INPUT_DATA_HOME = PROJECT_HOME + "input/"
-
-SUPPORT_TYPE = ['memory', 'file']
-# FIXME wj aiplib lib으로 이동 후 req에 추가
-# FIXME ws 위에 프린트문 출력할 위치에 삽입
-# FIXME ws input artifacts 이름을 data로 변경
 
 ####################### ALO master requirements 리스트업 및 설치 #######################
 # ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
@@ -35,10 +16,10 @@ req_list = extract_requirements_txt("master")
 master_req = {"master": req_list}
 check_install_requirements(master_req)
 #######################################################################################
-
-from src.utils import Logger, save_data, load_data, set_artifacts, get_yaml, setup_asset, match_steps, find_matching_strings, import_asset, release, compare_yaml_dicts, backup_artifacts
+from src.utils import set_artifacts, get_yaml, setup_asset, match_steps, find_matching_strings, import_asset, release, backup_artifacts
 from src.external import external_load_data, external_save_artifacts
-from src.message import asset_info, asset_error
+
+from alolib import logger  
 
 
 class AssetStructure: 
@@ -48,52 +29,36 @@ class AssetStructure:
         self.data = data 
         self.config = config
         
+        
 class ALO:
     def __init__(self, exp_plan_file = EXP_PLAN):
-        envs = {}
-        envs['project_home'] = PROJECT_HOME
-
         self.exp_plan_file = exp_plan_file
         self.exp_plan = None
-
-        if 'STTIME' in os.environ:
-            self.inference_start_time = os.environ['STTIME']
-            print(self.inference_start_time)
-        else:
-            print('STTIME does not exist. instead get current time')
-            current_time = datetime.now()
-            self.inference_start_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+        self.proc_logger = None
+        self.proc_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def runs(self):
-        
         if not os.path.exists(ASSET_HOME):
-            os.makedirs(ASSET_HOME)
-            print_color(f">> Created << {ASSET_HOME} >> directory.", "green")
-        else:
-            print_color(f">> << {ASSET_HOME} >> directory already exists.", "green")
-
+            try:
+                os.makedirs(ASSET_HOME)
+            except: 
+                raise NotImplementedError(f"Failed to create directory: {ASSET_HOME}")
         # yaml에 있는 내용들 self.control 등 클래스 파라미터로 setting  
         self.read_yaml()
-
         # artifacts 세팅
         self.artifacts = set_artifacts()
-        
-        match_steps(self.user_parameters, self.asset_source)  # match_steps(self.user_parameters, self.pipelines_list) 
+        # FIXME setup process logger - 최소한 logging은 artifacts 폴더들이 setup 되고 나서부터 가능하다. (프로세스 죽더라도 .train (or inf) artifacts/log 경로에 저장하고 죽어야하니까)
+        # envs (메타정보) 모르는 상태의, 큼직한 단위의 로깅은 process logging (인자 X)
+        self.proc_logger = logger.ProcessLogger(PROJECT_HOME) 
+        self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
+    
+        match_steps(self.user_parameters, self.asset_source) 
 
         for pipeline in self.asset_source:
-            print_color("\n===============================================================================================================================", "bold")
-            print_color(f"                                                 pipeline : < {pipeline} >                                                 ", "bold")
-            print_color("===============================================================================================================================\n", "bold")
-            # 외부 데이터 다운로드 (input 폴더에) - 하나의 pipeline 실행 시 마다 input 폴더 비우고 다운로드 
-
+            if pipeline not in ['train_pipeline', 'inference_pipeline']:
+                raise ValueError(f'Pipeline name in the experimental_plan.yaml \n must be << train_pipeline >> or << inference_pipeline >>')
+            
             external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
-
-            matching_strings = find_matching_strings(list(self.artifacts.keys()), pipeline.split('_')[0])
-            log_filename = self.artifacts[matching_strings] + "log/pipeline.log"
-            logging.basicConfig(filename=log_filename, level=logging.INFO)
-
-            logger = Logger(log_filename)
-            sys.stdout = logger
 
             self._run_import(pipeline)
 
@@ -102,6 +67,9 @@ class ALO:
             
             external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
 
+        self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
+        
     def read_yaml(self):
         self.exp_plan = get_yaml(self.exp_plan_file)
         compare_yaml = get_yaml(PROJECT_HOME + "config/compare.yaml")
@@ -109,11 +77,9 @@ class ALO:
         def compare_dict_keys(dict1, dict2):
             keys1 = set(key for d in dict1 for key in d.keys())
             keys2 = set(key for d in dict2 for key in d.keys())
-            
             keys_only_in_dict2 = keys2 - keys1
-            
             if keys_only_in_dict2:
-                asset_error("Keys only in dict2: " + ", ".join(keys_only_in_dict2))
+                self.proc_logger.process_error(f"Missing keys in experimental_plan.yaml: {keys_only_in_dict2}")
 
         for key in self.exp_plan:
             compare_dict_keys(self.exp_plan[key], compare_yaml[key])
@@ -127,6 +93,7 @@ class ALO:
         for key in self.exp_plan.keys():
             setattr(self, key, get_yaml_data(key))
 
+
     def _run_import(self, pipeline):
         ####################### Slave Asset 설치 및 Slave requirements 리스트업 #######################
         requirements_dict = dict() 
@@ -138,7 +105,7 @@ class ALO:
         step_counts = Counter(step_values)
         for value, count in step_counts.items():
             if count > 1:
-                asset_error(f"Duplicate value found: {value}")
+                self.proc_logger.process_error(f"Duplicate step exists: {value}")
 
         for step, asset_config in enumerate(self.asset_source[pipeline]):
             # self.asset.setup_asset 기능 :
@@ -149,7 +116,7 @@ class ALO:
         check_install_requirements(requirements_dict)
         
         for step, asset_config in enumerate(self.asset_source[pipeline]):    
-            asset_info(pipeline, asset_config['step'])
+            self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
 
             _path = ASSET_HOME + asset_config['step'] + "/"
             _file = "asset_" + asset_config['step']
@@ -157,28 +124,22 @@ class ALO:
             _file = ''.join(filter(lambda x: x.isalpha() or x == '_', _file))
             user_asset = import_asset(_path, _file)
 
-            if self.control['interface_mode'] in SUPPORT_TYPE:
+            if self.control['interface_mode'] in INTERFACE_TYPES:
                 # 첫 동작시에는 초기화하여 사용 
                 if step == 0:
                     data, envs, config  = {}, {}, {}
-                # else:
-                    # if self.control['interface_mode'] == 'memory':
-                    #     pass
-                    # elif self.control['interface_mode'] == 'file':
-                    #     data, config = load_data(pipeline, envs) # file interface
             else:
-                return ValueError(f"Only << file >> or << memory >> is supported for << interface_mode >>")
-
+                self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
+                
             args = self.user_parameters[pipeline][step]['args']
             # envs에 만들어진 artifacts 폴더 구조 전달 (to slave)
             # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
-        
-
+            # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의 
             envs['project_home'] = PROJECT_HOME
             envs['pipeline'] = pipeline
             # asset.py에서 load config, load data 할때 필요 
             if step > 0: 
-                envs['prev_step'] = self.user_parameters[pipeline][step-1]['step']
+                envs['prev_step'] = self.user_parameters[pipeline][step - 1]['step']
             envs['step'] = self.user_parameters[pipeline][step]['step']
             envs['num_step'] = step # int  
             envs['artifacts'] = self.artifacts
@@ -191,14 +152,10 @@ class ALO:
             asset_structure = AssetStructure(envs, args[0], data, config)
             ua = user_asset(asset_structure) # mem interface
             data, config = ua.run()
-  
-            # # config
-            # # FIXME 구조체 형태로 toss 재개발 필요 
-            # if self.control['interface_mode'] == 'file':
-            #     save_data(data, config, pipeline, envs) # file interface
 
             # FIXME memory release : on/off 필요 
             release(_path)
             sys.path = [item for item in sys.path if envs['step'] not in item]
         
+            self.proc_logger.process_info(f"==================== Finish pipeline: {pipeline} / step: {asset_config['step']}")
         
