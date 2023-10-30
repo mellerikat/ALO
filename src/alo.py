@@ -13,7 +13,8 @@ try:
     alolib_git = f'alolib @ git+http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git@{alo_ver}'
     try: 
         alolib_pkg = pkg_resources.get_distribution('alolib') # get_distribution tact-time 테스트: 약 0.001s
-        if alolib_pkg.version != alo_ver: 
+        alo_ver = '0' if alo_ver == 'develop' else alo_ver
+        if str(alolib_pkg.version) != str(alo_ver): 
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall']) # alo version과 같은 alolib 설치  
     except: # alolib 미설치 경우 
         subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall'])
