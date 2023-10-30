@@ -75,7 +75,7 @@ user_parameters:
     - inference_pipeline:
         - step: input  ## 필수
           args:
-            - input_path: [train, inf]
+            - input_path: inf
               x_columns: [input_x0, input_x1, input_x2, input_x3]
               use_all_x: False
               y_column:  #TRAIN_LABEL" #label"
