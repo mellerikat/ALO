@@ -131,6 +131,7 @@ def _load_data(ext_type, ext_path, load_s3_key_path):
             # 사용자가 실수로 yaml external path에 마지막에 '/' 쓰든 안쓰든, (즉 아래 코드에서 '/'이든 '//' 이든 동작엔 이상X)
             # [참고] https://stackoverflow.com/questions/3925096/how-to-get-only-the-last-part-of-a-path-in-python
             base_dir = os.path.basename(os.path.normpath(ext_path)) # 가령 /nas001/test/ 면 test가 mother_path, ./이면 .가 mother_path 
+            # [참고] python 3.7에서는 shutil.copytree 시 dirs_exist_ok라는 인자 없음 
             shutil.copytree(ext_path, PROJECT_HOME + f"input/{base_dir}", dirs_exist_ok=True) # 중복 시 덮어쓰기 됨 
         except: 
             PROC_LOGGER.process_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong absolute path (must be existing directory!) \n / or You do not have permission to access.')

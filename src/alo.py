@@ -1,25 +1,38 @@
 import os
 import sys
 import subprocess
-# local import
-
-from src.install import *
 from datetime import datetime
-
 from collections import Counter
+import pkg_resources
 from src.constants import *
+# local import
+####################### ALO master requirements 리스트업 및 설치 #######################
+# ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
+try: 
+    alo_ver = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+    alolib_git = f'alolib @ git+http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git@{alo_ver}'
+    try: 
+        alolib_pkg = pkg_resources.get_distribution('alolib') # get_distribution tact-time 테스트: 약 0.001s
+        if alolib_pkg.version != alo_ver: 
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall']) # alo version과 같은 alolib 설치  
+    except: # alolib 미설치 경우 
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall'])
+except: 
+    raise NotImplementedError('Failed to install << alolib >>')
 
+#######################################################################################
+from src.install import *
+from src.utils import set_artifacts, get_yaml, setup_asset, match_steps, find_matching_strings, import_asset, release, backup_artifacts
+from src.external import external_load_data, external_save_artifacts
+from alolib import logger  
 
 ####################### ALO master requirements 리스트업 및 설치 #######################
 # ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
-req_list = extract_requirements_txt("master")
-master_req = {"master": req_list}
-check_install_requirements(master_req)
-#######################################################################################
-from src.utils import set_artifacts, get_yaml, setup_asset, match_steps, find_matching_strings, import_asset, release, backup_artifacts
-from src.external import external_load_data, external_save_artifacts
 
-from alolib import logger  
+# req_list = extract_requirements_txt("master")
+# master_req = {"master": req_list}
+# check_install_requirements(master_req)
+
 
 
 class AssetStructure: 
