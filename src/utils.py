@@ -248,8 +248,9 @@ def backup_artifacts(pipelines, exp_plan_file):
     # 잘 move 됐는 지 확인  
     if os.path.exists(PROJECT_HOME + ".history/" + backup_folder):
         PROC_LOGGER.process_info("Successfully completes << .history >> backup (experimental_plan.yaml & artifacts)", "green")
-            
-
+    
+    
+# inner function 
 
 def is_git_url(url):
     git_url_pattern = r'^(https?|git)://[^\s/$.?#].[^\s]*$'
@@ -262,7 +263,6 @@ def find_matching_strings(lst, keyword):
         if keyword in string:
             matching_strings.append(string)
     return matching_strings[0]
-#################### logger 여기까지 ####################
 
 
 def import_asset(_path, _file):
@@ -291,7 +291,16 @@ def release(_path):
                 del sys.modules[module_name]
     except:
         PROC_LOGGER.process_error("An issue occurred while releasing the memory of module")
-        
+
+def remove_log_files(artifacts): 
+    if '.train_artifacts' in artifacts: 
+        log_path = artifacts['.train_artifacts'] + 'log'
+        if os.path.exists(log_path):
+            shutil.rmtree(log_path)
+    if '.inference_artifacts' in artifacts:
+        log_path = artifacts['.inference_artifacts'] + 'log'
+        if os.path.exists(log_path):
+            shutil.rmtree(log_path)
 
 ### LEGACY
 
