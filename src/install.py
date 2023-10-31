@@ -29,17 +29,7 @@ def extract_requirements_txt(step_name):
     """
     fixed_txt_name  = 'requirements.txt'
     packages_in_txt = []
-    # # ALO master 종속 패키지 리스트업 
-    # if step_name == 'master': 
-    #     try: 
-    #         with open(PROJECT_HOME + fixed_txt_name, 'r') as req_txt:  
-    #             for pkg in req_txt: 
-    #                 pkg = pkg.strip() # Remove the newline character at the end of the line (=package)
-    #                 packages_in_txt.append(pkg)
-    #         return packages_in_txt        
-    #     except: 
-    #         PROC_LOGGER.process_error(f'Failed to install basic dependency. You may have removed requirements.txt in project home.')
-    # step (=asset) 종속  패키지 리스트업 
+
     if fixed_txt_name in os.listdir(ASSET_HOME + step_name):
         with open(ASSET_HOME + step_name + '/' + fixed_txt_name, 'r') as req_txt:  
             for pkg in req_txt: 

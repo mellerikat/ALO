@@ -4,8 +4,8 @@ import subprocess
 from datetime import datetime
 from collections import Counter
 import pkg_resources
-from src.constants import *
 # local import
+from src.constants import *
 ####################### ALO master requirements 리스트업 및 설치 #######################
 # ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
 try: 
@@ -13,27 +13,18 @@ try:
     alolib_git = f'alolib @ git+http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git@{alo_ver}'
     try: 
         alolib_pkg = pkg_resources.get_distribution('alolib') # get_distribution tact-time 테스트: 약 0.001s
-        alo_ver = '0' if alo_ver == 'develop' else alo_ver
+        alo_ver = '0' if alo_ver == 'develop' else alo_ver.split('-')[-1] # 가령 release-1.2면 1.2만 가져옴 
         if str(alolib_pkg.version) != str(alo_ver): 
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall']) # alo version과 같은 alolib 설치  
     except: # alolib 미설치 경우 
         subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall'])
 except: 
     raise NotImplementedError('Failed to install << alolib >>')
-
 #######################################################################################
 from src.install import *
-from src.utils import set_artifacts, get_yaml, setup_asset, match_steps, find_matching_strings, import_asset, release, backup_artifacts
+from src.utils import set_artifacts, get_yaml, setup_asset, match_steps, import_asset, release, backup_artifacts, remove_log_files
 from src.external import external_load_data, external_save_artifacts
 from alolib import logger  
-
-####################### ALO master requirements 리스트업 및 설치 #######################
-# ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
-
-# req_list = extract_requirements_txt("master")
-# master_req = {"master": req_list}
-# check_install_requirements(master_req)
-
 
 
 class AssetStructure: 
@@ -48,22 +39,22 @@ class ALO:
     def __init__(self, exp_plan_file = EXP_PLAN):
         self.exp_plan_file = exp_plan_file
         self.exp_plan = None
+        self.artifacts = None 
         self.proc_logger = None
         self.proc_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+        self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+        
     def preset(self):
         if not os.path.exists(ASSET_HOME):
             try:
                 os.makedirs(ASSET_HOME)
             except: 
                 raise NotImplementedError(f"Failed to create directory: {ASSET_HOME}")
-
         self.read_yaml()
-
         # artifacts 세팅
         self.artifacts = set_artifacts()
-        
-        match_steps(self.user_parameters, self.asset_source)  # match_steps(self.user_parameters, self.pipelines_list) 
+        # step들이 잘 match 되게 yaml에 기술 돼 있는지 체크
+        match_steps(self.user_parameters, self.asset_source)
 
     def external_load_data(self, pipeline, external_path, external_path_permission, control):
         external_load_data(pipeline, external_path, external_path_permission, control)
@@ -72,9 +63,9 @@ class ALO:
         self.proc_logger = logger.ProcessLogger(PROJECT_HOME) 
     
     def runs(self):
-        
         self.preset()
-
+        print(self.artifacts)
+        
         # FIXME setup process logger - 최소한 logging은 artifacts 폴더들이 setup 되고 나서부터 가능하다. (프로세스 죽더라도 .train (or inf) artifacts/log 경로에 저장하고 죽어야하니까)
         # envs (메타정보) 모르는 상태의, 큼직한 단위의 로깅은 process logging (인자 X)
         self.set_proc_logger()
@@ -84,7 +75,6 @@ class ALO:
                 raise ValueError(f'Pipeline name in the experimental_plan.yaml \n must be << train_pipeline >> or << inference_pipeline >>')
 
             self.external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
-
             self.run_import(pipeline)
 
             if self.control['backup_artifacts'] == True:
@@ -95,11 +85,15 @@ class ALO:
         self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
         
+        # .log 파일 제거 (안그러면 다음 main.py run 시 로그가 파일에 누적됨)
+        remove_log_files(self.artifacts)
+        
+        
     def read_yaml(self):
         self.exp_plan = get_yaml(self.exp_plan_file)
         compare_yaml = get_yaml(PROJECT_HOME + "config/compare.yaml")
 
-        def compare_dict_keys(dict1, dict2):
+        def compare_dict_keys(dict1, dict2): # inner func.
             keys1 = set(key for d in dict1 for key in d.keys())
             keys2 = set(key for d in dict2 for key in d.keys())
 
@@ -113,7 +107,7 @@ class ALO:
         for key in self.exp_plan:
             compare_dict_keys(self.exp_plan[key], compare_yaml[key])
 
-        def get_yaml_data(key):
+        def get_yaml_data(key): # inner func.
             data_dict = {}
             for data in self.exp_plan[key]:
                 data_dict.update(data)
@@ -123,7 +117,6 @@ class ALO:
             setattr(self, key, get_yaml_data(key))
 
     def install_steps(self, pipeline, get_asset_source):
-        
         requirements_dict = dict() 
         for step, asset_config in enumerate(self.asset_source[pipeline]):
             # self.asset.setup_asset 기능 :
@@ -134,8 +127,6 @@ class ALO:
         check_install_requirements(requirements_dict)
 
     def run_import(self, pipeline):
-        ####################### Slave Asset 설치 및 Slave requirements 리스트업 #######################
-        # requirements_dict = dict() 
         # setup asset (asset을 git clone (or local) 및 requirements 설치)
         get_asset_source = self.control["get_asset_source"]  # once, every
 
@@ -165,8 +156,8 @@ class ALO:
         else:
             return self.user_parameters[pipeline][step]['args'][0]
 
-    def process_asset_step(self, asset_config, step, pipeline, asset_structure): #, user_parameters, control, artifacts):
-        
+    def process_asset_step(self, asset_config, step, pipeline, asset_structure): 
+        # step: int 
         _path = ASSET_HOME + asset_config['step'] + "/"
         _file = "asset_" + asset_config['step']
         # asset2등을 asset으로 수정하는 코드
@@ -187,14 +178,11 @@ class ALO:
         asset_structure.envs['step'] = self.user_parameters[pipeline][step]['step']
         asset_structure.envs['num_step'] = step # int  
         asset_structure.envs['artifacts'] = self.artifacts
-
-        alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE)
-        asset_structure.envs['alo_version'] = alo_version.stdout.decode('utf-8').strip()
+        asset_structure.envs['alo_version'] = self.alo_version
         asset_structure.envs['asset_branch'] = asset_config['source']['branch']
         asset_structure.envs['interface_mode'] = self.control['interface_mode']
             
-        # asset_structure = AssetStructure(envs, args[0], data, config)
-        ua = user_asset(asset_structure) # mem interface
+        ua = user_asset(asset_structure) 
         asset_structure.data, asset_structure.config = ua.run()
 
         # FIXME memory release : on/off 필요 
@@ -202,5 +190,6 @@ class ALO:
         sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
         
         self.proc_logger.process_info(f"==================== Finish pipeline: {pipeline} / step: {asset_config['step']}")
+        
         return asset_structure
         
