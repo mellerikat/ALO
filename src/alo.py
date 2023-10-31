@@ -156,8 +156,14 @@ class ALO:
             self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
 
             # 외부에서 arg를 가져와서 수정이 가능한 구조를 위한 구조
-            asset_structure.args = self.user_parameters[pipeline][step]['args'][0]
+            asset_structure.args = self.get_args(pipeline, step)
             asset_structure = self.process_asset_step(asset_config, step, pipeline, asset_structure)
+
+    def get_args(self, pipeline, step):
+        if type(self.user_parameters[pipeline][step]['args']) == type(None):
+            return dict()
+        else:
+            return self.user_parameters[pipeline][step]['args'][0]
 
     def process_asset_step(self, asset_config, step, pipeline, asset_structure): #, user_parameters, control, artifacts):
         
