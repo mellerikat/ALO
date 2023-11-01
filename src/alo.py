@@ -167,17 +167,20 @@ class ALO:
         if self.control['interface_mode'] not in INTERFACE_TYPES:
             self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
 
+        # 사용자 노출부는 config에 저장 
+        asset_structure.config['artifacts'] = self.artifacts
+        asset_structure.config['pipeline'] = pipeline 
         # envs에 만들어진 artifacts 폴더 구조 전달 (to slave)
         # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
         # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의 
+        asset_structure.envs['artifacts'] = self.artifacts
+        asset_structure.envs['pipeline'] = pipeline   
         asset_structure.envs['project_home'] = PROJECT_HOME
-        asset_structure.envs['pipeline'] = pipeline
         # asset.py에서 load config, load data 할때 필요 
         if step > 0: 
             asset_structure.envs['prev_step'] = self.user_parameters[pipeline][step - 1]['step']
         asset_structure.envs['step'] = self.user_parameters[pipeline][step]['step']
         asset_structure.envs['num_step'] = step # int  
-        asset_structure.envs['artifacts'] = self.artifacts
         asset_structure.envs['alo_version'] = self.alo_version
         asset_structure.envs['asset_branch'] = asset_config['source']['branch']
         asset_structure.envs['interface_mode'] = self.control['interface_mode']
