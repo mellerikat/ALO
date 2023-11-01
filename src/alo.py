@@ -64,11 +64,11 @@ class ALO:
     
     def runs(self):
         self.preset()
-        print(self.artifacts)
         
         # FIXME setup process logger - 최소한 logging은 artifacts 폴더들이 setup 되고 나서부터 가능하다. (프로세스 죽더라도 .train (or inf) artifacts/log 경로에 저장하고 죽어야하니까)
         # envs (메타정보) 모르는 상태의, 큼직한 단위의 로깅은 process logging (인자 X)
         self.set_proc_logger()
+        self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
         self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
         for pipeline in self.asset_source:
             if pipeline not in ['train_pipeline', 'inference_pipeline']:
