@@ -167,6 +167,8 @@ class ALO:
         if self.control['interface_mode'] not in INTERFACE_TYPES:
             self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
 
+        asset_structure.config['artifacts'] = self.artifacts
+        asset_structure.config['pipeline'] = pipeline
         # envs에 만들어진 artifacts 폴더 구조 전달 (to slave)
         # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
         # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의 
