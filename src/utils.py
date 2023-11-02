@@ -296,11 +296,11 @@ def remove_log_files(artifacts):
     if '.train_artifacts' in artifacts: 
         log_path = artifacts['.train_artifacts'] + 'log'
         if os.path.exists(log_path):
-            shutil.rmtree(log_path)
+            shutil.rmtree(log_path, ignore_errors=True)
     if '.inference_artifacts' in artifacts:
         log_path = artifacts['.inference_artifacts'] + 'log'
         if os.path.exists(log_path):
-            shutil.rmtree(log_path)
+            shutil.rmtree(log_path, ignore_errors=True)
 
 ### LEGACY
 
