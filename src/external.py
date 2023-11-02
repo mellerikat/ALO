@@ -112,7 +112,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
             continue 
         elif (base_dir in os.listdir(INPUT_DATA_HOME)) and (get_external_data == 'every'): # 이미 input 폴더에 존재하고, every인 경우 기존 거 지우고 다시 다운로드 
             PROC_LOGGER.process_info(f" << {base_dir} >> already exists in << {INPUT_DATA_HOME} >>. \n & << get_external_data >> is set as << every >>. \n Start re-loading external data. << {ext_path} >> : pre-existing directory is deleted ! \n", 'blue')
-            shutil.rmtree(INPUT_DATA_HOME + base_dir)
+            shutil.rmtree(INPUT_DATA_HOME + base_dir, ignore_errors=True)
             _load_data(ext_type, ext_path, load_s3_key_path)
         elif (base_dir not in os.listdir(INPUT_DATA_HOME)): # input 폴더에 부재하면, once던 every던 무조건 loading 함
             PROC_LOGGER.process_info(f" Start loading external data. << {ext_path} >>  \n << {base_dir} >> does not exist in << {INPUT_DATA_HOME} >>. \n & << get_external_data >> is set as << {get_external_data} >>. \n", 'blue')
