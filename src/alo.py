@@ -64,7 +64,6 @@ class ALO:
     
     def runs(self):
         self.preset()
-        print(self.artifacts)
         
         # FIXME setup process logger - 최소한 logging은 artifacts 폴더들이 setup 되고 나서부터 가능하다. (프로세스 죽더라도 .train (or inf) artifacts/log 경로에 저장하고 죽어야하니까)
         # envs (메타정보) 모르는 상태의, 큼직한 단위의 로깅은 process logging (인자 X)
@@ -168,20 +167,19 @@ class ALO:
         if self.control['interface_mode'] not in INTERFACE_TYPES:
             self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
 
-        # 사용자 노출부는 config에 저장 
         meta_dict = {'artifacts': self.artifacts, 'pipeline': pipeline, 'step': step}
         asset_structure.config['meta'] = meta_dict #nested dict
         # envs에 만들어진 artifacts 폴더 구조 전달 (to slave)
         # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
         # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의 
-        asset_structure.envs['artifacts'] = self.artifacts
-        asset_structure.envs['pipeline'] = pipeline   
         asset_structure.envs['project_home'] = PROJECT_HOME
+        asset_structure.envs['pipeline'] = pipeline
         # asset.py에서 load config, load data 할때 필요 
         if step > 0: 
             asset_structure.envs['prev_step'] = self.user_parameters[pipeline][step - 1]['step']
         asset_structure.envs['step'] = self.user_parameters[pipeline][step]['step']
         asset_structure.envs['num_step'] = step # int  
+        asset_structure.envs['artifacts'] = self.artifacts
         asset_structure.envs['alo_version'] = self.alo_version
         asset_structure.envs['asset_branch'] = asset_config['source']['branch']
         asset_structure.envs['interface_mode'] = self.control['interface_mode']
@@ -190,10 +188,19 @@ class ALO:
         asset_structure.data, asset_structure.config = ua.run()
 
         # FIXME memory release : on/off 필요 
-        release(_path)
-        sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
+        try:
+            if self.control['reset_assets']:
+                release(_path)
+                sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
+            else:
+                pass
+        except:
+            release(_path)
+            sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
+        
         
         self.proc_logger.process_info(f"==================== Finish pipeline: {pipeline} / step: {asset_config['step']}")
         
         return asset_structure
+
         
