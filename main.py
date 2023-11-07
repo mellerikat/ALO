@@ -16,8 +16,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        alo = ALO(exp_plan_file = args.config)  # exp plan path
+        if args.config != 0: 
+            alo = ALO(exp_plan_file = args.config)  # exp plan path
+        else: 
+            alo = ALO()
     except:
-        alo = ALO()  # exp plan path
+        raise ValueError("Inappropriate config yaml file.")
         
     alo.runs()

@@ -112,7 +112,7 @@ asset_source:
           source:  ## git / local 지원
             code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/input.git
             # code: local
-            branch: tabular_dev # tabular 
+            branch: tabular_2.0 # tabular 
             requirements:
               - pandas==1.5.3
 
@@ -120,7 +120,7 @@ asset_source:
           source:  ## git / local 지원
             code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/preprocess.git
             # code: local
-            branch: tcr 
+            branch: release-1.2
             requirements:
               - pandas==1.5.3
               - category_encoders
@@ -129,15 +129,15 @@ asset_source:
           source:
             code: http://mod.lge.com/hub/smartdata/aiplatform/module/data_sampling.git
             # code: local
-            branch: main
+            branch: release-1.2
             requirements:
               - requirements.txt 
 
         - step: train
           source:
-            code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/train.git
+            code: http://mod.lge.com/hub/dxadvtech/assets/tcr.git
             # code: local
-            branch: tcr
+            branch: tcr_v1.0.2
             requirements:
               - requirements.txt 
               - numpy==1.25.2 --force-reinstall 
@@ -147,7 +147,7 @@ asset_source:
           source:  ## git / local 지원
             code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/input.git
             # code: local
-            branch: tabular_dev #tabular
+            branch: tabular_2.0 #tabular
             requirements:
               - pandas==1.5.3
 
@@ -161,9 +161,9 @@ asset_source:
 
         - step: inference
           source:
-            code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/inference.git
+            code: http://mod.lge.com/hub/dxadvtech/assets/tcr.git
             # code: local
-            branch: tcr
+            branch: tcr_v1.0.2
             requirements:
               - pandas==1.5.3
            
@@ -183,3 +183,5 @@ control:
  
     ## 5. Asset 사이 데이터 전달 방법으로 memory, file 를 지원
     - interface_mode: file
+
+    - reset_assets: True
