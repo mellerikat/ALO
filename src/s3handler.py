@@ -33,11 +33,11 @@ class S3Handler:
             except: 
                 PROC_LOGGER.process_error(f'Failed to get s3 key from {s3_key_path}. The shape of contents in the S3 key file may be incorrect.')
         else: # yaml에 s3 key path 입력 안한 경우는 한 번 시스템 환경변수에 사용자가 key export 해둔게 있는지 확인 후 있으면 반환 없으면 에러  
-            access_key, secret_key = os.getenv("ACCESS_KEY"), os.getenv("SECRET_KEY")
+            access_key, secret_key = os.getenv("AWS_ACCESS_KEY_ID"), os.getenv("AWS_SECRET_ACCESS_KEY")
             if (access_key != None) and (secret_key != None):
                 return access_key, secret_key 
             else: # 둘 중 하나라도 None 이거나 둘 다 None 이면 에러 
-                PROC_LOGGER.process_error('<< ACCESS_KEY >> or << SECRET_KEY >> is not defined on your system environment.')  
+                PROC_LOGGER.process_error('<< AWS_ACCESS_KEY_ID >> or << AWS_SECRET_ACCESS_KEY >> is not defined on your system environment.')  
 
     def parse_s3_url(self, uri):
         parts = urlparse(uri)
