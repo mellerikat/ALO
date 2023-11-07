@@ -64,6 +64,8 @@ class ALO:
     
     def runs(self):
         self.preset()
+        # 이전 .log 파일 제거 (안그러면 이번 run 시 로그가 파일에 누적됨)
+        remove_log_files(self.artifacts)
         
         # FIXME setup process logger - 최소한 logging은 artifacts 폴더들이 setup 되고 나서부터 가능하다. (프로세스 죽더라도 .train (or inf) artifacts/log 경로에 저장하고 죽어야하니까)
         # envs (메타정보) 모르는 상태의, 큼직한 단위의 로깅은 process logging (인자 X)
@@ -85,8 +87,6 @@ class ALO:
         self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
         
-        # .log 파일 제거 (안그러면 다음 main.py run 시 로그가 파일에 누적됨)
-        remove_log_files(self.artifacts)
         
         
     def read_yaml(self):
