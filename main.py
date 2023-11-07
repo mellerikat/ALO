@@ -16,7 +16,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        alo = ALO(exp_plan = args.config)  # exp plan path
+        alo = ALO(exp_plan_file = args.config)  # exp plan path
     except:
         alo = ALO()  # exp plan path
         
