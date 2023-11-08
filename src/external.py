@@ -113,15 +113,15 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         elif (base_dir in os.listdir(INPUT_DATA_HOME)) and (get_external_data == 'every'): # 이미 input 폴더에 존재하고, every인 경우 기존 거 지우고 다시 다운로드 
             PROC_LOGGER.process_info(f" << {base_dir} >> already exists in << {INPUT_DATA_HOME} >>. \n & << get_external_data >> is set as << every >>. \n Start re-loading external data. << {ext_path} >> : pre-existing directory is deleted ! \n", 'blue')
             shutil.rmtree(INPUT_DATA_HOME + base_dir, ignore_errors=True)
-            _load_data(ext_type, ext_path, load_s3_key_path)
+            _load_data(pipe_mode, ext_type, ext_path, load_s3_key_path)
         elif (base_dir not in os.listdir(INPUT_DATA_HOME)): # input 폴더에 부재하면, once던 every던 무조건 loading 함
             PROC_LOGGER.process_info(f" Start loading external data. << {ext_path} >>  \n << {base_dir} >> does not exist in << {INPUT_DATA_HOME} >>. \n & << get_external_data >> is set as << {get_external_data} >>. \n", 'blue')
-            _load_data(ext_type, ext_path, load_s3_key_path)
+            _load_data(pipe_mode, ext_type, ext_path, load_s3_key_path)
      
     return             
 
             
-def _load_data(ext_type, ext_path, load_s3_key_path): 
+def _load_data(pipeline, ext_type, ext_path, load_s3_key_path): 
     # 실제로 데이터 복사 (절대 경로) or 다운로드 (s3) 
     if ext_type  == 'absolute':
         # 해당 nas 경로에 데이터 폴더 존재하는지 확인 후 폴더 통째로 가져오기, 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
@@ -132,7 +132,18 @@ def _load_data(ext_type, ext_path, load_s3_key_path):
             # [참고] https://stackoverflow.com/questions/3925096/how-to-get-only-the-last-part-of-a-path-in-python
             base_dir = os.path.basename(os.path.normpath(ext_path)) # 가령 /nas001/test/ 면 test가 mother_path, ./이면 .가 mother_path 
             # [참고] python 3.7에서는 shutil.copytree 시 dirs_exist_ok라는 인자 없음 
-            shutil.copytree(ext_path, PROJECT_HOME + f"input/{base_dir}", dirs_exist_ok=True) # 중복 시 덮어쓰기 됨 
+            data_path = ""
+            if "train" in pipeline:
+                data_path = "./input/train/"
+                if os.path.exists(data_path):
+                    shutil.rmtree(data_path)
+                os.makedirs(data_path, exist_ok=True) 
+            elif "inf" in pipeline:
+                data_path = "./input/inference/"
+                if os.path.exists(data_path):
+                    shutil.rmtree(data_path)
+                os.makedirs(data_path, exist_ok=True) 
+            shutil.copytree(ext_path, PROJECT_HOME + f"{data_path}{base_dir}", dirs_exist_ok=True) # 중복 시 덮어쓰기 됨 
         except: 
             PROC_LOGGER.process_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong absolute path (must be existing directory!) \n / or You do not have permission to access.')
     elif ext_type  == 's3':  
