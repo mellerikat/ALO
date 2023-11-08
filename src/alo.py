@@ -1,6 +1,7 @@
 import os
 import sys
 import json 
+import shutil
 import subprocess
 from datetime import datetime
 from collections import Counter
@@ -55,7 +56,6 @@ class ALO:
             except: 
                 raise NotImplementedError(f"Failed to create directory: {ASSET_HOME}")
         self.read_yaml() # self.exp_plan default 셋팅 완료 
-        self.update_yaml() # sol_meta's << dataset_uri, artifact_uri, selected_user_parameters >> into exp_plan 
         # artifacts 세팅
         self.artifacts = set_artifacts()
         # step들이 잘 match 되게 yaml에 기술 돼 있는지 체크
@@ -122,17 +122,36 @@ class ALO:
         for key in self.exp_plan:
             compare_dict_keys(self.exp_plan[key], compare_yaml[key])
 
+        # solution metadata yaml --> exp plan yaml overwrite 
+        if self.sol_meta is not None:
+            self._update_yaml() 
+        
         def get_yaml_data(key): # inner func.
             data_dict = {}
             for data in self.exp_plan[key]:
                 data_dict.update(data)
             return data_dict
 
+        # 각 key 별 value 클래스 self 변수화 
         for key in self.exp_plan.keys():
             setattr(self, key, get_yaml_data(key))
 
-    def update_yaml(self):    
-        if self.sol_meta.get('pipeline') is None: # key check 
+    def _update_yaml(self):    
+        # sol_meta's << dataset_uri, artifact_uri, selected_user_parameters >> into exp_plan 
+        
+        # [중요] system 인자가 존재해서 _update_yaml이 실행될 때는 혹시 모르니 input 데이터 폴더를 한번 비우고 빈 폴더로 다시만든다. 
+        input_path = PROJECT_HOME + 'input/'
+        if os.path.exists( input_path):
+            try: 
+                shutil.rmtree(input_path, ignore_errors=True)
+                os.mkdir(input_path)
+                os.mkdir(input_path + 'train/')
+                os.mkdir(input_path + 'inference/')
+            except: 
+                self.proc_logger.process_error("Failed to initialize input path before yaml update. \n (solution_metadata.yaml --> experimental_plan.yaml)")
+        
+        # solution metadata yaml에 pipeline key 있는지 체크 
+        if 'pipeline' not in self.sol_meta.keys(): # key check 
             self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
         
         # TODO: multi (list), single (str) 일때 모두 실험 필요 
@@ -145,7 +164,8 @@ class ALO:
             # plan yaml에서 현재 sol meta pipe type의 index 찾기 
             cur_pipe_idx = None 
             for idx, plan_pipe in enumerate(self.exp_plan['user_parameters']):
-                if (len(plan_pipe.keys()) == 1) and (plan_pipe.get(f'{pipe_type}_pipeline') is not None): 
+                # pipeline key가 하나이고, 해당 pipeline에 대응되는 plan yaml pipe가 존재할 시 
+                if (len(plan_pipe.keys()) == 1) and (f'{pipe_type}_pipeline' in plan_pipe.keys()): 
                     cur_pipe_idx = idx 
                 
             # selected params를 exp plan으로 덮어 쓰기 
@@ -159,23 +179,26 @@ class ALO:
                 for idx, plan_step_dict in enumerate(init_exp_plan):  
                     if sol_step == plan_step_dict['step']:
                         self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args)
-
-            
+                        # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. 
+                        self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
+            # external path 덮어 쓰기 
+        
             if pipe_type == 'train': 
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
-                    if ext_dict.get('load_train_data_path') is not None: 
+                    if 'load_train_data_path' in ext_dict.keys(): 
                         self.exp_plan['external_path'][idx]['load_train_data_path'] = dataset_uri 
-                    if ext_dict.get('save_train_artifacts_path') is not None: 
+                    if 'save_train_artifacts_path' in ext_dict.keys(): 
                         self.exp_plan['external_path'][idx]['save_train_artifacts_path'] = artifact_uri          
             elif pipe_type == 'inference':
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
-                    if ext_dict.get('load_inference_data_path') is not None:    
+                    if 'load_inference_data_path' in ext_dict.keys():    
                         self.exp_plan['external_path'][idx]['load_inference_data_path'] = dataset_uri 
-                    if ext_dict.get('save_inference_artifacts_path') is not None:  
+                    if 'save_inference_artifacts_path' in ext_dict.keys():  
                         self.exp_plan['external_path'][idx]['save_inference_artifacts_path'] = artifact_uri 
             else: 
                 self.proc_logger.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
-        
+
+            
         
     def install_steps(self, pipeline, get_asset_source):
         requirements_dict = dict() 
