@@ -36,8 +36,9 @@ class AssetStructure:
 
 
 class ALO:
-    def __init__(self, exp_plan_file = EXP_PLAN):
+    def __init__(self, exp_plan_file = EXP_PLAN, alo_mode = 'all'):
         self.exp_plan_file = exp_plan_file
+        self.alo_mode = alo_mode
         self.exp_plan = None
         self.artifacts = None 
         self.proc_logger = None
@@ -76,6 +77,16 @@ class ALO:
             if pipeline not in ['train_pipeline', 'inference_pipeline']:
                 raise ValueError(f'Pipeline name in the experimental_plan.yaml \n must be << train_pipeline >> or << inference_pipeline >>')
 
+            if self.alo_mode == "train":
+                if "inf" in pipeline:
+                    continue
+            elif self.alo_mode == 'inf' or self.alo_mode == 'inference':
+                if "train" in pipeline:
+                    continue
+            elif self.alo_mode == 'all':
+                pass
+            else:
+                raise ValueError("f{self.alo_mode} is not supported mode.")
             self.external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
             self.run_import(pipeline)
 
