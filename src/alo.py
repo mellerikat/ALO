@@ -1,5 +1,6 @@
 import os
 import sys
+import json 
 import subprocess
 from datetime import datetime
 from collections import Counter
@@ -36,10 +37,12 @@ class AssetStructure:
 
 
 class ALO:
-    def __init__(self, exp_plan_file = EXP_PLAN, alo_mode = 'all'):
+    def __init__(self, exp_plan_file = EXP_PLAN, sol_meta_str = None, alo_mode = 'all'):
         self.exp_plan_file = exp_plan_file
         self.alo_mode = alo_mode
+         
         self.exp_plan = None
+        self.sol_meta = json.loads(sol_meta_str) if sol_meta_str != None else None # None or dict from json 
         self.artifacts = None 
         self.proc_logger = None
         self.proc_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -51,7 +54,8 @@ class ALO:
                 os.makedirs(ASSET_HOME)
             except: 
                 raise NotImplementedError(f"Failed to create directory: {ASSET_HOME}")
-        self.read_yaml()
+        self.read_yaml() # self.exp_plan default 셋팅 완료 
+        self.update_yaml() # sol_meta's << dataset_uri, artifact_uri, selected_user_parameters >> into exp_plan 
         # artifacts 세팅
         self.artifacts = set_artifacts()
         # step들이 잘 match 되게 yaml에 기술 돼 있는지 체크
@@ -127,6 +131,63 @@ class ALO:
         for key in self.exp_plan.keys():
             setattr(self, key, get_yaml_data(key))
 
+    def update_yaml(self): 
+        print('\n\n', self.exp_plan, '\n\n')
+        #print(self.sol_meta['pipeline'][0])
+        
+        if self.sol_meta.get('pipeline') is None: # key check 
+            self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
+        
+        # TODO: multi (list), single (str) 일때 모두 실험 필요 
+        for sol_pipe in self.sol_meta['pipeline']: 
+            pipe_type = sol_pipe['type'] # train, inference 
+            artifact_uri = sol_pipe['artifact_uri']
+            dataset_uri = sol_pipe['dataset_uri']
+            selected_params = sol_pipe['parameters']['selected_user_parameters']
+     
+            # plan yaml에서 현재 sol meta pipe type의 index 찾기 
+            cur_pipe_idx = None 
+            for idx, plan_pipe in enumerate(self.exp_plan['user_parameters']):
+                if (len(plan_pipe.keys()) == 1) and (plan_pipe.get(f'{pipe_type}_pipeline') is not None): 
+                    cur_pipe_idx = idx 
+                
+            # selected params를 exp plan으로 덮어 쓰기 
+            init_exp_plan = self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'].copy()
+            
+            for sol_step_dict in selected_params: 
+                sol_step = sol_step_dict['step']
+                sol_args = sol_step_dict['args']
+                # sol_args None이면 패스 
+                if sol_args is None: 
+                    continue
+                for idx, plan_step_dict in enumerate(init_exp_plan):  
+                    if sol_step == plan_step_dict['step']:
+                        self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args)
+            # print(pipe_type)
+            # print(artifact_uri)
+            # print(dataset_uri)
+            # print(selected_params)
+            if pipe_type == 'train': 
+                print(self.exp_plan['external_path']['load_train_data_path'])
+                for ext_dict in self.exp_plan['external_path']:
+                    if 'load_train_data_path' 
+                self.exp_plan['external_path']['load_train_data_path'] = dataset_uri 
+                self.exp_plan['external_path']['save_train_artifacts_path'] = artifact_uri 
+                
+            elif pipe_type == 'inference':
+                self.exp_plan['external_path']['load_inference_data_path'] = dataset_uri 
+                self.exp_plan['external_path']['save_inference_artifacts_path'] = artifact_uri 
+            
+            else: 
+                self.proc_logger.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
+        print(self.exp_plan)
+        
+        exit()
+     
+        
+    
+         
+        
     def install_steps(self, pipeline, get_asset_source):
         requirements_dict = dict() 
         for step, asset_config in enumerate(self.asset_source[pipeline]):

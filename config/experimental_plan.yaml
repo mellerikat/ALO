@@ -2,8 +2,8 @@
 external_path:
     - load_train_data_path: [/nas001/users/yoonji.suh/tcr_test_20231016/train_multiclass/]
     - load_inference_data_path:  /nas001/users/yoonji.suh/tcr_test_20231016/inf/
-    - save_train_artifacts_path:
-    - save_inference_artifacts_path:
+    - save_train_artifacts_path: 
+    - save_inference_artifacts_path: 
 
 external_path_permission:
     - s3_private_key_file: 
@@ -22,7 +22,7 @@ user_parameters:
               drop_columns:
               time_column:
               concat_dataframes: True
-              encoding: # cp949 
+              encoding: #cp949 
 
         - step: preprocess
           args:
