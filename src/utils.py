@@ -44,7 +44,7 @@ def set_artifacts():
         PROC_LOGGER.process_error("[PROCESS][ERROR] Artifacts folder not generated!")
 
     for dir_name in list(artifacts_structure.keys()):
-        artifacts_structure[dir_name] = PROJECT_HOME + "/"  + dir_name + "/"
+        artifacts_structure[dir_name] = PROJECT_HOME + dir_name + "/"
     
     return artifacts_structure
 
