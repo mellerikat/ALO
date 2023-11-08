@@ -131,10 +131,7 @@ class ALO:
         for key in self.exp_plan.keys():
             setattr(self, key, get_yaml_data(key))
 
-    def update_yaml(self): 
-        print('\n\n', self.exp_plan, '\n\n')
-        #print(self.sol_meta['pipeline'][0])
-        
+    def update_yaml(self):    
         if self.sol_meta.get('pipeline') is None: # key check 
             self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
         
@@ -153,7 +150,6 @@ class ALO:
                 
             # selected params를 exp plan으로 덮어 쓰기 
             init_exp_plan = self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'].copy()
-            
             for sol_step_dict in selected_params: 
                 sol_step = sol_step_dict['step']
                 sol_args = sol_step_dict['args']
@@ -163,30 +159,23 @@ class ALO:
                 for idx, plan_step_dict in enumerate(init_exp_plan):  
                     if sol_step == plan_step_dict['step']:
                         self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args)
-            # print(pipe_type)
-            # print(artifact_uri)
-            # print(dataset_uri)
-            # print(selected_params)
-            if pipe_type == 'train': 
-                print(self.exp_plan['external_path']['load_train_data_path'])
-                for ext_dict in self.exp_plan['external_path']:
-                    if 'load_train_data_path' 
-                self.exp_plan['external_path']['load_train_data_path'] = dataset_uri 
-                self.exp_plan['external_path']['save_train_artifacts_path'] = artifact_uri 
-                
-            elif pipe_type == 'inference':
-                self.exp_plan['external_path']['load_inference_data_path'] = dataset_uri 
-                self.exp_plan['external_path']['save_inference_artifacts_path'] = artifact_uri 
+
             
+            if pipe_type == 'train': 
+                for idx, ext_dict in enumerate(self.exp_plan['external_path']):
+                    if ext_dict.get('load_train_data_path') is not None: 
+                        self.exp_plan['external_path'][idx]['load_train_data_path'] = dataset_uri 
+                    if ext_dict.get('save_train_artifacts_path') is not None: 
+                        self.exp_plan['external_path'][idx]['save_train_artifacts_path'] = artifact_uri          
+            elif pipe_type == 'inference':
+                for idx, ext_dict in enumerate(self.exp_plan['external_path']):
+                    if ext_dict.get('load_inference_data_path') is not None:    
+                        self.exp_plan['external_path'][idx]['load_inference_data_path'] = dataset_uri 
+                    if ext_dict.get('save_inference_artifacts_path') is not None:  
+                        self.exp_plan['external_path'][idx]['save_inference_artifacts_path'] = artifact_uri 
             else: 
                 self.proc_logger.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
-        print(self.exp_plan)
         
-        exit()
-     
-        
-    
-         
         
     def install_steps(self, pipeline, get_asset_source):
         requirements_dict = dict() 
