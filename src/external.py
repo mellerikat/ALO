@@ -85,7 +85,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
     load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str) or None 
     if load_s3_key_path is None: 
         PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n \
-                                you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' , 'blue')
+                                you have to write the s3_private_key_file path or set << AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY >> in your os environment. \n' , 'blue')
     else: 
         if type(load_s3_key_path) != str: 
             PROC_LOGGER.process_error(f"You entered wrong type of << s3_private_key_file >> in your expermimental_plan.yaml: << {load_s3_key_path} >>. \n Only << str >> type is allowed.")
@@ -108,6 +108,9 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         data_path = INPUT_DATA_HOME + "train/"
     elif "inf" in pipe_mode:
         data_path = INPUT_DATA_HOME + "inference/"
+    if not os.path.exists(data_path):
+        os.mkdir(data_path)
+        
     # copy (절대경로) or download (s3) data (input 폴더로)
     # get_external_data (once, every) 관련 처리
     for ext_path in load_data_path: 
