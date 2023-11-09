@@ -181,8 +181,8 @@ class ALO:
                         self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args)
                         # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. 
                         self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
+            
             # external path 덮어 쓰기 
-        
             if pipe_type == 'train': 
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
                     if 'load_train_data_path' in ext_dict.keys(): 
@@ -251,7 +251,8 @@ class ALO:
         if self.control['interface_mode'] not in INTERFACE_TYPES:
             self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
 
-        meta_dict = {'artifacts': self.artifacts, 'pipeline': pipeline, 'step': step}
+        # FIXME step은 추후 삭제되야함, meta --> metadata 같은 식으로 약어가 아닌 걸로 변경돼야 함 
+        meta_dict = {'artifacts': self.artifacts, 'pipeline': pipeline, 'step': step, 'step_number': step, 'step_name': self.user_parameters[pipeline][step]['step']}
         asset_structure.config['meta'] = meta_dict #nested dict
         # envs에 만들어진 artifacts 폴더 구조 전달 (to slave)
         # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
