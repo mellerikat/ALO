@@ -173,7 +173,7 @@ control:
     ## 1-2 requirements.txt 및 종속 패키지들 한번만 설치할 지 매번 설치할지도 결정 
     - get_asset_source: once ## once, every
     ## 1-3 external path로 부터 data load 관련하여 한번만 가져올 지 매번 가져올지 결정 
-    - get_external_data: once ## once, every
+    - get_external_data: every ## once, every
     ## 2. 생성된 artifacts 를 backup 할지를 결정 True/False
     - backup_artifacts: True
     ## 3. pipeline 로그를 backup 할지를 결정 True/False

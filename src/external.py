@@ -164,12 +164,13 @@ def _load_data(pipeline, ext_type, ext_path, load_s3_key_path):
     PROC_LOGGER.process_info(f'Successfully fetched external data: \n {ext_path} --> {f"{data_path}"}', color='green')
     return 
 
-def external_save_artifacts(pipe_mode, external_path, external_path_permission):
+def external_save_artifacts(proc_start_time, pipe_mode, external_path, external_path_permission):
     """ Description
         -----------
             - 생성된 .train_artifacts, /inference_artifacts를 압축하여 (tar.gzip) 외부 경로로 전달  
         Parameters
         -----------
+            - proc_start_time: alo runs start 시간 
             - pipe_mode: 호출 시의 파이프라인 (train_pipeline, inference_pipeline)
             - external_path: experimental_plan.yaml에 적힌 external_path 전체를 dict로 받아옴 
             - external_path_permission: experimental_plan.yaml에 적힌 external_path_permission 전체를 dict로 받아옴 
@@ -223,9 +224,9 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     ext_type = _get_ext_path_type(ext_path) # absolute / s3
     tar_path = None 
     if pipe_mode == "train_pipeline":
-        tar_path = _tar_dir(".train_artifacts") 
+        tar_path = _tar_dir(proc_start_time, ".train_artifacts") 
     elif pipe_mode == "inference_pipeline": 
-        tar_path = _tar_dir(".inference_artifacts") 
+        tar_path = _tar_dir(proc_start_time, ".inference_artifacts") 
                 
     if ext_type  == 'absolute':
         try: 
@@ -252,16 +253,17 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     PROC_LOGGER.process_info(f" Successfully done saving << {tar_path} >> into << {save_artifacts_path} >> \n & removing << {tar_path} >>. \n", "green")  
     return 
 
-def _tar_dir(_path): # inner function 
-    # _path: .train_artifacts / .inference_artifacts 
-    timestamp_option = True
-    hms_option = True
-    if timestamp_option == True:  
-        if hms_option == True : 
-            timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-        else : 
-            timestamp = datetime.now().strftime("%y%m%d")      
-    _save_path = PROJECT_HOME + f'{timestamp}_{_path}.tar.gz'
+def _tar_dir(proc_start_time, _path): # inner function 
+    ## _path: .train_artifacts / .inference_artifacts 
+    # timestamp_option = True
+    # hms_option = True
+    # if timestamp_option == True:  
+    #     if hms_option == True : 
+    #         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+    #     else : 
+    #         timestamp = datetime.now().strftime("%y%m%d")      
+    _path = _path.replace('.', '_') # .inference_artifacts --> _inference_artifacts
+    _save_path = PROJECT_HOME + f'{proc_start_time}{_path}.tar.gz'
     
     tar = tarfile.open(_save_path, 'w:gz')
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):

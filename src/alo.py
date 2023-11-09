@@ -41,12 +41,13 @@ class ALO:
     def __init__(self, exp_plan_file = EXP_PLAN, sol_meta_str = None, alo_mode = 'all'):
         self.exp_plan_file = exp_plan_file
         self.alo_mode = alo_mode
-         
+        
         self.exp_plan = None
         self.sol_meta = json.loads(sol_meta_str) if sol_meta_str != None else None # None or dict from json 
+        self.solution_metadata_version = None 
         self.artifacts = None 
         self.proc_logger = None
-        self.proc_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.proc_start_time = datetime.now().strftime("%y%m%d_%H%M%S")
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
         
     def preset(self):
@@ -97,7 +98,7 @@ class ALO:
             if self.control['backup_artifacts'] == True:
                 backup_artifacts(pipeline, self.exp_plan_file)
             
-            external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+            external_save_artifacts(self.proc_start_time, pipeline, self.external_path, self.external_path_permission)
 
         self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
@@ -136,9 +137,10 @@ class ALO:
         for key in self.exp_plan.keys():
             setattr(self, key, get_yaml_data(key))
 
+    # sol_meta's << dataset_uri, artifact_uri, selected_user_parameters >> into exp_plan 
     def _update_yaml(self):    
-        # sol_meta's << dataset_uri, artifact_uri, selected_user_parameters >> into exp_plan 
-               
+        # solution metadata version 가져오기 --> inference summary yaml의 version도 이걸로 통일 
+        self.solution_metadata_version = self.sol_meta['version']
         # solution metadata yaml에 pipeline key 있는지 체크 
         if 'pipeline' not in self.sol_meta.keys(): # key check 
             self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
@@ -248,6 +250,8 @@ class ALO:
         # envs에 만들어진 artifacts 폴더 구조 전달 (to slave)
         # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
         # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의 
+        
+        asset_structure.envs['solution_metadata_version'] = self.solution_metadata_version
         asset_structure.envs['project_home'] = PROJECT_HOME
         asset_structure.envs['pipeline'] = pipeline
         # asset.py에서 load config, load data 할때 필요 
@@ -259,7 +263,10 @@ class ALO:
         asset_structure.envs['alo_version'] = self.alo_version
         asset_structure.envs['asset_branch'] = asset_config['source']['branch']
         asset_structure.envs['interface_mode'] = self.control['interface_mode']
-            
+        asset_structure.envs['proc_start_time'] = self.proc_start_time
+        asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
+        asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
+        
         ua = user_asset(asset_structure) 
         asset_structure.data, asset_structure.config = ua.run()
 
