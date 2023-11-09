@@ -138,18 +138,7 @@ class ALO:
 
     def _update_yaml(self):    
         # sol_meta's << dataset_uri, artifact_uri, selected_user_parameters >> into exp_plan 
-        
-        # [중요] system 인자가 존재해서 _update_yaml이 실행될 때는 혹시 모르니 input 데이터 폴더를 한번 비우고 빈 폴더로 다시만든다. 
-        input_path = PROJECT_HOME + 'input/'
-        if os.path.exists( input_path):
-            try: 
-                shutil.rmtree(input_path, ignore_errors=True)
-                os.mkdir(input_path)
-                os.mkdir(input_path + 'train/')
-                os.mkdir(input_path + 'inference/')
-            except: 
-                self.proc_logger.process_error("Failed to initialize input path before yaml update. \n (solution_metadata.yaml --> experimental_plan.yaml)")
-        
+               
         # solution metadata yaml에 pipeline key 있는지 체크 
         if 'pipeline' not in self.sol_meta.keys(): # key check 
             self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
@@ -198,8 +187,10 @@ class ALO:
             else: 
                 self.proc_logger.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
 
+            # [중요] system 인자가 존재해서 _update_yaml이 실행될 때는 항상 get_external_data를 every로한다. every로 하면 항상 input/train (or input/inference)를 비우고 새로 데이터 가져온다.
+            self.exp_plan['control'][0]['get_external_data'] = 'every'
             
-        
+            
     def install_steps(self, pipeline, get_asset_source):
         requirements_dict = dict() 
         for step, asset_config in enumerate(self.asset_source[pipeline]):
