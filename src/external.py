@@ -57,11 +57,11 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
             base_dir = os.path.basename(os.path.normpath(ext_path)) 
             base_dir_list.append(base_dir)
         if len(set(base_dir_list)) != len(base_dir_list): # 중복 mother path 존재 경우 
-            PROC_LOGGER.process_error(f"You may have entered paths which have duplicated base directory names. \n \
+            PROC_LOGGER.process_error(f"You may have entered paths which have duplicated basename. \n \
                                         For example, these are not allowed: \n \
                                         - load_train_data_path: /users/train/data/ \n \
                                         - load_inference_data_path: /users/inference/data/ \n \
-                                        which have << data >> as duplicated base directory name.")
+                                        which have << data >> as duplicated basename of the path.")
     
     # 미입력 시 every로 default 설정 
     if get_external_data is None:
@@ -110,18 +110,19 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         data_path = INPUT_DATA_HOME + "inference/"
     if not os.path.exists(data_path):
         os.mkdir(data_path)
-        
+    
     # copy (절대경로) or download (s3) data (input 폴더로)
     # get_external_data (once, every) 관련 처리
-    for ext_path in load_data_path: 
+    for idx, ext_path in enumerate(load_data_path): 
         ext_type = _get_ext_path_type(ext_path)
         base_dir = os.path.basename(os.path.normpath(ext_path)) 
         if (base_dir in os.listdir(data_path)) and (get_external_data == 'once'): # 이미 input 폴더에 존재하고, once인 경우 
             PROC_LOGGER.process_info(f" Skip loading external data. << {ext_path} >> \n << {base_dir} >> already exists in << {data_path} >>. \n & << get_external_data >> is set as << once >>. \n", 'blue')
             continue 
-        elif (get_external_data == 'every'): # every인 경우 무조건 기존 거 다 지우고 다시 다운로드 
+        elif (get_external_data == 'every'): # every인 경우 무조건 기존 거 처음에 다 지우고 다시 다운로드 
             PROC_LOGGER.process_info(f" << {base_dir} >> already exists in << {data_path} >>. \n & << get_external_data >> is set as << every >>. \n Start re-loading external data. << {ext_path} >> : pre-existing directory is deleted ! \n", 'blue')
-            shutil.rmtree(data_path, ignore_errors=True)
+            if idx ==0: 
+                shutil.rmtree(data_path, ignore_errors=True)
             _load_data(pipe_mode, ext_type, ext_path, load_s3_key_path)
         elif (base_dir not in os.listdir(data_path)) and (get_external_data == 'once'): # 특정 base folder가 input 폴더에 부재하고, once면 input을 다 비우진 않고 해당 base folder만 새로 loading 함
             PROC_LOGGER.process_info(f" Start loading external data. << {ext_path} >>  \n << {base_dir} >> does not exist in << {data_path} >>. \n & << get_external_data >> is set as << {get_external_data} >>. \n", 'blue')
