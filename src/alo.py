@@ -80,8 +80,7 @@ class ALO:
         self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
         for pipeline in self.asset_source:
             if pipeline not in ['train_pipeline', 'inference_pipeline']:
-                raise ValueError(f'Pipeline name in the experimental_plan.yaml \n must be << train_pipeline >> or << inference_pipeline >>')
-
+                self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
             if self.alo_mode == "train":
                 if "inf" in pipeline:
                     continue
@@ -91,7 +90,7 @@ class ALO:
             elif self.alo_mode == 'all':
                 pass
             else:
-                raise ValueError("f{self.alo_mode} is not supported mode.")
+                self.proc_logger.process_error("f{self.alo_mode} is not supported mode.")
             self.external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
             self.run_import(pipeline)
 
@@ -138,7 +137,13 @@ class ALO:
             setattr(self, key, get_yaml_data(key))
 
     # sol_meta's << dataset_uri, artifact_uri, selected_user_parameters >> into exp_plan 
-    def _update_yaml(self):    
+    def _update_yaml(self):  
+        # [중요] SOLUTION_PIPELINE_MODE라는 환경 변수는 ecr build 시 생성하게 되며 (ex. train, inference, all) 이를 ALO mode에 덮어쓰기 한다. 
+        sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
+        if sol_pipe_mode is not None: 
+            self.alo_mode = sol_pipe_mode
+        else:   
+            raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
         # solution metadata version 가져오기 --> inference summary yaml의 version도 이걸로 통일 
         self.solution_metadata_version = self.sol_meta['version']
         # solution metadata yaml에 pipeline key 있는지 체크 
@@ -191,6 +196,7 @@ class ALO:
 
             # [중요] system 인자가 존재해서 _update_yaml이 실행될 때는 항상 get_external_data를 every로한다. every로 하면 항상 input/train (or input/inference)를 비우고 새로 데이터 가져온다.
             self.exp_plan['control'][0]['get_external_data'] = 'every'
+                
             
             
     def install_steps(self, pipeline, get_asset_source):
