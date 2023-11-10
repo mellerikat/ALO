@@ -7,6 +7,7 @@ import git
 import shutil
 import datetime
 import yaml 
+from yaml import Dumper
 
 # yaml = YAML()
 # yaml.preserve_quotes = True
@@ -23,8 +24,13 @@ class SMC:
 
     def save_yaml(self):
         # YAML 파일로 데이터 저장
-        with open('solution_meta.yaml', 'w', encoding='utf-8') as yaml_file:
-            yaml.dump(self.sm_yaml, yaml_file, allow_unicode=True, default_flow_style=False)
+        class NoAliasDumper(Dumper):
+            def ignore_aliases(self, data):
+                return True
+
+        with open('solution_metadata.yaml', 'w', encoding='utf-8') as yaml_file:
+            yaml.dump(self.sm_yaml, yaml_file, allow_unicode=True, default_flow_style=False, Dumper=NoAliasDumper)
+            
 
     def set_yaml(self, version=VERSION):
         self.sm_yaml['version'] = version
@@ -75,6 +81,10 @@ class SMC:
         self.save_yaml()
         print("solution metadata description이 작성되었습니다")
 
+    def set_wrangler(self):
+        self.sm_yaml['wrangler_code_uri'] = ''
+        self.sm_yaml['wrangler_dataset_uri'] = ''
+
     def set_container_uri(self, type):
         if type == 'train':
             data = {'container_uri': self.ecr + "/train/" + self.name}
@@ -86,7 +96,7 @@ class SMC:
 
     #s3://s3-an2-cism-dev-aic/artifacts/bolt_fastening_table_classification/train/artifacts/2023/11/06/162000/
     def set_artifacts_uri(self, pipeline):
-        data = {'artifacts_uri': "s3://" + self.bucket_name + "/artifact/" + self.name + "/" + pipeline + "/" + "artifacts/"}
+        data = {'artifact_uri': "s3://" + self.bucket_name + "/artifact/" + self.name + "/" + pipeline + "/" + "artifacts/"}
         if pipeline == 'train':
             self.sm_yaml['pipeline'][0].update(data)
         if pipeline == 'inf' or 'inference':
@@ -123,16 +133,13 @@ class SMC:
         
         subkeys['user_parameters'] = output_datas
         subkeys['selected_user_parameters'] = output_datas
-
-        self.sm_yaml['pipeline'][0]['parameters'].update(subkeys)
+        
+        if "train" in pipeline:
+            self.sm_yaml['pipeline'][0]['parameters'].update(subkeys)
+        elif "inference" in pipeline:
+            self.sm_yaml['pipeline'][1]['parameters'].update(subkeys)
 
         self.save_yaml()
-
-    # def set_user_params(self, pipeline):
-    #     if "train" in pipeline:
-    #         self.sm_yaml['pipeline'][0]['parameters'] = {'user_parameters':}
-    #     elif "inference" in pipeline:
-    #         self.sm_yaml['pipeline'][1]['parameters'] = {'user_parameters':}
 
     def set_resource(self, pipeline, resource = 'standard'):
         if "train" in pipeline:
@@ -200,19 +207,6 @@ class SMC:
         else:
             print(f"{pipeline}은 지원하지 않는 pipeline 구조 입니다")
 
-    def get_args_list(self):
-        temp_key_list = []
-        for args in self.sm_yaml['pipeline'][0]['parameters']['candidate_parameters']:
-            temp_key_list.extend(list(args['args'][0].keys()))
-
-        b = 0
-
-    # def set_user_parameters(self, selected_key):
-    #     if selected_key in self.sm_yaml:
-    #         a = 0
-    #     b = 0
-    #     pass
-
     def get_contents(self, url):
         def _is_git_url(url):
             git_url_pattern = r'^(https?|git)://[^\s/$.?#].[^\s]*$'
@@ -259,3 +253,5 @@ if __name__ == "__main__":
     sm.set_cadidate_param(pipeline, "./contents/alo/config/experimental_plan.yaml")
     sm.set_artifacts_uri(pipeline)
     sm.set_resource(pipeline)
+
+    sm.set_wrangler()
