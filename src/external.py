@@ -57,11 +57,11 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
             base_dir = os.path.basename(os.path.normpath(ext_path)) 
             base_dir_list.append(base_dir)
         if len(set(base_dir_list)) != len(base_dir_list): # 중복 mother path 존재 경우 
-            PROC_LOGGER.process_error(f"You may have entered paths which have duplicated base directory names. \n \
+            PROC_LOGGER.process_error(f"You may have entered paths which have duplicated basename. \n \
                                         For example, these are not allowed: \n \
                                         - load_train_data_path: /users/train/data/ \n \
                                         - load_inference_data_path: /users/inference/data/ \n \
-                                        which have << data >> as duplicated base directory name.")
+                                        which have << data >> as duplicated basename of the path.")
     
     # 미입력 시 every로 default 설정 
     if get_external_data is None:
