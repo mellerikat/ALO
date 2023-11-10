@@ -47,22 +47,21 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         if len(os.listdir(INPUT_DATA_HOME)) == 0: # input 폴더 빈 경우 
             PROC_LOGGER.process_error(f'External path (load_train_data_path, load_inference_data_path) in experimental_plan.yaml are not written & << input >> folder is empty.') 
         else: 
-            PROC_LOGGER.process_info('You can write only one of the << {} >> at << input_path >> parameter in your experimental_plan.yaml \n'.format(os.listdir(INPUT_DATA_HOME)), 'blue')
+            PROC_LOGGER.process_info('External paths are not written. You can write only one of the << {} >> at << input_path >> parameter in your experimental_plan.yaml \n'.format(os.listdir(INPUT_DATA_HOME)), 'blue')
         return
     else: # load_train_data_path나 load_train_data_path 둘 중 하나라도 존재시 
         # load_train_data_path와 load_train_data_path 내 중복 mother path (마지막 서브폴더 명) 존재 시 에러 
-        all_data_path = train_data_path + inference_data_path
-        base_dir_list = [] 
-        for ext_path in all_data_path: 
-            base_dir = os.path.basename(os.path.normpath(ext_path)) 
-            base_dir_list.append(base_dir)
-        if len(set(base_dir_list)) != len(base_dir_list): # 중복 mother path 존재 경우 
-            PROC_LOGGER.process_error(f"You may have entered paths which have duplicated basename. \n \
-                                        For example, these are not allowed: \n \
-                                        - load_train_data_path: /users/train/data/ \n \
-                                        - load_inference_data_path: /users/inference/data/ \n \
-                                        which have << data >> as duplicated basename of the path.")
-    
+        for data_path in  [train_data_path, inference_data_path]:
+            base_dir_list = [] 
+            for ext_path in data_path: 
+                base_dir = os.path.basename(os.path.normpath(ext_path)) 
+                base_dir_list.append(base_dir)
+            if len(set(base_dir_list)) != len(base_dir_list): # 중복 mother path 존재 경우 
+                PROC_LOGGER.process_error(f"You may have entered paths which have duplicated basename in the same pipeline. \n \
+                                            For example, these are not allowed: \n \
+                                            - load_train_data_path: [/users/train1/data/, /users/train2/data/] \n \
+                                            which have << data >> as duplicated basename of the path.")
+        
     # 미입력 시 every로 default 설정 
     if get_external_data is None:
         get_external_data = 'every'
@@ -255,17 +254,11 @@ def external_save_artifacts(proc_start_time, pipe_mode, external_path, external_
         PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
     
     PROC_LOGGER.process_info(f" Successfully done saving << {tar_path} >> into << {save_artifacts_path} >> \n & removing << {tar_path} >>. \n", "green")  
+    
     return 
 
-def _tar_dir(proc_start_time, _path): # inner function 
-    ## _path: .train_artifacts / .inference_artifacts 
-    # timestamp_option = True
-    # hms_option = True
-    # if timestamp_option == True:  
-    #     if hms_option == True : 
-    #         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-    #     else : 
-    #         timestamp = datetime.now().strftime("%y%m%d")      
+def _tar_dir(proc_start_time, _path): 
+    ## _path: .train_artifacts / .inference_artifacts     
     _path = _path.replace('.', '_') # .inference_artifacts --> _inference_artifacts
     _save_path = PROJECT_HOME + f'{proc_start_time}{_path}.tar.gz'
     

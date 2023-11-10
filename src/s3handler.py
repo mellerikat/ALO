@@ -4,6 +4,7 @@ from boto3.session import Session
 from botocore.client import Config
 from botocore.handlers import set_list_objects_encoding_type_url
 from src.constants import *
+from boto3.s3.transfer import S3Transfer
 from urllib.parse import urlparse
 from alolib import logger 
 #--------------------------------------------------------------------------------------------------------------------------
@@ -71,21 +72,48 @@ class S3Handler:
                 return boto3.resource('s3', aws_access_key_id=self.access_key, aws_secret_access_key=self.secret_key)
         except Exception as e:
             PROC_LOGGER.process_error("S3 CONNECTION ERROR %s" % e)
-        
-    # https://saturncloud.io/blog/downloading-a-folder-from-s3-using-boto3-a-comprehensive-guide-for-data-scientists/
+    
+    def download_file_from_s3(self, _from, _to):
+        PROC_LOGGER.process_info(f"    >> Start downloading file from s3 << {_from} >> into \n       local << {_to} >>")
+        if not os.path.exists(_to):
+            self.s3.download_file(self.bucket, _from, _to)
+            
+    # recursive download from s3
     def download_folder(self, input_path):
-        s3 = self.create_s3_session_resource() # session resource 만들어야함 
-        bucket = s3.Bucket(self.bucket)
-        base_dir = self.s3_folder.partition('/')[-1] 
-        if os.path.exists(input_path + base_dir):
-            PROC_LOGGER.process_error(f"{base_dir} already exists in the << input >> folder.")
-        for obj in bucket.objects.filter(Prefix=self.s3_folder):
-            # 아래처럼 쓰면 해당 폴더 아래에 있는 것 전부 input 폴더로 복사 (폴더든, 파일이든) 
-            # 따라서 single external path일 때 사용 가능 
-            # multi s3인 경우 input 폴더 밑에 여러 폴더들 배치될 수 있으므로 mother 폴더로 한번 감싸서 서로 구분한다             
-            target = os.path.join(input_path + base_dir, os.path.relpath(obj.key, self.s3_folder)) 
-            os.makedirs(os.path.dirname(target), exist_ok=True) # 덮어쓰기 ok
-            bucket.download_file(obj.key, target)
+        # https://saturncloud.io/blog/downloading-a-folder-from-s3-using-boto3-a-comprehensive-guide-for-data-scientists/
+        # https://qkqhxla1.tistory.com/992
+        self.s3 = self.create_s3_session() 
+        #bucket = s3.Bucket(self.bucket)
+        s3_basename = os.path.basename(os.path.normpath(self.s3_folder)) #.partition('/')[-1] 
+  
+        target = os.path.join(input_path, s3_basename)
+        if os.path.exists(target):
+            PROC_LOGGER.process_error(f"{s3_basename} already exists in the << input >> folder.")
+            
+        def download_folder_from_s3_recursively(s3_dir_path):
+            paginator = self.s3.get_paginator('list_objects_v2')
+            for dir_list in paginator.paginate(Bucket=self.bucket, Delimiter='/', Prefix=s3_dir_path):
+                if 'CommonPrefixes' in dir_list:  # 폴더가 있으면
+                    for i, each_dir in enumerate(dir_list['CommonPrefixes']):  # 폴더를 iteration한다.
+                        PROC_LOGGER.process_info('>> Start downloading s3 directory << {} >> | Progress: ( {} / {} total directories )'.format(each_dir['Prefix'], i+1, len(dir_list['CommonPrefixes'])))
+                        # 폴더들의 Prefix를 이용하여 다시 recursive하게 함수를 호출한다.
+                        download_folder_from_s3_recursively(each_dir['Prefix'])  
+            
+                if 'Contents' in dir_list:  # 폴더가 아니라 파일이 있으면
+                    for i, each_file in enumerate(dir_list['Contents']):  # 파일을 iteration한다.
+                        sub_folder, filename = each_file['Key'].split('/')[-2:]  # 내 로컬에 저장할 폴더 이름은 s3의 폴더 이름과 같게 한다. 파일 이름도 그대로.
+                        if i % 10 == 0: # 파일 10개마다 progress logging
+                            print('  >> S3 downloading file << {} >> | Progress: ( {} / {} total file )'.format(filename, i+1, len(dir_list['Contents'])))
+                        if sub_folder == s3_basename: # 가령 s3_basename이 data인데 sub_folder이름도 data이면 굳이 data/data 만들지 않고 data/ 밑에 .csv들 가져온다. 
+                            target = os.path.join(input_path, s3_basename)
+                        else: 
+                            target = os.path.join(input_path + s3_basename + '/', sub_folder)
+                        # target directory 생성 
+                        os.makedirs(target, exist_ok=True)
+                        self.download_file_from_s3(each_file['Key'], target + '/' + filename)  # .csv 파일 다운로드 
+                        
+        download_folder_from_s3_recursively(self.s3_folder)
+
 
     def upload_file(self, file_path):
         s3 = self.create_s3_session_resource() # session resource 만들어야함 
