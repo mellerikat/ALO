@@ -33,13 +33,15 @@ class S3Handler:
                 return tuple(keys)
             except: 
                 PROC_LOGGER.process_error(f'Failed to get s3 key from {s3_key_path}. The shape of contents in the S3 key file may be incorrect.')
-        else: # yaml에 s3 key path 입력 안한 경우는 한 번 시스템 환경변수에 사용자가 key export 해둔게 있는지 확인 후 있으면 반환 없으면 에러  
+        else: # yaml에 s3 key path 입력 안한 경우는 한 번 시스템 환경변수에 사용자가 key export 해둔게 있는지 확인 후 있으면 반환 없으면 경고   
             access_key, secret_key = os.getenv("AWS_ACCESS_KEY_ID"), os.getenv("AWS_SECRET_ACCESS_KEY")
             if (access_key != None) and (secret_key != None):
+                PROC_LOGGER.process_info('Successfully got << AWS_ACCESS_KEY_ID >> or << AWS_SECRET_ACCESS_KEY >> from os environmental variables.', color='green')
                 return access_key, secret_key 
-            else: # 둘 중 하나라도 None 이거나 둘 다 None 이면 에러 
-                PROC_LOGGER.process_error('<< AWS_ACCESS_KEY_ID >> or << AWS_SECRET_ACCESS_KEY >> is not defined on your system environment.')  
-
+            else: # 둘 중 하나라도 None 이거나 둘 다 None 이면 warning (key 필요 없는 SA 방식일 수 있으므로?)
+                PROC_LOGGER.process_warning('<< AWS_ACCESS_KEY_ID >> or << AWS_SECRET_ACCESS_KEY >> is not defined on your system environment.')  
+                return access_key, secret_key 
+                
     def parse_s3_url(self, uri):
         parts = urlparse(uri)
         bucket = parts.netloc
@@ -54,7 +56,7 @@ class S3Handler:
                 return session.client('s3', endpoint_url='https://storage.googleapis.com',config=Config(signature_version='s3v4'))
             else:
                 if (not self.access_key or self.access_key == 'None' or self.access_key == 'none'):
-#                    self.logger.info('not existed access key')
+                    PROC_LOGGER.process_warning('Init boto3 client without access key.') 
                     return boto3.client('s3')
                 else:
                     session = boto3.session.Session()
