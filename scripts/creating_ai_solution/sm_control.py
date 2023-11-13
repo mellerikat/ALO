@@ -236,6 +236,19 @@ class SMC:
                 shutil.rmtree(contents_path)  # 폴더 제거
             repo = git.Repo.clone_from(url, "./contents")
 
+    def copy_alo(self):
+        alo_src = ['../../main.py', '../../src/', '../../config/', '../../assets/']
+
+        dst = './'
+
+        for item in alo_src:
+            src_path = os.path.relpath(item)
+            print(src_path)
+            if os.path.isfile(src_path):
+                shutil.copy2(src_path, dst)
+            elif os.path.isdir(src_path):
+                shutil.copytree(src_path, dst)
+        
     def _check_parammeter(self, param):
         if self._check_str(param):
             return param
@@ -251,6 +264,8 @@ if __name__ == "__main__":
     ecr = "ecr-repo-an2-cism-dev-aic"
 
     sm = SMC(s3_bucket, ecr)
+
+    sm.copy_alo()
 
     sm.set_yaml()
     sm.set_sm_description("solution meta test ingda", "테스트중이다", "s3://하하하", "s3://호호호", "params", "alo", "s3://icon")
