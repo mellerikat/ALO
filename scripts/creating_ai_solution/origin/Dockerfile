@@ -20,13 +20,13 @@ ENV LC_ALL=C.UTF-8
 ENV PYTHONUNBUFFERED=TRUE
 ENV PYTHONDONTWRITEBYTECODE=TRUE
 ENV SOLUTION_PIPELINE_MODE='train'
-ENV PATH="/opt/program:${PATH}"
+ENV PATH="/framework:${PATH}"
 
 # Set up the program in the image
-COPY /alo /opt/program
+COPY /alo /framework
 
 # Create necessary directories
 # RUN mkdir -p /opt/ml/input/data/inference /opt/ml/output
 
-WORKDIR /opt/program
+WORKDIR /framework
 CMD ["python", "main.py"]
