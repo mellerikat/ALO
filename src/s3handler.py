@@ -6,6 +6,7 @@ from botocore.handlers import set_list_objects_encoding_type_url
 from src.constants import *
 from boto3.s3.transfer import S3Transfer
 from urllib.parse import urlparse
+import csv 
 from alolib import logger 
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
@@ -25,12 +26,21 @@ class S3Handler:
         
     def init_s3_key(self, s3_key_path): 
         if s3_key_path != None: 
+            _, ext = os.path.splitext(s3_key_path)
+            if ext != '.csv': 
+                PROC_LOGGER.process_error(f"AWS key file extension must be << csv >>. \n You entered: << {s3_key_path} >>")
             try: 
-                keys = [] 
-                with open (s3_key_path, 'r') as f: 
-                    for key in f:
-                        keys.append(key.strip())
-                return tuple(keys)
+                with open(s3_key_path, newline='') as csvfile: 
+                    csv_reader = csv.reader(csvfile, delimiter=',')
+                    reader_list = [] 
+                    for row in csv_reader: 
+                        reader_list.append(row) 
+                        if len(row) != 2: # 컬럼 수 2가 아니면 에러 
+                            PROC_LOGGER.process_error(f"AWS key file must have regular format \n - first row: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY \n - second row: << access key value >>, << secret access key value >>")
+                    if len(reader_list) != 2: # 행 수 2가 아니면 에러 
+                        PROC_LOGGER.process_error(f"AWS key file must have regular format \n - first row: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY \n - second row: << access key value >>, << secret access key value >>")
+                PROC_LOGGER.process_info(f"Successfully read AWS key file from << {s3_key_path} >>", color='green')
+                return tuple((reader_list[1][0].strip(), reader_list[1][1].strip()))
             except: 
                 PROC_LOGGER.process_error(f'Failed to get s3 key from {s3_key_path}. The shape of contents in the S3 key file may be incorrect.')
         else: # yaml에 s3 key path 입력 안한 경우는 한 번 시스템 환경변수에 사용자가 key export 해둔게 있는지 확인 후 있으면 반환 없으면 경고   
