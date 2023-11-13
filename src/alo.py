@@ -77,11 +77,14 @@ class ALO:
         # FIXME setup process logger - 최소한 logging은 artifacts 폴더들이 setup 되고 나서부터 가능하다. (프로세스 죽더라도 .train (or inf) artifacts/log 경로에 저장하고 죽어야하니까)
         # envs (메타정보) 모르는 상태의, 큼직한 단위의 로깅은 process logging (인자 X)
         self.set_proc_logger()
+        
         self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
         self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
         for pipeline in self.asset_source:
             if pipeline not in ['train_pipeline', 'inference_pipeline']:
                 self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
+            
+            # alo mode (운영 시에는 SOLUTION_PIPELINE_MODE와 동일)에 따른 pipeline run 분기 
             if self.alo_mode == "train":
                 if "inf" in pipeline:
                     continue
@@ -92,12 +95,32 @@ class ALO:
                 pass
             else:
                 self.proc_logger.process_error("f{self.alo_mode} is not supported mode.")
+            
+            pipeline_prefix = pipeline.split('_')[0] # ex. train_pipeline --> train 
+            # solution meta가 존재 (운영 모드) 하는데 save artifacts 경로 미입력 시 에러 
+            if (self.sol_meta is not None) and (self.external_path[f"save_{pipeline_prefix}_artifacts_path"] is None):  
+                self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
+                
             self.external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
             self.run_import(pipeline)
 
             if self.control['backup_artifacts'] == True:
                 backup_artifacts(pipeline, self.exp_plan_file)
             
+            # solution meta가 존재 (운영 모드) 할 때는 압축 전에 .*_artifacts/output/<step> 들 중 마지막 step sub-folder만 남기고 나머진 삭제 
+            if self.sol_meta is not None:
+                output_path = PROJECT_HOME + f".{pipeline_prefix}_artifacts/output/"    
+                output_subdirs = os.listdir(output_path)
+                last_output = None 
+                for step in [item['step'] for item in self.asset_source[pipeline]]: 
+                    if step in output_subdirs: 
+                        last_output = step 
+                for subdir in output_subdirs: 
+                    if subdir != last_output: # last output이 아니면 삭제 
+                        shutil.rmtree(output_path + subdir, ignore_errors=True)
+                        self.proc_logger.process_info(f"Removed output sub-directory without last one: \n << {output_path + subdir} >>")
+            
+            # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)      
             external_save_artifacts(self.proc_start_time, pipeline, self.external_path, self.external_path_permission)
 
         self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
