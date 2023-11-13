@@ -5,7 +5,6 @@ import re
 import shutil
 from datetime import datetime
 import git
-import yaml
 
 from src.constants import *
 from alolib import logger 
@@ -16,19 +15,7 @@ PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
 
 #--------------------------------------------------------------------------------------------------------------------------
 
-def get_yaml(_yaml_file):
-    exp_plan = dict()
-
-    try:
-        with open(_yaml_file, encoding='UTF-8') as f:
-            exp_plan = yaml.load(f, Loader=yaml.FullLoader)
-    except FileNotFoundError:
-        PROC_LOGGER.process_error(f"Not Found : {_yaml_file}")
-    except:
-        PROC_LOGGER.process_error(f"Check yaml format : {_yaml_file}")
-
-    return exp_plan
-
+        
 def set_artifacts():
     def create_folders(dictionary, parent_path=''):
         for key, value in dictionary.items():
@@ -48,21 +35,6 @@ def set_artifacts():
     
     return artifacts_structure
 
-def compare_yaml_dicts(dict1, dict2):
-    # 두 딕셔너리의 키를 비교
-    keys1 = set(dict1.keys())
-    keys2 = set(dict2.keys())
-    if keys1 != keys2:
-        return False
-
-    # 모든 키에 대해 재귀적으로 하위 딕셔너리 비교
-    for key in keys1:
-        if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
-            if not compare_yaml_dicts(dict1[key], dict2[key]):
-                return False
-        elif dict1[key] != dict2[key]:
-            return False
-    return True
 
 # FIXME pipeline name 추가 시 추가 고려 필요 
 def match_steps(user_parameters, asset_source):

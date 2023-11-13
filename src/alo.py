@@ -24,7 +24,8 @@ except:
     raise NotImplementedError('Failed to install << alolib >>')
 #######################################################################################
 from src.install import *
-from src.utils import set_artifacts, get_yaml, setup_asset, match_steps, import_asset, release, backup_artifacts, remove_log_files
+from src.utils import set_artifacts, setup_asset, match_steps, import_asset, release, backup_artifacts, remove_log_files
+from src.compare_yamls import get_yaml, compare_yaml
 from src.external import external_load_data, external_save_artifacts
 from alolib import logger  
 
@@ -106,22 +107,8 @@ class ALO:
         
     def read_yaml(self):
         self.exp_plan = get_yaml(self.exp_plan_file)
-        compare_yaml = get_yaml(PROJECT_HOME + "config/compare.yaml")
-
-        def compare_dict_keys(dict1, dict2): # inner func.
-            keys1 = set(key for d in dict1 for key in d.keys())
-            keys2 = set(key for d in dict2 for key in d.keys())
-
-            keys_only_in_dict2 = keys2 - keys1
-
-            if keys_only_in_dict2 == {'train_pipeline'} or keys_only_in_dict2 == {'inference_pipeline'}:
-                pass
-            elif keys_only_in_dict2:
-                self.proc_logger.process_error(f"Missing keys in experimental_plan.yaml: {keys_only_in_dict2}")
-
-        for key in self.exp_plan:
-            compare_dict_keys(self.exp_plan[key], compare_yaml[key])
-
+        self.exp_plan = compare_yaml(self.exp_plan)
+        exit() 
         # solution metadata yaml --> exp plan yaml overwrite 
         if self.sol_meta is not None:
             self._update_yaml() 

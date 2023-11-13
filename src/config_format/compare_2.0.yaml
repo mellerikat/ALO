@@ -4,7 +4,7 @@ external_path:
     - load_inference_data_path:
     - save_train_artifacts_path:
     - save_inference_artifacts_path:
- 
+    
 external_path_permission:
     - s3_private_key_file:
 
