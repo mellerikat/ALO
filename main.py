@@ -15,10 +15,13 @@ if __name__ == "__main__":
     parser.add_argument("--mode", type=str, default="all", help="ALO mode, train, inf, inference, all")
     
     args = parser.parse_args()
-    
+
     try:
         if args.config != None: 
-            alo = ALO(exp_plan_file = args.config, sol_meta_str = args.system, alo_mode = args.mode)  # exp plan path
+            if args.config == "": # FIXME 임시 (AIC에서도 임시)
+                alo = ALO(sol_meta_str = args.system, alo_mode = args.mode)
+            else: 
+                alo = ALO(exp_plan_file = args.config, sol_meta_str = args.system, alo_mode = args.mode)  # exp plan path
         else: 
             alo = ALO(sol_meta_str = args.system, alo_mode = args.mode)
     except:
