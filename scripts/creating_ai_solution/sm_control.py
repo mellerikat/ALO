@@ -86,11 +86,11 @@ class SMC:
 
     def set_container_uri(self, type):
         if type == 'train':
-            data = {'container_uri': self.ecr + "/train/" + self.name}
+            data = {'container_uri': self.ecr + "train/" + self.name}
             self.sm_yaml['pipeline'][0].update(data)
             print(f"container uri is {data['container_uri']}")
         elif type == 'inf' or type == 'inference':
-            data = {'container_uri': self.ecr + "/inference/" + self.name}
+            data = {'container_uri': self.ecr + "inference/" + self.name}
             self.sm_yaml['pipeline'][1].update(data)
             print(f"container uri is {data['container_uri']}")
         self.save_yaml()
