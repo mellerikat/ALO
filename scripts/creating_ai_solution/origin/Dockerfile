@@ -19,6 +19,7 @@ ENV LC_ALL=C.UTF-8
 # Set some environment variables
 ENV PYTHONUNBUFFERED=TRUE
 ENV PYTHONDONTWRITEBYTECODE=TRUE
+ENV SOLUTION_PIPELINE_MODE='train'
 ENV PATH="/opt/program:${PATH}"
 
 # Set up the program in the image
