@@ -46,8 +46,6 @@ class SMC:
 
     def read_yaml(self, yaml_file_path):
         try:
-            print(yaml_file_path)
-
         # YAML 파일을 읽어옵니다.
             with open(yaml_file_path, 'r') as yaml_file:
                 data = yaml.safe_load(yaml_file)
@@ -84,14 +82,17 @@ class SMC:
     def set_wrangler(self):
         self.sm_yaml['wrangler_code_uri'] = ''
         self.sm_yaml['wrangler_dataset_uri'] = ''
+        self.save_yaml()
 
     def set_container_uri(self, type):
         if type == 'train':
             data = {'container_uri': self.ecr + "/train/" + self.name}
             self.sm_yaml['pipeline'][0].update(data)
-        if type == 'inf' or 'inference':
+            print(f"container uri is {data['container_uri']}")
+        elif type == 'inf' or type == 'inference':
             data = {'container_uri': self.ecr + "/inference/" + self.name}
             self.sm_yaml['pipeline'][1].update(data)
+            print(f"container uri is {data['container_uri']}")
         self.save_yaml()
 
     #s3://s3-an2-cism-dev-aic/artifacts/bolt_fastening_table_classification/train/artifacts/2023/11/06/162000/
@@ -102,6 +103,7 @@ class SMC:
         if pipeline == 'inf' or 'inference':
             self.sm_yaml['pipeline'][1].update(data)
         self.save_yaml()
+        print(f"{data['artifact_uri']} were stored")
 
     def set_train_dataset_uri(self, uri):
         pass
@@ -109,7 +111,8 @@ class SMC:
     def set_train_artifact_uri(self, uri):
         pass
 
-    def set_cadidate_param(self, pipeline, yaml_path):
+    def set_cadidate_param(self, pipeline):
+        yaml_path = "../../config/experimental_plan.yaml"
         self.read_yaml(yaml_path)
 
         def rename_key(d, old_key, new_key):
@@ -139,6 +142,8 @@ class SMC:
         elif "inference" in pipeline:
             self.sm_yaml['pipeline'][1]['parameters'].update(subkeys)
 
+        print("candidate_parameters were stored")
+        
         self.save_yaml()
 
     def set_resource(self, pipeline, resource = 'standard'):
@@ -147,11 +152,21 @@ class SMC:
         elif "inference" in pipeline:
             self.sm_yaml['pipeline'][1]["resource"] = {"default": resource}
 
+        print(f"cloud resource was {resource}")
         self.save_yaml()
 
-    def s3_access_check(self, a, s):
-        ACCESS_KEY = a
-        SECRET_KEY = s
+    def s3_access_check(self):
+        
+        f = open("/nas001/users/ruci.sung/aws.key", "r")
+        keys = []
+        values = []
+        for line in f:
+            key = line.split(":")[0]
+            value = line.split(":")[1].rstrip()
+            keys.append(key)
+            values.append(value)
+        ACCESS_KEY = values[0]
+        SECRET_KEY = values[1]
 
         self.s3 = boto3.client('s3',
                             aws_access_key_id=ACCESS_KEY,
@@ -164,7 +179,8 @@ class SMC:
             print("S3 접근 실패")
             print(e)
 
-    def s3_upload(self, pipeline, local_folder = './input/train/'):
+    # def s3_upload(self, pipeline, local_folder = './input/train/'):
+    def s3_upload(self, pipeline):
 
         def s3_process(s3, bucket_name, data_path, local_folder, s3_path):
             objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
@@ -182,10 +198,10 @@ class SMC:
             print("S3 upload 완료")
 
         if "train" in pipeline:
+            local_folder = '../../input/train/'
             for root, dirs, files in os.walk(local_folder):
                 for file in files:
                     data_path = os.path.join(root, file)
-                    print(data_path)
 
             s3_path = f'/solution/{self.name}/train/data'
             s3_process(self.s3, self.bucket_name, data_path, local_folder, s3_path)
@@ -195,6 +211,7 @@ class SMC:
             self.save_yaml()
             
         elif "inf" in pipeline:
+            local_folder = '../../input/inference/'
             for root, dirs, files in os.walk(local_folder):
                 for file in files:
                     data_path = os.path.join(root, file)
@@ -238,7 +255,7 @@ if __name__ == "__main__":
     sm.set_yaml()
     sm.set_sm_description("solution meta test ingda", "테스트중이다", "s3://하하하", "s3://호호호", "params", "alo", "s3://icon")
 
-    sm.s3_access_check("AKIARIJ2NII5BW3NVBEE", "ULrGWkG5AAPXqewb2fj7x2r4tsxaezdbTFpdqkIE")
+    sm.s3_access_check()
     
     pipeline = 'train'
     sm.s3_upload(pipeline, "./contents/alo/input/train/")
