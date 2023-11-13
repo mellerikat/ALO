@@ -25,6 +25,7 @@ def get_yaml(_yaml_file):
 
     return yaml_dict 
 
+
 # plan yaml과 모든 compared yaml 들 각각을 대조 해보면서 어떤게 버전 일치하는 지 찾아낸다.
 def _compare_dict_keys(dict1, dict2): # inner func. of compare_yaml func.
     # 상위 key의 하위 key들 (ex. external_path가 상위 key면, [load_train_data_path, load_inference_data_path ..] 등이 하위 키)
@@ -104,9 +105,13 @@ def compare_yaml(exp_plan):
         
         if same_compare_ver != None: # 현재 버전과 다음 버전 사이의 포함관계 일때 
             PROC_LOGGER.process_info(f"None of << compare yaml >> version is matched. \n \
-                However, The version of << experimental_plan.yaml >> is recognized as same as compare yaml version << {same_compare_ver} >> ")
+However, The version of << experimental_plan.yaml >> is recognized as same as compare yaml version << {same_compare_ver} >> ")
         else: # 포함관계도 아닐때 
-            PROC_LOGGER.process_error(f"You entered wrong format of << experimental_plan.yaml >>. \n There are no << compare yaml >> with same format.")
+            PROC_LOGGER.process_error(f"\n You entered wrong format of << experimental_plan.yaml >>. \n \
+There are no << compare yaml >> with same format. \n \
+Please edit your << experimental_plan.yaml >> by reffering to latest version of << compare yaml >> \n \
+=============================================================================================================== \n \
+{get_yaml(compare_yaml_paths[-1])} ")
     
     # latest compare yaml 형태까지 upgrade exp plan 
     # 가령, compare yaml version 2.0, 2.1, 2.2 가 존재하는데 그중 plan yaml이 2.1과 버전이 같다면, compare yaml의 latest인 2.2까지 순차적으로 plan yaml을 version up 한다 
@@ -116,6 +121,7 @@ def compare_yaml(exp_plan):
     if ver_diff != 0:
         for i in range(int(ver_diff // 0.1)): 
             exp_plan = YAML_UPGRADE_FUNC[cur_ver](exp_plan) # exp plan yaml을 compare yaml 기준 + 0.1 ver upgrade  
+            PROC_LOGGER.process_info(f"Success versioning up experimental_plan.yaml : {cur_ver} --> {str(float(cur_ver) + 0.1)} (version ref. : compare yaml version)", color='green')
             cur_ver = str(float(cur_ver) + 0.1) # cur_ver += 0.1 
 
     return exp_plan 

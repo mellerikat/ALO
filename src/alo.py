@@ -108,7 +108,7 @@ class ALO:
     def read_yaml(self):
         self.exp_plan = get_yaml(self.exp_plan_file)
         self.exp_plan = compare_yaml(self.exp_plan)
-        exit() 
+
         # solution metadata yaml --> exp plan yaml overwrite 
         if self.sol_meta is not None:
             self._update_yaml() 
