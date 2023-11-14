@@ -86,7 +86,7 @@ class S3Handler:
             PROC_LOGGER.process_error("S3 CONNECTION ERROR %s" % e)
     
     def download_file_from_s3(self, _from, _to):
-        PROC_LOGGER.process_info(f"    >> Start downloading file from s3 << {_from} >> into \n       local << {_to} >>")
+        PROC_LOGGER.process_info(f">>>>>> Start downloading file from s3 << {_from} >> into \n local << {_to} >>")
         if not os.path.exists(_to):
             self.s3.download_file(self.bucket, _from, _to)
             
@@ -115,7 +115,7 @@ class S3Handler:
                     for i, each_file in enumerate(dir_list['Contents']):  # 파일을 iteration한다.
                         sub_folder, filename = each_file['Key'].split('/')[-2:]  # 내 로컬에 저장할 폴더 이름은 s3의 폴더 이름과 같게 한다. 파일 이름도 그대로.
                         if i % 10 == 0: # 파일 10개마다 progress logging
-                            print('  >> S3 downloading file << {} >> | Progress: ( {} / {} total file )'.format(filename, i+1, len(dir_list['Contents'])))
+                            PROC_LOGGER.process_info('>>>> S3 downloading file << {} >> | Progress: ( {} / {} total file )'.format(filename, i+1, len(dir_list['Contents'])))
                         if sub_folder == s3_basename: # 가령 s3_basename이 data인데 sub_folder이름도 data이면 굳이 data/data 만들지 않고 data/ 밑에 .csv들 가져온다. 
                             target = os.path.join(input_path, s3_basename)
                         else: 
