@@ -264,17 +264,19 @@ def release(_path):
     except:
         PROC_LOGGER.process_error("An issue occurred while releasing the memory of module")
 
-def remove_log_files(artifacts): 
-    if '.train_artifacts' in artifacts: 
-        log_path = artifacts['.train_artifacts'] + 'log'
-        if os.path.exists(log_path):
-            shutil.rmtree(log_path, ignore_errors=True)
-    if '.inference_artifacts' in artifacts:
-        log_path = artifacts['.inference_artifacts'] + 'log'
-        if os.path.exists(log_path):
-            shutil.rmtree(log_path, ignore_errors=True)
 
 ### LEGACY
+
+## alo.py의 empty_artifacts로 대체함 
+# def remove_log_files(artifacts): 
+#     if '.train_artifacts' in artifacts: 
+#         log_path = artifacts['.train_artifacts'] + 'log'
+#         if os.path.exists(log_path):
+#             shutil.rmtree(log_path, ignore_errors=True)
+#     if '.inference_artifacts' in artifacts:
+#         log_path = artifacts['.inference_artifacts'] + 'log'
+#         if os.path.exists(log_path):
+#             shutil.rmtree(log_path, ignore_errors=True)
 
 # # TODO logger 코드 정리하기
 # class Logger:

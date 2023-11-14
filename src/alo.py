@@ -24,7 +24,7 @@ except:
     raise NotImplementedError('Failed to install << alolib >>')
 #######################################################################################
 from src.install import *
-from src.utils import set_artifacts, setup_asset, match_steps, import_asset, release, backup_artifacts, remove_log_files
+from src.utils import set_artifacts, setup_asset, match_steps, import_asset, release, backup_artifacts
 from src.compare_yamls import get_yaml, compare_yaml
 from src.external import external_load_data, external_save_artifacts
 from alolib import logger  
@@ -67,41 +67,58 @@ class ALO:
         external_load_data(pipeline, external_path, external_path_permission, control)
 
     def set_proc_logger(self):
+        # 새 runs 시작 시 기존 log 폴더 삭제 
+        train_log_path = PROJECT_HOME + ".train_artifacts/log/"
+        inference_log_path = PROJECT_HOME + ".inference_artifacts/log/"
+        try: 
+            if os.path.exists(train_log_path):
+                shutil.rmtree(train_log_path, ignore_errors=True)
+            if os.path.exists(inference_log_path):
+                shutil.rmtree(inference_log_path, ignore_errors=True)
+        except: 
+            raise NotImplementedError("Failed to empty log directory.")
+        # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
         self.proc_logger = logger.ProcessLogger(PROJECT_HOME) 
     
     def runs(self):
-        self.preset()
-        # 이전 .log 파일 제거 (안그러면 이번 run 시 로그가 파일에 누적됨)
-        remove_log_files(self.artifacts)
-        
-        # FIXME setup process logger - 최소한 logging은 artifacts 폴더들이 setup 되고 나서부터 가능하다. (프로세스 죽더라도 .train (or inf) artifacts/log 경로에 저장하고 죽어야하니까)
-        # envs (메타정보) 모르는 상태의, 큼직한 단위의 로깅은 process logging (인자 X)
+        # preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
+        # 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
         self.set_proc_logger()
-        
-        self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
         self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
+        self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
+        self.proc_logger.process_info("==================== Start ALO preset ==================== ")
+        self.preset()
+        self.proc_logger.process_info("==================== Finish ALO preset ==================== ")
+        
         for pipeline in self.asset_source:
-            if pipeline not in ['train_pipeline', 'inference_pipeline']:
-                self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
-            
             # alo mode (운영 시에는 SOLUTION_PIPELINE_MODE와 동일)에 따른 pipeline run 분기 
-            if self.alo_mode == "train":
-                if "inf" in pipeline:
+            if self.alo_mode == 'train':
+                if 'inf' in pipeline:
                     continue
             elif self.alo_mode == 'inf' or self.alo_mode == 'inference':
-                if "train" in pipeline:
+                if 'train' in pipeline:
                     continue
             elif self.alo_mode == 'all':
                 pass
             else:
-                self.proc_logger.process_error("f{self.alo_mode} is not supported mode.")
-            
+                raise ValueError("f{self.alo_mode} is not supported mode.")
+             
+            # TODO 추후 멀티 파이프라인 시에는 아래 코드 수정 필요 (ex. train0, train1..)
             pipeline_prefix = pipeline.split('_')[0] # ex. train_pipeline --> train 
-            # solution meta가 존재 (운영 모드) 하는데 save artifacts 경로 미입력 시 에러 
+            # 현재 파이프라인에 대응되는 artifacts 폴더 비우기 
+            # [주의] 단 .~_artifacts/log 폴더는 지우지 않기!  
+            self.empty_artifacts(pipeline_prefix)
+            
+                    
+            if pipeline not in ['train_pipeline', 'inference_pipeline']:
+                self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
+            
+            # solution meta가 존재 할 때 (운영 모드), save artifacts 경로 미입력 시 에러
             if (self.sol_meta is not None) and (self.external_path[f"save_{pipeline_prefix}_artifacts_path"] is None):  
                 self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
-                
+            # 외부 데이터 가져오기 
             self.external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
+            # 각 asset import 및 실행 
             self.run_import(pipeline)
 
             if self.control['backup_artifacts'] == True:
@@ -123,11 +140,29 @@ class ALO:
             # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)      
             external_save_artifacts(self.proc_start_time, pipeline, self.external_path, self.external_path_permission)
 
-        self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
+            self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
         
         
-        
+    
+    def empty_artifacts(self, pipe_prefix): 
+        '''
+        - pipe_prefix: 'train', 'inference'
+        - 주의: log 폴더는 지우지 않기 
+        '''
+        dir_artifacts = PROJECT_HOME + f".{pipe_prefix}_artifacts/"
+        try: 
+            for subdir in os.listdir(dir_artifacts): 
+                if subdir == 'log':
+                    continue 
+                else: 
+                    shutil.rmtree(dir_artifacts + subdir, ignore_errors=True)
+                    os.makedirs(dir_artifacts + subdir)
+                    self.proc_logger.process_info(f"Successfully emptied << {dir_artifacts + subdir} >> ")
+        except: 
+            self.proc_logger.process_error(f"Failed to empty & re-make << .{pipe_prefix}_artifacts >>")
+            
+            
     def read_yaml(self):
         self.exp_plan = get_yaml(self.exp_plan_file)
         self.exp_plan = compare_yaml(self.exp_plan)
