@@ -138,7 +138,7 @@ class ALO:
                         self.proc_logger.process_info(f"Removed output sub-directory without last one: \n << {output_path + subdir} >>")
             
             # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)      
-            external_save_artifacts(self.proc_start_time, pipeline, self.external_path, self.external_path_permission)
+            external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
 
             self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")

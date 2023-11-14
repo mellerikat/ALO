@@ -167,7 +167,7 @@ def _load_data(pipeline, ext_type, ext_path, load_s3_key_path):
     PROC_LOGGER.process_info(f'Successfully fetched external data: \n {ext_path} --> {f"{data_path}"}', color='green')
     return 
 
-def external_save_artifacts(proc_start_time, pipe_mode, external_path, external_path_permission):
+def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     """ Description
         -----------
             - 생성된 .train_artifacts, /inference_artifacts를 압축하여 (tar.gzip) 외부 경로로 전달  
@@ -225,42 +225,52 @@ def external_save_artifacts(proc_start_time, pipe_mode, external_path, external_
     PROC_LOGGER.process_info(f" Start saving generated artifacts into external path << {save_artifacts_path} >>. \n", "blue")
     ext_path = save_artifacts_path
     ext_type = _get_ext_path_type(ext_path) # absolute / s3
-    tar_path = None 
+    artifacts_tar_path = None 
+    model_tar_path = None 
     if pipe_mode == "train_pipeline":
-        tar_path = _tar_dir(proc_start_time, ".train_artifacts") 
+        artifacts_tar_path = _tar_dir(".train_artifacts") 
+        model_tar_path = _tar_dir(".train_artifacts/models") 
     elif pipe_mode == "inference_pipeline": 
-        tar_path = _tar_dir(proc_start_time, ".inference_artifacts") 
+        artifacts_tar_path = _tar_dir(".inference_artifacts") 
+        model_tar_path = _tar_dir(".inference_artifacts/models") 
                 
     if ext_type  == 'absolute':
         try: 
             os.makedirs(save_artifacts_path, exist_ok=True) 
-            shutil.copy(tar_path, save_artifacts_path)
+            shutil.copy(artifacts_tar_path, save_artifacts_path)
+            shutil.copy(model_tar_path, save_artifacts_path)
         except: 
-            PROC_LOGGER.process_error(f'Failed to copy compressed artifacts from {tar_path} to << {ext_path} >>.')
+            PROC_LOGGER.process_error(f'Failed to copy compressed artifacts from << {artifacts_tar_path} >> & << {model_tar_path} >> into << {ext_path} >>.')
         finally: 
-            os.remove(tar_path)
+            os.remove(artifacts_tar_path)
+            os.remove(model_tar_path)
     elif ext_type  == 's3':  
         # s3 key path가 yaml에 작성 돼 있으면 해당 key 읽어서 s3 접근, 작성 돼 있지 않으면 사용자 환경 aws config 체크 후 key 설정 돼 있으면 사용자 notify 후 활용, 없으면 에러 발생 
         # s3 접근권한 없으면 에러 발생 
         s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
         try: 
-            s3_uploader.upload_file(tar_path)
+            s3_uploader.upload_file(artifacts_tar_path)
+            s3_uploader.upload_file(model_tar_path)
         except:
-            PROC_LOGGER.process_error(f'Failed to upload {tar_path} onto << {ext_path} >>')
+            PROC_LOGGER.process_error(f'Failed to upload << {artifacts_tar_path} >> & << {model_tar_path} >> onto << {ext_path} >>')
         finally: 
-            os.remove(tar_path)
+            os.remove(artifacts_tar_path)
+            os.remove(model_tar_path)
     else: 
         # 미지원 external data storage type
         PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
     
-    PROC_LOGGER.process_info(f" Successfully done saving << {tar_path} >> into << {save_artifacts_path} >> \n & removing << {tar_path} >>. \n", "green")  
+    PROC_LOGGER.process_info(f" Successfully done saving << {artifacts_tar_path} >> & << {model_tar_path} >> \n onto << {save_artifacts_path} >> & removing local files.", "green")  
     
     return 
 
-def _tar_dir(proc_start_time, _path): 
+def _tar_dir(_path): 
     ## _path: .train_artifacts / .inference_artifacts     
-    _path = _path.replace('.', '_') # .inference_artifacts --> _inference_artifacts
-    _save_path = PROJECT_HOME + f'{proc_start_time}{_path}.tar.gz'
+    if 'models' in _path: 
+        _save_path = PROJECT_HOME + 'model.tar.gz'
+    else: 
+        _save_file_name = _path.strip('.') 
+        _save_path = PROJECT_HOME + f'{_save_file_name}.tar.gz' 
     
     tar = tarfile.open(_save_path, 'w:gz')
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):

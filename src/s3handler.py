@@ -132,6 +132,7 @@ class S3Handler:
         bucket = s3.Bucket(self.bucket)
         base_name = os.path.basename(os.path.normpath(file_path))
         bucket_upload_path = self.s3_folder + base_name 
+        
         try:
             with open(f'{file_path}', 'rb') as tar_file:  
                 bucket.put_object(Key=bucket_upload_path, Body=tar_file, ContentType='artifacts/gzip')
