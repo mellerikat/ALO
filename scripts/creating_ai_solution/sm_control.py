@@ -8,6 +8,8 @@ import shutil
 import datetime
 import yaml 
 from yaml import Dumper
+from botocore.exceptions import ClientError, NoCredentialsError
+
 
 # yaml = YAML()
 # yaml.preserve_quotes = True
@@ -208,8 +210,18 @@ class SMC:
             
             s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
 
-            s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
-            print("S3 upload 완료")
+            try:    
+                response = s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
+            except NoCredentialsError:
+                print("NoCredentialsError")
+            except ClientError as e:
+                print(f"ClientError{e}")
+                return False
+            
+            temp = s3_path + "/" + data_path[len(local_folder):]
+            print(f"S3 {temp} upload 완료")
+            
+            return True
 
         if "train" in pipeline:
             # local_folder = '../../input/train/'
@@ -218,11 +230,11 @@ class SMC:
                 for file in files:
                     data_path = os.path.join(root, file)
 
-            s3_path = f'/solution/{self.name}/train/data'
+            s3_path = f'solution/{self.name}/train/data'
             s3_process(self.s3, self.bucket_name, data_path, local_folder, s3_path)
             # self.sm_yaml['pipeline'].append({'dataset_uri': 'train'})
 
-            data = {'dataset_uri': ["s3://" + self.bucket_name + s3_path + "/"]}  # 값을 리스트로 감싸줍니다
+            data = {'dataset_uri': ["s3://" + self.bucket_name + "/" + s3_path + "/"]}  # 값을 리스트로 감싸줍니다
             self.sm_yaml['pipeline'][0].update(data)
             
             # data = {'dataset_uri': "s3://" + self.bucket_name + s3_path + "/"}
@@ -235,10 +247,10 @@ class SMC:
                 for file in files:
                     data_path = os.path.join(root, file)
             
-            s3_path = f'/solution/{self.name}/inference/data/'
+            s3_path = f'solution/{self.name}/inference/data'
             s3_process(self.s3, self.bucket_name, data_path, local_folder, s3_path)
             
-            data = {'dataset_uri': ["s3://" + self.bucket_name + s3_path + "/"]}  # 값을 리스트로 감싸줍니다
+            data = {'dataset_uri': ["s3://" + self.bucket_name + "/" + s3_path + "/"]}  # 값을 리스트로 감싸줍니다
             self.sm_yaml['pipeline'][1].update(data)
             
             # data = {'dataset_uri': "s3://" + self.bucket_name + s3_path + "/"}
@@ -284,7 +296,7 @@ class SMC:
 
 if __name__ == "__main__":
     s3_bucket = 'acp-kubeflow-lhs-s3'
-    ecr = "ecr-repo-an2-cism-dev-aic"
+    ecr = "acp-kubeflow-lhs-s3"
 
     new_directory = '/home/ruci.sung/0.repo/release/docker_test/contents/alo/scripts/creating_ai_solution'
 
@@ -296,7 +308,7 @@ if __name__ == "__main__":
 
 
     sm.set_yaml()
-    sm.set_sm_description("solution meta test ingda", "테스트중이다", "s3://하하하", "s3://호호호", "params", "alo", "s3://icon")
+    sm.set_sm_description("bolt blalal", "테스트중이다", "s3://하하하", "s3://호호호", "params", "alo", "s3://icon")
 
     sm.s3_access_check()
     
