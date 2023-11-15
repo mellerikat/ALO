@@ -105,6 +105,20 @@ class SMC:
         self.save_yaml()
         print(f"{data['artifact_uri']} were stored")
 
+    def set_model_uri(self, pipeline):
+        data = {'model_uri': "s3://" + self.bucket_name + "/artifact/" + self.name + "/" + pipeline + "/" + "artifacts/"}
+        if pipeline == 'train':
+            print("not support this type")
+        if pipeline == 'inf' or 'inference':
+            self.sm_yaml['pipeline'][1].update(data)
+        self.save_yaml()
+        print(f"{data['model_uri']} were stored")
+
+    def set_edge(self):
+        self.sm_yaml['edgeapp_interface'] = {'redis_server_uri': ""}
+        self.save_yaml()
+
+
     def set_train_dataset_uri(self, uri):
         pass
 
@@ -198,7 +212,8 @@ class SMC:
             print("S3 upload 완료")
 
         if "train" in pipeline:
-            local_folder = '../../input/train/'
+            # local_folder = '../../input/train/'
+            local_folder = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))+"/input/train/"
             for root, dirs, files in os.walk(local_folder):
                 for file in files:
                     data_path = os.path.join(root, file)
@@ -206,20 +221,28 @@ class SMC:
             s3_path = f'/solution/{self.name}/train/data'
             s3_process(self.s3, self.bucket_name, data_path, local_folder, s3_path)
             # self.sm_yaml['pipeline'].append({'dataset_uri': 'train'})
-            data = {'dataset_uri': "s3://" + self.bucket_name + s3_path + "/"}
+
+            data = {'dataset_uri': ["s3://" + self.bucket_name + s3_path + "/"]}  # 값을 리스트로 감싸줍니다
             self.sm_yaml['pipeline'][0].update(data)
+            
+            # data = {'dataset_uri': "s3://" + self.bucket_name + s3_path + "/"}
+            # self.sm_yaml['pipeline'][0].update(data)
             self.save_yaml()
             
         elif "inf" in pipeline:
-            local_folder = '../../input/inference/'
+            local_folder = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))+"/input/inference/"
             for root, dirs, files in os.walk(local_folder):
                 for file in files:
                     data_path = os.path.join(root, file)
             
             s3_path = f'/solution/{self.name}/inference/data/'
             s3_process(self.s3, self.bucket_name, data_path, local_folder, s3_path)
-            data = {'dataset_uri': "s3://" + self.bucket_name + s3_path + "/"}
+            
+            data = {'dataset_uri': ["s3://" + self.bucket_name + s3_path + "/"]}  # 값을 리스트로 감싸줍니다
             self.sm_yaml['pipeline'][1].update(data)
+            
+            # data = {'dataset_uri': "s3://" + self.bucket_name + s3_path + "/"}
+            # self.sm_yaml['pipeline'][1].update(data)
             self.save_yaml()
         else:
             print(f"{pipeline}은 지원하지 않는 pipeline 구조 입니다")
@@ -263,9 +286,14 @@ if __name__ == "__main__":
     s3_bucket = 'acp-kubeflow-lhs-s3'
     ecr = "ecr-repo-an2-cism-dev-aic"
 
+    new_directory = '/home/ruci.sung/0.repo/release/docker_test/contents/alo/scripts/creating_ai_solution'
+
     sm = SMC(s3_bucket, ecr)
 
-    sm.copy_alo()
+    # sm.copy_alo()
+
+    os.chdir(new_directory)
+
 
     sm.set_yaml()
     sm.set_sm_description("solution meta test ingda", "테스트중이다", "s3://하하하", "s3://호호호", "params", "alo", "s3://icon")
@@ -273,16 +301,16 @@ if __name__ == "__main__":
     sm.s3_access_check()
     
     pipeline = 'train'
-    sm.s3_upload(pipeline, "./contents/alo/input/train/")
+    sm.s3_upload(pipeline)
     sm.set_container_uri(pipeline) # uri도 그냥 입력되게 수정
-    sm.set_cadidate_param(pipeline, "./contents/alo/config/experimental_plan.yaml")
+    sm.set_cadidate_param(pipeline)
     sm.set_artifacts_uri(pipeline)
     sm.set_resource(pipeline)
     
     pipeline = 'inference'
-    sm.s3_upload(pipeline, "./contents/alo/input/train/")
+    sm.s3_upload(pipeline)
     sm.set_container_uri(pipeline)
-    sm.set_cadidate_param(pipeline, "./contents/alo/config/experimental_plan.yaml")
+    sm.set_cadidate_param(pipeline)
     sm.set_artifacts_uri(pipeline)
     sm.set_resource(pipeline)
 
