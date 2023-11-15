@@ -8,7 +8,10 @@ from alolib import logger
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
-
+# artifacts.tar.gz (혹은 model.tar.gz) 압축 파일을 외부 업로드하기 전 로컬 임시 저장 경로 
+TEMP_TAR_DIR = PROJECT_HOME + '.temp_tar_dir/'
+# 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
+TEMP_MODEL_DIR = PROJECT_HOME + '.temp_model_dir/'
 #--------------------------------------------------------------------------------------------------------------------------
 
 # FIXME pipeline name까지 추후 반영해야할지? http://clm.lge.com/issue/browse/DXADVTECH-352?attachmentSortBy=dateTime&attachmentOrder=asc
@@ -88,19 +91,6 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
     else: 
         if type(load_s3_key_path) != str: 
             PROC_LOGGER.process_error(f"You entered wrong type of << s3_private_key_file >> in your expermimental_plan.yaml: << {load_s3_key_path} >>. \n Only << str >> type is allowed.")
-        
-    ################################################################################################################
-    #  load external data 
-    def _get_ext_path_type(_ext_path: str): # inner function 
-        if 's3:/' in _ext_path: 
-            return 's3'
-        elif os.path.isabs(_ext_path) == True: # 절대경로. nas, local 둘다 가능 
-            return 'absolute'
-        elif os.path.isabs(_ext_path) == False: 
-            PROC_LOGGER.process_error(f'<< {_ext_path} >> is relative path. This is unsupported type of external load data path. Please enter the absolute path.')
-        else: 
-            PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external load data path.')
-
     
     data_path = ""
     if "train" in pipe_mode:
@@ -155,8 +145,8 @@ def _load_data(pipeline, ext_type, ext_path, load_s3_key_path):
         # 해당 s3 경로에 데이터 폴더 존재하는지 확인 후 폴더 통째로 가져오기, 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
         # s3 접근권한 없으면 에러 발생 
         # 기존에 사용자 환경 input 폴더에 외부 데이터 경로 폴더와 같은 이름의 폴더가 있으면 notify 후 덮어 씌우기 
-        s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
         try: 
+            s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
             s3_downloader.download_folder(data_path)
         except:
             PROC_LOGGER.process_error(f'Failed to download s3 data folder from << {ext_path} >>')
@@ -167,6 +157,111 @@ def _load_data(pipeline, ext_type, ext_path, load_s3_key_path):
     PROC_LOGGER.process_info(f'Successfully fetched external data: \n {ext_path} --> {f"{data_path}"}', color='green')
     return 
 
+
+def external_load_model(external_path, external_path_permission): 
+    '''
+    # external_load_model은 inference pipeline에서만 실행함 (alo.py에서)
+    # external_load_model은 path 하나만 지원 (list X --> str only)
+    # external_path에 (local이든 s3든) model.tar.gz이 있으면 해당 파일을 .train_artifacts/models/ 에 압축해제 
+    # model.tar.gz이 없으면 그냥 external_path 밑에 있는 파일(or 서브폴더)들 전부 .train_artifacts/models/ 로 copy
+    '''
+    ####################################################################################################
+    models_path = PROJECT_HOME + '.train_artifacts/models/'
+    # .train_artifacts/models 폴더 비우기
+    try: 
+        if os.path.exists(models_path) == False: 
+             os.makedirs(models_path)
+        else:    
+            shutil.rmtree(models_path, ignore_errors=True)
+            os.makedirs(models_path)
+            PROC_LOGGER.process_info(f"Successfully emptied << {models_path} >> ")
+    except: 
+        PROC_LOGGER.process_error(f"Failed to empty & re-make << {models_path} >>")
+    ####################################################################################################  
+    ext_path = external_path['load_model_path']
+    if ext_path == None or ext_path == "": 
+        PROC_LOGGER.process_info("No external << load_model_path >> written. Skip loading external model.")
+    # get s3 key 
+    try:
+        load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
+        PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n', 'green')   
+    except:
+        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' , 'blue')
+        load_s3_key_path = None
+    
+    PROC_LOGGER.process_info(f"Start load model from external path: << {ext_path} >>. \n", "blue")
+    
+    ext_type = _get_ext_path_type(ext_path) # absolute / s3
+
+    # temp model dir 생성 
+    if os.path.exists(TEMP_MODEL_DIR):
+        shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+        os.makedirs(TEMP_MODEL_DIR)
+    else: 
+        os.makedirs(TEMP_MODEL_DIR)
+        
+    if ext_type  == 'absolute':
+        try: 
+            if 'model.tar.gz' in os.listdir(ext_path):
+                shutil.copy(ext_path + 'model.tar.gz', TEMP_MODEL_DIR)  
+                tar = tarfile.open(TEMP_MODEL_DIR + 'model.tar.gz') # model.tar.gz은 models 폴더를 통째로 압축한것 
+                # FIXME [주의] 만약 models를 통째로 압축한 model.tar.gz 이 아니고 내부 구조가 다르면 이후 진행과정 에러날 것임 
+                #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 압축해지 필요  
+                tar.extractall(TEMP_MODEL_DIR) 
+                tar.close() 
+                models_exist_flag = False
+                for _path in os.walk(TEMP_MODEL_DIR): #_path ex.: ('/home/alo/~~/models', ['train', 'preprocess'], [])
+                    if _path[0].endswith('models'):
+                        for i in os.listdir(_path[0]):
+                            shutil.move(_path[0] + '/' + i, models_path + i) 
+                        models_exist_flag = True
+                        break
+                if models_exist_flag == False: 
+                    PROC_LOGGER.process_error(f'No << models >> directory exists in the model.tar.gz extracted path << {TEMP_MODEL_DIR} >>') 
+            else: 
+                base_norm_path = os.path.basename(os.path.normpath(ext_path)) + '/' # ex. 'aa/bb/' --> bb/
+                os.makedirs(TEMP_MODEL_DIR + base_norm_path)
+                shutil.copytree(ext_path, TEMP_MODEL_DIR + base_norm_path, dirs_exist_ok=True)
+                for i in os.listdir(TEMP_MODEL_DIR + base_norm_path):
+                    shutil.move(TEMP_MODEL_DIR + base_norm_path + i, models_path + i) 
+                PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
+        except:
+            PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
+        finally:
+            # TEMP_MODEL_DIR는 삭제 
+            shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+            
+    elif ext_type  == 's3':
+        try: 
+            s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
+            model_existence = s3_downloader.download_model(TEMP_MODEL_DIR) # 해당 s3 경로에 model.tar.gz 미존재 시 False, 존재 시 다운로드 후 True 반환
+            if model_existence: # TEMP_MODEL_DIR로 model.tar.gz 이 다운로드 된 상태 
+                tar = tarfile.open(TEMP_MODEL_DIR + 'model.tar.gz')
+                #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 옮기기 필요  
+                tar.extractall(TEMP_MODEL_DIR)
+                tar.close()
+                models_exist_flag = False
+                for _path in os.walk(TEMP_MODEL_DIR): #_path ex.: ('/home/alo/~~/models', ['train', 'preprocess'], [])
+                    if _path[0].endswith('models'):
+                        for i in os.listdir(_path[0]):
+                            shutil.move(_path[0] + '/' + i, models_path + i) 
+                        models_exist_flag = True
+                        break
+                if models_exist_flag == False: 
+                    PROC_LOGGER.process_error(f'No << models >> directory exists in the model.tar.gz extracted path << {TEMP_MODEL_DIR} >>') 
+                PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
+            else:
+                PROC_LOGGER.process_warning(f"No << model.tar.gz >> exists in the path << ext_path >>. \n Instead, try to download the all of << ext_path >> ")
+                s3_downloader.download_folder(models_path)  
+        except:
+            PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
+        finally:
+            # TEMP_MODEL_DIR는 삭제 
+            shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+    else: 
+        # 미지원 external model storage type
+        PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external model path.') 
+        
 def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     """ Description
         -----------
@@ -211,16 +306,6 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
         load_s3_key_path = None
 
     # external path가 존재하는 경우 
-    def _get_ext_path_type(_ext_path: str): # inner function 
-        if 's3:/' in _ext_path: 
-            return 's3'
-        elif os.path.isabs(_ext_path) == True: # 절대경로. nas, local 둘다 가능 
-            return 'absolute'
-        elif os.path.isabs(_ext_path) == False: # file이름으로 쓰면 에러날 것임 
-            PROC_LOGGER.process_error(f'<< {_ext_path} >> is relative path. This is unsupported type of external save artifacts path. Please enter the absolute path.')
-        else: 
-            PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path.')
-
     # save artifacts 
     PROC_LOGGER.process_info(f" Start saving generated artifacts into external path << {save_artifacts_path} >>. \n", "blue")
     ext_path = save_artifacts_path
@@ -244,18 +329,24 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
         finally: 
             os.remove(artifacts_tar_path)
             os.remove(model_tar_path)
+            # [중요] 압축 파일 업로드 끝나면 TEMP_TAR_DIR 삭제 
+            shutil.rmtree(TEMP_TAR_DIR, ignore_errors=True)
+            
     elif ext_type  == 's3':  
-        # s3 key path가 yaml에 작성 돼 있으면 해당 key 읽어서 s3 접근, 작성 돼 있지 않으면 사용자 환경 aws config 체크 후 key 설정 돼 있으면 사용자 notify 후 활용, 없으면 에러 발생 
-        # s3 접근권한 없으면 에러 발생 
-        s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
         try: 
+            # s3 key path가 yaml에 작성 돼 있으면 해당 key 읽어서 s3 접근, 작성 돼 있지 않으면 사용자 환경 aws config 체크 후 key 설정 돼 있으면 사용자 notify 후 활용, 없으면 에러 발생 
+            # s3 접근권한 없으면 에러 발생 
+            s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
             s3_uploader.upload_file(artifacts_tar_path)
+            s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
             s3_uploader.upload_file(model_tar_path)
         except:
             PROC_LOGGER.process_error(f'Failed to upload << {artifacts_tar_path} >> & << {model_tar_path} >> onto << {ext_path} >>')
         finally: 
             os.remove(artifacts_tar_path)
             os.remove(model_tar_path)
+            # [중요] 압축 파일 업로드 끝나면 TEMP_TAR_DIR 삭제 
+            shutil.rmtree(TEMP_TAR_DIR, ignore_errors=True)
     else: 
         # 미지원 external data storage type
         PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
@@ -264,13 +355,26 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     
     return 
 
+## Common Func. 
+def _get_ext_path_type(_ext_path: str): # inner function 
+    if 's3:/' in _ext_path: 
+        return 's3'
+    elif os.path.isabs(_ext_path) == True: # 절대경로. nas, local 둘다 가능 
+        return 'absolute'
+    elif os.path.isabs(_ext_path) == False: # file이름으로 쓰면 에러날 것임 
+        PROC_LOGGER.process_error(f'<< {_ext_path} >> is relative path. This is unsupported type of external save artifacts path. Please enter the absolute path.')
+    else: 
+        PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path.')
+            
 def _tar_dir(_path): 
     ## _path: .train_artifacts / .inference_artifacts     
+    os.makedirs(TEMP_TAR_DIR, exist_ok=True)
+        
     if 'models' in _path: 
-        _save_path = PROJECT_HOME + 'model.tar.gz'
+        _save_path = TEMP_TAR_DIR + 'model.tar.gz'
     else: 
         _save_file_name = _path.strip('.') 
-        _save_path = PROJECT_HOME + f'{_save_file_name}.tar.gz' 
+        _save_path = TEMP_TAR_DIR +  f'{_save_file_name}.tar.gz' 
     
     tar = tarfile.open(_save_path, 'w:gz')
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):

@@ -26,7 +26,7 @@ except:
 from src.install import *
 from src.utils import set_artifacts, setup_asset, match_steps, import_asset, release, backup_artifacts
 from src.compare_yamls import get_yaml, compare_yaml
-from src.external import external_load_data, external_save_artifacts
+from src.external import external_load_data, external_load_model, external_save_artifacts
 from alolib import logger  
 
 
@@ -50,22 +50,7 @@ class ALO:
         self.proc_logger = None
         self.proc_start_time = datetime.now().strftime("%y%m%d_%H%M%S")
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
-        
-    def preset(self):
-        if not os.path.exists(ASSET_HOME):
-            try:
-                os.makedirs(ASSET_HOME)
-            except: 
-                raise NotImplementedError(f"Failed to create directory: {ASSET_HOME}")
-        self.read_yaml() # self.exp_plan default 셋팅 완료 
-        # artifacts 세팅
-        self.artifacts = set_artifacts()
-        # step들이 잘 match 되게 yaml에 기술 돼 있는지 체크
-        match_steps(self.user_parameters, self.asset_source)
-
-    def external_load_data(self, pipeline, external_path, external_path_permission, control):
-        external_load_data(pipeline, external_path, external_path_permission, control)
-
+    
     def set_proc_logger(self):
         # 새 runs 시작 시 기존 log 폴더 삭제 
         train_log_path = PROJECT_HOME + ".train_artifacts/log/"
@@ -78,8 +63,30 @@ class ALO:
         except: 
             raise NotImplementedError("Failed to empty log directory.")
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
-        self.proc_logger = logger.ProcessLogger(PROJECT_HOME) 
+        self.proc_logger = logger.ProcessLogger(PROJECT_HOME)  
     
+
+    def preset(self):
+        if not os.path.exists(ASSET_HOME):
+            try:
+                os.makedirs(ASSET_HOME)
+            except: 
+                raise NotImplementedError(f"Failed to create directory: {ASSET_HOME}")
+        self.read_yaml() # self.exp_plan default 셋팅 완료 
+        # artifacts 세팅
+        self.artifacts = set_artifacts()
+        # step들이 잘 match 되게 yaml에 기술 돼 있는지 체크
+        match_steps(self.user_parameters, self.asset_source)
+
+
+    def external_load_data(self, pipeline, external_path, external_path_permission, control):
+        external_load_data(pipeline, external_path, external_path_permission, control)
+
+
+    def external_load_model(self, external_path, external_path_permission):
+        external_load_model(external_path, external_path_permission)
+
+
     def runs(self):
         # preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
         # 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
@@ -109,7 +116,6 @@ class ALO:
             # [주의] 단 .~_artifacts/log 폴더는 지우지 않기!  
             self.empty_artifacts(pipeline_prefix)
             
-                    
             if pipeline not in ['train_pipeline', 'inference_pipeline']:
                 self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
             
@@ -118,6 +124,12 @@ class ALO:
                 self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
             # 외부 데이터 가져오기 
             self.external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
+            
+            # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
+            # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
+            if pipeline == 'inference_pipeline':
+                self.external_load_model(self.external_path, self.external_path_permission)
+                exit() 
             # 각 asset import 및 실행 
             self.run_import(pipeline)
 
@@ -165,7 +177,7 @@ class ALO:
             
     def read_yaml(self):
         self.exp_plan = get_yaml(self.exp_plan_file)
-        self.exp_plan = compare_yaml(self.exp_plan)
+        self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드 
 
         # solution metadata yaml --> exp plan yaml overwrite 
         if self.sol_meta is not None:
@@ -201,7 +213,7 @@ class ALO:
             artifact_uri = sol_pipe['artifact_uri']
             dataset_uri = sol_pipe['dataset_uri']
             selected_params = sol_pipe['parameters']['selected_user_parameters']
-     
+
             # plan yaml에서 현재 sol meta pipe type의 index 찾기 
             cur_pipe_idx = None 
             for idx, plan_pipe in enumerate(self.exp_plan['user_parameters']):
@@ -236,6 +248,9 @@ class ALO:
                         self.exp_plan['external_path'][idx]['load_inference_data_path'] = dataset_uri 
                     if 'save_inference_artifacts_path' in ext_dict.keys():  
                         self.exp_plan['external_path'][idx]['save_inference_artifacts_path'] = artifact_uri 
+                    # inference type인 경우 model_uri를 plan yaml의 external_path의 load_model_path로 덮어쓰기
+                    if 'load_model_path' in ext_dict.keys():
+                        self.exp_plan['external_path'][idx]['load_model_path'] = sol_pipe['model_uri']
             else: 
                 self.proc_logger.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
 

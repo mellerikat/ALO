@@ -98,7 +98,7 @@ class S3Handler:
         #bucket = s3.Bucket(self.bucket)
         s3_basename = os.path.basename(os.path.normpath(self.s3_folder)) #.partition('/')[-1] 
   
-        target = os.path.join(input_path, s3_basename)
+        target = os.path.join(input_path, s3_basename) 
         if os.path.exists(target):
             PROC_LOGGER.process_error(f"{s3_basename} already exists in the << input >> folder.")
             
@@ -117,16 +117,30 @@ class S3Handler:
                         if i % 10 == 0: # 파일 10개마다 progress logging
                             PROC_LOGGER.process_info('>>>> S3 downloading file << {} >> | Progress: ( {} / {} total file )'.format(filename, i+1, len(dir_list['Contents'])))
                         if sub_folder == s3_basename: # 가령 s3_basename이 data인데 sub_folder이름도 data이면 굳이 data/data 만들지 않고 data/ 밑에 .csv들 가져온다. 
-                            target = os.path.join(input_path, s3_basename)
+                            target = os.path.join(input_path, s3_basename) + '/'
                         else: 
-                            target = os.path.join(input_path + s3_basename + '/', sub_folder)
+                            target = os.path.join(input_path + s3_basename + '/', sub_folder) + '/'
                         # target directory 생성 
                         os.makedirs(target, exist_ok=True)
-                        self.download_file_from_s3(each_file['Key'], target + '/' + filename)  # .csv 파일 다운로드 
+                        self.download_file_from_s3(each_file['Key'], target + filename)  # .csv 파일 다운로드 
                         
         download_folder_from_s3_recursively(self.s3_folder)
 
+    def download_model(self, target):
+        self.s3 = self.create_s3_session()   
+        s3_basename = os.path.basename(os.path.normpath(self.s3_folder)) 
 
+        paginator = self.s3.get_paginator('list_objects_v2')
+        exist_flag = False 
+        for dir_list in paginator.paginate(Bucket=self.bucket, Delimiter='/', Prefix=self.s3_folder):
+            if 'Contents' in dir_list:  # 폴더가 아니라 파일이 있으면
+                for i, each_file in enumerate(dir_list['Contents']):  # 파일을 iteration한다.
+                    sub_folder, filename = each_file['Key'].split('/')[-2:]
+                    if (sub_folder == s3_basename) and (filename == 'model.tar.gz'): 
+                            self.download_file_from_s3(each_file['Key'], target + filename)
+                            exist_flag = True 
+        return exist_flag
+                        
     def upload_file(self, file_path):
         s3 = self.create_s3_session_resource() # session resource 만들어야함 
         bucket = s3.Bucket(self.bucket)

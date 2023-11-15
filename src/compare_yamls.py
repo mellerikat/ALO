@@ -28,11 +28,18 @@ def get_yaml(_yaml_file):
 
 # plan yaml과 모든 compared yaml 들 각각을 대조 해보면서 어떤게 버전 일치하는 지 찾아낸다.
 def _compare_dict_keys(dict1, dict2): # inner func. of compare_yaml func.
+    # dict1: exp, dict2: compare
     # 상위 key의 하위 key들 (ex. external_path가 상위 key면, [load_train_data_path, load_inference_data_path ..] 등이 하위 키)
-    keys1 = sorted(set(key for d in dict1 for key in d.keys()))
-    keys2 = sorted(set(key for d in dict2 for key in d.keys()))
+    keys1 = set(key for d in dict1 for key in d.keys())
+    keys2 = set(key for d in dict2 for key in d.keys())
+
+    diff = keys2 - keys1
+
     if keys1 == keys2: 
         return 'same'
+    # [중요 plan yaml 에서 train 혹은 inference만 돌릴수도있으므로 이 경우는 pass]
+    if (diff == {'train_pipeline'}) or (diff == {'inference_pipeline'}):
+        return 'same' 
     return 'different'
 
 def compare_yaml(exp_plan):
