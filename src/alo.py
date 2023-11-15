@@ -128,7 +128,8 @@ class ALO:
             # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
             # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
             if pipeline == 'inference_pipeline':
-                self.external_load_model(self.external_path, self.external_path_permission)
+                if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
+                    self.external_load_model(self.external_path, self.external_path_permission)
         
             # 각 asset import 및 실행 
             self.run_import(pipeline)
@@ -267,6 +268,7 @@ class ALO:
             requirements_dict[asset_config['step']] = asset_config['source']['requirements']
         
         check_install_requirements(requirements_dict)
+
 
     def run_import(self, pipeline):
         # setup asset (asset을 git clone (or local) 및 requirements 설치)

@@ -179,8 +179,7 @@ def external_load_model(external_path, external_path_permission):
         PROC_LOGGER.process_error(f"Failed to empty & re-make << {models_path} >>")
     ####################################################################################################  
     ext_path = external_path['load_model_path']
-    if ext_path == None or ext_path == "": 
-        PROC_LOGGER.process_info("No external << load_model_path >> written. Skip loading external model.")
+
     # get s3 key 
     try:
         load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
