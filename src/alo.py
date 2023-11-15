@@ -129,7 +129,7 @@ class ALO:
             # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
             if pipeline == 'inference_pipeline':
                 self.external_load_model(self.external_path, self.external_path_permission)
-                exit() 
+        
             # 각 asset import 및 실행 
             self.run_import(pipeline)
 

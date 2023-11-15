@@ -209,14 +209,10 @@ def external_load_model(external_path, external_path_permission):
                 #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 압축해지 필요  
                 tar.extractall(TEMP_MODEL_DIR) 
                 tar.close() 
-                models_exist_flag = False
-                for _path in os.walk(TEMP_MODEL_DIR): #_path ex.: ('/home/alo/~~/models', ['train', 'preprocess'], [])
-                    if _path[0].endswith('models'):
-                        for i in os.listdir(_path[0]):
-                            shutil.move(_path[0] + '/' + i, models_path + i) 
-                        models_exist_flag = True
-                        break
-                if models_exist_flag == False: 
+                if 'models' in os.listdir(TEMP_MODEL_DIR):
+                    for i in os.listdir(TEMP_MODEL_DIR + 'models/'):
+                        shutil.move(TEMP_MODEL_DIR + 'models/' + i, models_path + i) 
+                else: 
                     PROC_LOGGER.process_error(f'No << models >> directory exists in the model.tar.gz extracted path << {TEMP_MODEL_DIR} >>') 
             else: 
                 base_norm_path = os.path.basename(os.path.normpath(ext_path)) + '/' # ex. 'aa/bb/' --> bb/
@@ -224,7 +220,7 @@ def external_load_model(external_path, external_path_permission):
                 shutil.copytree(ext_path, TEMP_MODEL_DIR + base_norm_path, dirs_exist_ok=True)
                 for i in os.listdir(TEMP_MODEL_DIR + base_norm_path):
                     shutil.move(TEMP_MODEL_DIR + base_norm_path + i, models_path + i) 
-                PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
+            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
         except:
             PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
         finally:
@@ -240,19 +236,16 @@ def external_load_model(external_path, external_path_permission):
                 #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 옮기기 필요  
                 tar.extractall(TEMP_MODEL_DIR)
                 tar.close()
-                models_exist_flag = False
-                for _path in os.walk(TEMP_MODEL_DIR): #_path ex.: ('/home/alo/~~/models', ['train', 'preprocess'], [])
-                    if _path[0].endswith('models'):
-                        for i in os.listdir(_path[0]):
-                            shutil.move(_path[0] + '/' + i, models_path + i) 
-                        models_exist_flag = True
-                        break
-                if models_exist_flag == False: 
+
+                if 'models' in os.listdir(TEMP_MODEL_DIR):
+                    for i in os.listdir(TEMP_MODEL_DIR + 'models/'):
+                        shutil.move(TEMP_MODEL_DIR + 'models/' + i, models_path + i) 
+                else: 
                     PROC_LOGGER.process_error(f'No << models >> directory exists in the model.tar.gz extracted path << {TEMP_MODEL_DIR} >>') 
-                PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
             else:
                 PROC_LOGGER.process_warning(f"No << model.tar.gz >> exists in the path << ext_path >>. \n Instead, try to download the all of << ext_path >> ")
                 s3_downloader.download_folder(models_path)  
+            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
         except:
             PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
         finally:
@@ -369,17 +362,20 @@ def _get_ext_path_type(_ext_path: str): # inner function
 def _tar_dir(_path): 
     ## _path: .train_artifacts / .inference_artifacts     
     os.makedirs(TEMP_TAR_DIR, exist_ok=True)
-        
+    last_dir = None
     if 'models' in _path: 
         _save_path = TEMP_TAR_DIR + 'model.tar.gz'
+        last_dir = 'models/'
     else: 
         _save_file_name = _path.strip('.') 
         _save_path = TEMP_TAR_DIR +  f'{_save_file_name}.tar.gz' 
-    
+        last_dir = _path # ex. .train_artifacts/
     tar = tarfile.open(_save_path, 'w:gz')
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):
+        base_dir = last_dir + root.split(last_dir)[-1] + '/' # ex. /home/~~/models/ --> models/
         for file_name in files:
-            tar.add(os.path.join(root, file_name))
+            #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
+            tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 .train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
     tar.close()
     
     return _save_path
