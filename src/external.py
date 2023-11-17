@@ -155,11 +155,6 @@ def _load_data(pipeline, ext_type, ext_path, load_s3_key_path):
     elif ext_type == 'relative': 
         try:
             base_dir = os.path.basename(os.path.normpath(ext_path))
-            # [중요] 외부 데이터를 ALO main.py와 같은 경로에 두면 에러 
-            parent_dir = ext_path.split(base_dir)[0] # base dir 바로 위 parent dir 
-            # 외부 데이터 폴더는 main.py랑 같은 경로에 두면 안된다. 물론 절대경로로도 alo/ 포함 시키는 등 뚫릴 수 있는 방법은 많지만, 사용자 가이드 목적의 에러이다. 
-            if parent_dir == '../':
-                PROC_LOGGER.process_error(f'Placing the external data in the same path as << {PROJECT_HOME} >> is not allowed.')
             rel_config_path = PROJECT_HOME + 'config/' + ext_path
             shutil.copytree(rel_config_path, input_data_dir + base_dir) 
         except: 
@@ -378,9 +373,16 @@ def _get_ext_path_type(_ext_path: str): # inner function
         return 'absolute'
     elif os.path.isabs(_ext_path) == False: # file이름으로 쓰면 에러날 것임 
         PROC_LOGGER.process_info(f'<< {_ext_path} >> may be relative path. The reference folder of relative path is << config/ >>. \n If this is not appropriate relative path, Loading external data process would raise error.')
+        # [중요] 외부 데이터를 ALO main.py와 같은 경로에 두면 에러 
+        base_dir = os.path.basename(os.path.normpath(_ext_path)) 
+        parent_dir = _ext_path.split(base_dir)[0] # base dir 바로 위 parent dir 
+        # 외부 데이터 폴더는 main.py랑 같은 경로에 두면 안된다. 물론 절대경로로도 alo/ 포함 시키는 등 뚫릴 수 있는 방법은 많지만, 사용자 가이드 목적의 에러이다. 
+        if parent_dir == '../':
+            PROC_LOGGER.process_error(f'Placing the external data in the same path as << {PROJECT_HOME} >> is not allowed.')
         return 'relative'
     else: 
         PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path. \n Do not enter the file path. (Finish the path with directory name)')
+            
             
 def _tar_dir(_path): 
     ## _path: .train_artifacts / .inference_artifacts     
