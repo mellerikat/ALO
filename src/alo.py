@@ -174,14 +174,14 @@ class ALO:
             if pipeline == 'inference_pipeline':
                 if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
                     self.external_load_model(self.external_path, self.external_path_permission)
-                    self.q_inference_summary
+                  
             # 각 asset import 및 실행 
             self.run_import(pipeline)
 
             # summary yaml를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
-            # solution meta 존재하면서 (운영 모드) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
+            # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
             # FIXME train - inference pipeline type 일땐 괜찮나? 
-            if (self.sol_meta is not None) and (self.boot_on == False) and (pipeline == 'inference_pipeline'):
+            if (self.sol_meta is not None) and (self.redis_host is not None) and (self.boot_on == False) and (pipeline == 'inference_pipeline'):
                 summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
                 if 'inference_summary.yaml' in os.listdir(summary_dir):
                     summary_str = json.dumps(get_yaml(summary_dir + 'inference_summary.yaml'))
@@ -210,8 +210,8 @@ class ALO:
             # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)      
             ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
             # save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
-            # solution meta 존재하면서 (운영 모드) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-            if (self.sol_meta is not None) and (self.boot_on == False) and (pipeline == 'inference_pipeline'):
+            # solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
+            if (self.sol_meta is not None) and (self.redis_host is not None) and (self.boot_on == False) and (pipeline == 'inference_pipeline'):
                 # 외부 경로로 잘 artifacts 복사 됐나 체크 
                 if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
                     artifacts_saved_str = json.dumps({"status": "OK"})
