@@ -32,114 +32,138 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         -----------
             - external_load_data(pipe_mode, self.external_path, self.external_path_permission, self.control['get_external_data'])
     """
-    # None일 시, 혹은 str로 입력 시 type을 list로 통일하여 내부 변수화 
-    ################################################################################################################
-    train_data_path = [] if external_path['load_train_data_path'] is None else external_path['load_train_data_path']
-    inference_data_path = [] if external_path['load_inference_data_path'] is None else external_path['load_inference_data_path']
-    # 1개여서 str인 경우도 list로 바꾸고, 여러개인 경우는 그냥 그대로 list로 
-    train_data_path = [train_data_path] if type(train_data_path) == str else train_data_path
-    inference_data_path = [inference_data_path] if type(inference_data_path) == str else inference_data_path
-    
-    # yaml 오기입 관련 체크 
-    ################################################################################################################
-    # external path가 train, inference 둘다 존재 안하고, input 폴더도 비워져 있는 경우 체크 
-    if (len(train_data_path) == 0) and (len(inference_data_path) == 0): 
-        # 이미 input 폴더는 무조건 만들어져 있는 상태임 
-        # FIXME input 폴더가 비어있으면 프로세스 종료, 뭔가 서브폴더가 있으면 사용자한테 존재하는 서브폴더 notify 후 yaml의 input_path에는 그 서브폴더들만 활용 가능하다고 notify
-        # 만약 input 폴더에 존재하지 않는 서브폴더 명을 yaml의 input_path에 작성 시 input asset에서 에러날 것임   
-        if len(os.listdir(INPUT_DATA_HOME)) == 0: # input 폴더 빈 경우 
-            PROC_LOGGER.process_error(f'External path (load_train_data_path, load_inference_data_path) in experimental_plan.yaml are not written & << input >> folder is empty.') 
-        else: 
-            PROC_LOGGER.process_info('External paths are not written. You can write only one of the << {} >> at << input_path >> parameter in your experimental_plan.yaml \n'.format(os.listdir(INPUT_DATA_HOME)), 'blue')
-        return
-    else: # load_train_data_path나 load_train_data_path 둘 중 하나라도 존재시 
-        # load_train_data_path와 load_train_data_path 내 중복 mother path (마지막 서브폴더 명) 존재 시 에러 
-        for data_path in  [train_data_path, inference_data_path]:
-            base_dir_list = [] 
-            for ext_path in data_path: 
-                base_dir = os.path.basename(os.path.normpath(ext_path)) 
-                base_dir_list.append(base_dir)
-            if len(set(base_dir_list)) != len(base_dir_list): # 중복 mother path 존재 경우 
-                PROC_LOGGER.process_error(f"You may have entered paths which have duplicated basename in the same pipeline. \n \
-                                            For example, these are not allowed: \n \
-                                            - load_train_data_path: [/users/train1/data/, /users/train2/data/] \n \
-                                            which have << data >> as duplicated basename of the path.")
-        
+    # train, inference pipeline 공통 
     # 미입력 시 every로 default 설정 
     if get_external_data is None:
         get_external_data = 'every'
-        PROC_LOGGER.process_info('You did not entered << get_external_data >> control parameter in your experimental_plan.yaml \n << every >> is automatically set as default. \n', 'blue') 
+        PROC_LOGGER.process_warning('You did not entered << get_external_data >> control parameter in your experimental_plan.yaml \n << every >> is automatically set as default. \n', 'blue') 
     # once 나 every로 입력하지 않고 이상한 값 입력 시 혹은 비워놨을 시 에러 
     if get_external_data not in ['once', 'every']:
         PROC_LOGGER.process_error(f"Check your << get_external_data >> control parameter in experimental_plan.yaml. \n You entered: {get_external_data}. Only << once >> or << every >> is allowed.")
-    ################################################################################################################
-    # 현재 pipeline에 대해서 load할 데이터 경로 가져오기 
-    # 대전제 : 중복 이름의 데이터 폴더명은 복사 허용 x 
-    load_data_path = None 
-    if pipe_mode == "train_pipeline": 
-        load_data_path = train_data_path # 0개 일수도(None), 한 개 일수도(str), 두 개 이상 일수도 있음(list) 
-    elif pipe_mode == "inference_pipeline":
-        load_data_path = inference_data_path
-    else: 
-        PROC_LOGGER.process_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
-
-    # s3 key 경로 가져오기 
+    # s3 key 경로 가져오기 시도 (없으면 환경 변수나 aws config에 설정돼 있어야 추후 s3에서 데이터 다운로드시 에러 안남)
     load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str) or None 
     if load_s3_key_path is None: 
-        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n \
-                                you have to write the s3_private_key_file path or set << AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY >> in your os environment. \n' , 'blue')
+        PROC_LOGGER.process_warning('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n \
+                                you have to write the s3_private_key_file path or set << AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY >> in your os environment. \n')
     else: 
         if type(load_s3_key_path) != str: 
             PROC_LOGGER.process_error(f"You entered wrong type of << s3_private_key_file >> in your expermimental_plan.yaml: << {load_s3_key_path} >>. \n Only << str >> type is allowed.")
+    ################################################################################################################
+    external_data_path = []  
+    external_base_dirs = []
+    input_data_dir = ""
     
-    data_path = ""
-    if "train" in pipe_mode:
-        data_path = INPUT_DATA_HOME + "train/"
-    elif "inf" in pipe_mode:
-        data_path = INPUT_DATA_HOME + "inference/"
-    if not os.path.exists(data_path):
-        os.mkdir(data_path)
+    if pipe_mode =='train_pipeline':
+        # None일 시, 혹은 str로 입력 시 type을 list로 통일하여 내부 변수화 
+        ################################################################################################################
+        external_data_path = [] if external_path['load_train_data_path'] is None else external_path['load_train_data_path']
+        # 1개여서 str인 경우도 list로 바꾸고, 여러개인 경우는 그냥 그대로 list로 
+        external_data_path = [external_data_path] if type(external_data_path) == str else external_data_path
+        ################################################################################################################
+        # external path 미기입 시 에러 
+        if len(external_data_path) == 0: 
+            # 이미 input 폴더는 무조건 만들어져 있는 상태임 
+            PROC_LOGGER.process_error(f'External path - << load_train_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
+        else: 
+            # load_train_data_path와 load_train_data_path 내 중복  base dir (마지막 서브폴더 명) 존재 시 에러 
+            external_base_dirs = _check_duplicated_basedir(external_data_path)
+        # input 폴더 내에 train sub폴더 만들기 
+        input_data_dir = INPUT_DATA_HOME + "train/"
+        if not os.path.exists(input_data_dir):
+            os.mkdir(input_data_dir)
+    elif pipe_mode == 'inference_pipeline':
+        ################################################################################################################
+        external_data_path = [] if external_path['load_inference_data_path'] is None else external_path['load_inference_data_path']
+        external_data_path = [external_data_path] if type(external_data_path) == str else external_data_path
+        ################################################################################################################
+        # eexternal path 미기입 시 에러
+        if len(external_data_path) == 0: 
+            PROC_LOGGER.process_error(f'External path - << load_inference_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
+        else: 
+            external_base_dirs = _check_duplicated_basedir(external_data_path)
+        # input 폴더 내에 inference sub폴더 만들기 
+        input_data_dir = INPUT_DATA_HOME + "inference/"
+        if not os.path.exists(input_data_dir):
+            os.mkdir(input_data_dir)
+    else: 
+        PROC_LOGGER.process_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
+    ################################################################################################################
+    # external base 폴더 이름들과 현재 input 폴더 내 구성의 일치여부 확인 후 once, every에 따른 동작 분기 
+    if get_external_data == 'once':
+        if external_base_dirs == os.listdir(INPUT_DATA_HOME): # 외부 경로와 input 폴더 내 구성이 완전히 동등하면 데이터 새로 가져오지 않고 return 
+            PROC_LOGGER.process_info(f"Skip loading external data. All the data in the external load data path already exist in << {INPUT_DATA_HOME} >> equally. \n : << external_base_dirs >>")
+            return # 외부 데이터 가져오지 않고 return 
+        else: 
+            get_external_data = 'every' # external과 input 폴더 내 구성이 갖지 않으면 once라도 every처럼 동작
     
-    # copy (절대경로) or download (s3) data (input 폴더로)
-    # get_external_data (once, every) 관련 처리
-    for idx, ext_path in enumerate(load_data_path): 
-        ext_type = _get_ext_path_type(ext_path)
-        base_dir = os.path.basename(os.path.normpath(ext_path)) 
-        if (base_dir in os.listdir(data_path)) and (get_external_data == 'once'): # 이미 input 폴더에 존재하고, once인 경우 
-            PROC_LOGGER.process_info(f" Skip loading external data. << {ext_path} >> \n << {base_dir} >> already exists in << {data_path} >>. \n & << get_external_data >> is set as << once >>. \n", 'blue')
-            continue 
-        elif (get_external_data == 'every'): # every인 경우 무조건 기존 거 처음에 다 지우고 다시 다운로드 
-            PROC_LOGGER.process_info(f" << {base_dir} >> already exists in << {data_path} >>. \n & << get_external_data >> is set as << every >>. \n Start re-loading external data. << {ext_path} >> : pre-existing directory is deleted ! \n", 'blue')
-            if idx ==0: 
-                shutil.rmtree(data_path, ignore_errors=True)
+    # 현재 pipe mode 에 따른 설정 완료 후 실제 데이터 가져오기 시작 
+    if get_external_data == 'every': 
+        # copy (로컬 절대경로, 상대경로) or download (s3) data (input 폴더로)
+        try: 
+            shutil.rmtree(input_data_dir, ignore_errors=True) # 새로 데이터 가져오기 전 폴더 없애기 (ex. input/train) >> 어짜피 아래서 _load_data 시 새로 폴더 만들것임 
+            PROC_LOGGER.process_info(f"Successfuly removed << {input_data_dir} >> before loading external data.")
+        except: 
+            PROC_LOGGER.process_error(f"Failed to remove << {input_data_dir} >> before loading external data.")
+        # external 데이터 가져오기 
+        for ext_path in external_data_path:
+            ext_type = _get_ext_path_type(ext_path) # absolute / relative / s3
             _load_data(pipe_mode, ext_type, ext_path, load_s3_key_path)
-        elif (base_dir not in os.listdir(data_path)) and (get_external_data == 'once'): # 특정 base folder가 input 폴더에 부재하고, once면 input을 다 비우진 않고 해당 base folder만 새로 loading 함
-            PROC_LOGGER.process_info(f" Start loading external data. << {ext_path} >>  \n << {base_dir} >> does not exist in << {data_path} >>. \n & << get_external_data >> is set as << {get_external_data} >>. \n", 'blue')
-            _load_data(pipe_mode, ext_type, ext_path, load_s3_key_path)
-     
-    return             
+            PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>", color='green') 
+        
+        return             
 
-            
+def _check_duplicated_basedir(data_path):
+    base_dir_list = [] 
+    for ext_path in data_path: 
+        base_dir = os.path.basename(os.path.normpath(ext_path)) 
+        base_dir_list.append(base_dir)
+    if len(set(base_dir_list)) != len(base_dir_list): # 중복 mother path 존재 경우 
+        PROC_LOGGER.process_error(f"You may have entered paths which have duplicated basename in the same pipeline. \n \
+                                    For example, these are not allowed: \n \
+                                    - load_train_data_path: [/users/train1/data/, /users/train2/data/] \n \
+                                    which have << data >> as duplicated basename of the path.")
+    return base_dir_list # 마지막 base폴더 이름들 리스트 
+
+
 def _load_data(pipeline, ext_type, ext_path, load_s3_key_path): 
     # 실제로 데이터 복사 (절대 경로) or 다운로드 (s3) 
-    data_path = ""
-    if "train" in pipeline:
-        data_path = INPUT_DATA_HOME + "train/"
-    elif "inf" in pipeline:
-        data_path = INPUT_DATA_HOME + "inference/"
+    ####################################################
+    # inpt_data_dir 변수화 
+    input_data_dir = ""
+    if pipeline == 'train_pipeline':
+        input_data_dir = INPUT_DATA_HOME + "train/"
+    elif pipeline == 'inference_pipeline':
+        input_data_dir = INPUT_DATA_HOME + "inference/"
+    ####################################################
+    # input_data_dir 만들기 
+    try: 
+        os.makedirs(input_data_dir) # , exist_ok=True) 할 필요 없음. 어짜피 이미 external_load_data 함수 마지막 단에서 지워놨기 때문에 
+    except: 
+        PROC_LOGGER.process_error(f'Failed to create << {input_data_dir} >> path.') 
+    # 외부 경로 type에 따른 데이터 가져오기 분기 
     if ext_type  == 'absolute':
-        # 해당 nas 경로에 데이터 폴더 존재하는지 확인 후 폴더 통째로 가져오기, 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
+        # 해당 폴더 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
         # nas 접근권한 없으면 에러 발생 
-        # 기존에 사용자 환경 input 폴더에 외부 데이터 경로 폴더와 같은 이름의 폴더가 있으면 notify 후 덮어 씌우기 
         try: 
-            # 사용자가 실수로 yaml external path에 마지막에 '/' 쓰든 안쓰든, (즉 아래 코드에서 '/'이든 '//' 이든 동작엔 이상X)
+            # 사용자가 실수로 yaml external path에 마지막에 '/' 쓰든 안쓰든, 동작엔 이상X
             # [참고] https://stackoverflow.com/questions/3925096/how-to-get-only-the-last-part-of-a-path-in-python
             base_dir = os.path.basename(os.path.normpath(ext_path)) # 가령 /nas001/test/ 면 test가 mother_path, ./이면 .가 mother_path 
-            # [참고] python 3.7에서는 shutil.copytree 시 dirs_exist_ok라는 인자 없음 
-            os.makedirs(data_path, exist_ok=True) 
-            shutil.copytree(ext_path, f"{data_path}{base_dir}", dirs_exist_ok=True) # 중복 시 덮어쓰기 됨 
+            # [참고] python 3.7에서는 shutil.copytree 시 dirs_exist_ok라는 인자 없음  
+            shutil.copytree(ext_path, input_data_dir + base_dir) # base_dir 라는 폴더를 만들면서 가져옴 
         except: 
             PROC_LOGGER.process_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong absolute path (must be existing directory!) \n / or You do not have permission to access.')
+    elif ext_type == 'relative': 
+        try:
+            base_dir = os.path.basename(os.path.normpath(ext_path))
+            # [중요] 외부 데이터를 ALO main.py와 같은 경로에 두면 에러 
+            parent_dir = ext_path.split(base_dir)[0] # base dir 바로 위 parent dir 
+            # 외부 데이터 폴더는 main.py랑 같은 경로에 두면 안된다. 물론 절대경로로도 alo/ 포함 시키는 등 뚫릴 수 있는 방법은 많지만, 사용자 가이드 목적의 에러이다. 
+            if parent_dir == '../':
+                PROC_LOGGER.process_error(f'Placing the external data in the same path as << {PROJECT_HOME} >> is not allowed.')
+            rel_config_path = PROJECT_HOME + 'config/' + ext_path
+            shutil.copytree(rel_config_path, input_data_dir + base_dir) 
+        except: 
+            PROC_LOGGER.process_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong relative path (must be existing directory!) \n / or You do not have permission to access.')
     elif ext_type  == 's3':  
         # s3 key path가 yaml에 작성 돼 있으면 해당 key 읽어서 s3 접근, 작성 돼 있지 않으면 사용자 환경 aws config 체크 후 key 설정 돼 있으면 사용자 notify 후 활용, 없으면 에러 발생 
         # 해당 s3 경로에 데이터 폴더 존재하는지 확인 후 폴더 통째로 가져오기, 부재 시 에러 발생 (서브폴더 없고 파일만 있는 경우도 부재로 간주, 서브폴더 있고 파일도 있으면 어짜피 서브폴더만 사용할 것이므로 에러는 미발생)
@@ -147,14 +171,12 @@ def _load_data(pipeline, ext_type, ext_path, load_s3_key_path):
         # 기존에 사용자 환경 input 폴더에 외부 데이터 경로 폴더와 같은 이름의 폴더가 있으면 notify 후 덮어 씌우기 
         try: 
             s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
-            s3_downloader.download_folder(data_path)
+            s3_downloader.download_folder(input_data_dir)
         except:
             PROC_LOGGER.process_error(f'Failed to download s3 data folder from << {ext_path} >>')
-    else: 
-        # 미지원 external data storage type
-        PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
-        
-    PROC_LOGGER.process_info(f'Successfully fetched external data: \n {ext_path} --> {f"{data_path}"}', color='green')
+
+    PROC_LOGGER.process_info(f'==================== Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}', color='green')
+    
     return 
 
 
@@ -190,7 +212,7 @@ def external_load_model(external_path, external_path_permission):
     
     PROC_LOGGER.process_info(f"Start load model from external path: << {ext_path} >>. \n", "blue")
     
-    ext_type = _get_ext_path_type(ext_path) # absolute / s3
+    ext_type = _get_ext_path_type(ext_path) # absolute / relative / s3
 
     # temp model dir 생성 
     if os.path.exists(TEMP_MODEL_DIR):
@@ -199,7 +221,8 @@ def external_load_model(external_path, external_path_permission):
     else: 
         os.makedirs(TEMP_MODEL_DIR)
         
-    if ext_type  == 'absolute':
+    if (ext_type  == 'absolute') or (ext_type  == 'relative'):
+        ext_path = PROJECT_HOME + 'config/' + ext_path if ext_type == 'relative' else ext_path 
         try: 
             if 'model.tar.gz' in os.listdir(ext_path):
                 shutil.copy(ext_path + 'model.tar.gz', TEMP_MODEL_DIR)  
@@ -250,9 +273,7 @@ def external_load_model(external_path, external_path_permission):
         finally:
             # TEMP_MODEL_DIR는 삭제 
             shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
-    else: 
-        # 미지원 external model storage type
-        PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external model path.') 
+
         
 def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     """ Description
@@ -310,12 +331,14 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     elif pipe_mode == "inference_pipeline": 
         artifacts_tar_path = _tar_dir(".inference_artifacts") 
         model_tar_path = _tar_dir(".inference_artifacts/models") 
-                
-    if ext_type  == 'absolute':
+    
+    # FIXME external save path 를 지우고 다시 만드는게 맞는가 ? (로컬이든 s3든)
+    if (ext_type  == 'absolute') or (ext_type  == 'relative'):
+        ext_path = PROJECT_HOME + 'config/' + ext_path if ext_type == 'relative' else ext_path
         try: 
-            os.makedirs(save_artifacts_path, exist_ok=True) 
-            shutil.copy(artifacts_tar_path, save_artifacts_path)
-            shutil.copy(model_tar_path, save_artifacts_path)
+            os.makedirs(ext_path, exist_ok=True) 
+            shutil.copy(artifacts_tar_path, ext_path)
+            shutil.copy(model_tar_path, ext_path)
         except: 
             PROC_LOGGER.process_error(f'Failed to copy compressed artifacts from << {artifacts_tar_path} >> & << {model_tar_path} >> into << {ext_path} >>.')
         finally: 
@@ -345,7 +368,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     
     PROC_LOGGER.process_info(f" Successfully done saving << {artifacts_tar_path} >> & << {model_tar_path} >> \n onto << {save_artifacts_path} >> & removing local files.", "green")  
     
-    return 
+    return ext_path 
 
 ## Common Func. 
 def _get_ext_path_type(_ext_path: str): # inner function 
@@ -354,9 +377,10 @@ def _get_ext_path_type(_ext_path: str): # inner function
     elif os.path.isabs(_ext_path) == True: # 절대경로. nas, local 둘다 가능 
         return 'absolute'
     elif os.path.isabs(_ext_path) == False: # file이름으로 쓰면 에러날 것임 
-        PROC_LOGGER.process_error(f'<< {_ext_path} >> is relative path. This is unsupported type of external save artifacts path. Please enter the absolute path.')
+        PROC_LOGGER.process_info(f'<< {_ext_path} >> may be relative path. The reference folder of relative path is << config/ >>. \n If this is not appropriate relative path, Loading external data process would raise error.')
+        return 'relative'
     else: 
-        PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path.')
+        PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path. \n Do not enter the file path. (Finish the path with directory name)')
             
 def _tar_dir(_path): 
     ## _path: .train_artifacts / .inference_artifacts     
