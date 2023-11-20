@@ -182,7 +182,7 @@ class ALO:
             if pipeline == 'inference_pipeline':
                 if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
                     self.external_load_model(self.external_path, self.external_path_permission)
-                  
+            
             # 각 asset import 및 실행 
             self.run_import(pipeline)
 
@@ -396,19 +396,31 @@ class ALO:
         
         # AssetStructure instance 생성 
         asset_structure = AssetStructure()
-
+        asset_structure.envs['project_home'] = PROJECT_HOME
+        asset_structure.envs['pipeline'] = pipeline
+        asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
+        asset_structure.envs['artifacts'] = self.artifacts
+        asset_structure.envs['alo_version'] = self.alo_version
+        if self.control['interface_mode'] not in INTERFACE_TYPES:
+            self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
+        asset_structure.envs['interface_mode'] = self.control['interface_mode']
+        asset_structure.envs['proc_start_time'] = self.proc_start_time
+        asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
+        asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
+        
         for step, asset_config in enumerate(self.asset_source[pipeline]):    
             self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
-
             # 외부에서 arg를 가져와서 수정이 가능한 구조를 위한 구조
             asset_structure.args = self.get_args(pipeline, step)
             asset_structure = self.process_asset_step(asset_config, step, pipeline, asset_structure)
+
 
     def get_args(self, pipeline, step):
         if type(self.user_parameters[pipeline][step]['args']) == type(None):
             return dict()
         else:
             return self.user_parameters[pipeline][step]['args'][0]
+
 
     def process_asset_step(self, asset_config, step, pipeline, asset_structure): 
         # step: int 
@@ -420,9 +432,6 @@ class ALO:
         if self.system_envs['boot_on'] == True: 
             self.proc_logger.process_info(f"===== Booting... completes importing << {_file} >>")
             return asset_structure
-        
-        if self.control['interface_mode'] not in INTERFACE_TYPES:
-            self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
 
         # FIXME step은 추후 삭제되야함, meta --> metadata 같은 식으로 약어가 아닌 걸로 변경돼야 함 
         meta_dict = {'artifacts': self.artifacts, 'pipeline': pipeline, 'step': step, 'step_number': step, 'step_name': self.user_parameters[pipeline][step]['step']}
@@ -431,21 +440,12 @@ class ALO:
         # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
         # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의 
         
-        asset_structure.envs['project_home'] = PROJECT_HOME
-        asset_structure.envs['pipeline'] = pipeline
-        asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
         # asset.py에서 load config, load data 할때 필요 
         if step > 0: 
             asset_structure.envs['prev_step'] = self.user_parameters[pipeline][step - 1]['step']
         asset_structure.envs['step'] = self.user_parameters[pipeline][step]['step']
         asset_structure.envs['num_step'] = step # int  
-        asset_structure.envs['artifacts'] = self.artifacts
-        asset_structure.envs['alo_version'] = self.alo_version
         asset_structure.envs['asset_branch'] = asset_config['source']['branch']
-        asset_structure.envs['interface_mode'] = self.control['interface_mode']
-        asset_structure.envs['proc_start_time'] = self.proc_start_time
-        asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
-        asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
         
         ua = user_asset(asset_structure) 
         asset_structure.data, asset_structure.config = ua.run()
