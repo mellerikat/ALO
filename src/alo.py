@@ -395,7 +395,8 @@ class ALO:
             self.install_steps(pipeline, get_asset_source)
         
         # AssetStructure instance 생성 
-        asset_structure = AssetStructure()
+        asset_structure = AssetStructure() 
+        # asset structure envs pipeline 별 공통부 
         asset_structure.envs['project_home'] = PROJECT_HOME
         asset_structure.envs['pipeline'] = pipeline
         asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
@@ -433,16 +434,15 @@ class ALO:
             self.proc_logger.process_info(f"===== Booting... completes importing << {_file} >>")
             return asset_structure
 
+        # 사용자가 config['meta'] 를 통해 볼 수 있는 가변 부
         # FIXME step은 추후 삭제되야함, meta --> metadata 같은 식으로 약어가 아닌 걸로 변경돼야 함 
         meta_dict = {'artifacts': self.artifacts, 'pipeline': pipeline, 'step': step, 'step_number': step, 'step_name': self.user_parameters[pipeline][step]['step']}
         asset_structure.config['meta'] = meta_dict #nested dict
-        # envs에 만들어진 artifacts 폴더 구조 전달 (to slave)
-        # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
-        # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의 
-        
-        # asset.py에서 load config, load data 할때 필요 
+
+        # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의         
+        # asset structure envs pipeline 별 가변부 (alolib에서도 사용하므로 필요)
         if step > 0: 
-            asset_structure.envs['prev_step'] = self.user_parameters[pipeline][step - 1]['step']
+            asset_structure.envs['prev_step'] = self.user_parameters[pipeline][step - 1]['step'] # asset.py에서 load config, load data 할때 필요 
         asset_structure.envs['step'] = self.user_parameters[pipeline][step]['step']
         asset_structure.envs['num_step'] = step # int  
         asset_structure.envs['asset_branch'] = asset_config['source']['branch']
