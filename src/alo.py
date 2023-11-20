@@ -6,6 +6,7 @@ import subprocess
 from datetime import datetime
 from collections import Counter
 import pkg_resources
+from copy import deepcopy
 # local import
 from src.constants import *
 ####################### ALO master requirements 리스트업 및 설치 #######################
@@ -32,33 +33,39 @@ from alolib import logger
 
 
 class AssetStructure: 
-    def __init__(self, envs, args, data, config):
-        self.envs = envs
-        self.args = args
-        self.data = data 
-        self.config = config
+    def __init__(self):
+        self.envs = {}
+        self.args = {}
+        self.data = {} 
+        self.config = {}
 
 
 class ALO:
     def __init__(self, exp_plan_file = None, sol_meta_str = None, alo_mode = 'all', boot_on = False):
+        self.proc_start_time = datetime.now().strftime("%y%m%d_%H%M%S")
         self.exp_plan_file = exp_plan_file
         self.sol_meta = json.loads(sol_meta_str) if sol_meta_str != None else None # None or dict from json 
-        self.alo_mode = alo_mode
-        self.boot_on = boot_on 
-        
-        self.q_inference_summary = None 
-        self.q_inference_artifacts = None 
-        self.redis_host, self.redis_port = None, None  
+
+        # solution metadata를 통해, 혹은 main.py 실행 시 인자로 받는 정보는 system_envs로 wrapping 
+        self.system_envs = {}
+        self.set_system_envs() 
+        self.system_envs['alo_mode'] = alo_mode 
+        self.system_envs['boot_on'] = boot_on 
         
         self.exp_plan = None
-        self.solution_metadata_version = None 
-        #self.stream_name = None 
         self.artifacts = None 
         
         self.proc_logger = None
-        self.proc_start_time = datetime.now().strftime("%y%m%d_%H%M%S")
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+        
 
+    def set_system_envs(self):
+        self.system_envs['q_inference_summary'] = None 
+        self.system_envs['q_inference_artifacts'] = None 
+        self.system_envs['redis_host'] = None
+        self.system_envs['redis_port'] = None
+        self.system_envs['solution_metadata_version'] = None 
+        
         
     def set_proc_logger(self):
         # 새 runs 시작 시 기존 log 폴더 삭제 
@@ -105,14 +112,15 @@ class ALO:
     def preset(self):
         # exp_plan_file은 config 폴더로 복사해서 가져옴. 단, 외부 exp plan 파일 경로는 로컬 절대 경로만 지원 
         self.exp_plan_file = self.load_experimental_plan(self.exp_plan_file) 
-        
+        self.proc_logger.process_info(f"Successfully loaded << experimental_plan.yaml >> from: \n {self.exp_plan_file}", color = 'green')
         if not os.path.exists(ASSET_HOME):
             try:
                 os.makedirs(ASSET_HOME)
             except: 
                 self.proc_logger.process_error(f"Failed to create directory: {ASSET_HOME}")
         self.read_yaml() # self.exp_plan default 셋팅 완료 
-        # artifacts 세팅
+        # artifacts 세팅 
+        # FIXME train만 돌든 inference만 돌든 일단 artifacts 폴더는 둘다 만든다 
         self.artifacts = set_artifacts()
         # step들이 잘 match 되게 yaml에 기술 돼 있는지 체크
         match_steps(self.user_parameters, self.asset_source)
@@ -130,7 +138,7 @@ class ALO:
         # preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
         # 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
         self.set_proc_logger()
-        if self.boot_on == True: 
+        if self.system_envs['boot_on'] == True: 
             self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
         self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
         self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
@@ -140,16 +148,16 @@ class ALO:
         
         for pipeline in self.asset_source:
             # alo mode (운영 시에는 SOLUTION_PIPELINE_MODE와 동일)에 따른 pipeline run 분기 
-            if self.alo_mode == 'train':
+            if self.system_envs['alo_mode'] == 'train':
                 if 'inf' in pipeline: 
                     continue
-            elif self.alo_mode == 'inf' or self.alo_mode == 'inference':
+            elif self.system_envs['alo_mode'] == 'inf' or self.system_envs['alo_mode'] == 'inference':
                 if 'train' in pipeline:
                     continue
-            elif self.alo_mode == 'all':
+            elif self.system_envs['alo_mode'] == 'all':
                 pass
             else:
-                raise ValueError("f{self.alo_mode} is not supported mode.")
+                raise ValueError("f{self.system_envs['alo_mode']} is not supported mode.")
              
             # TODO 추후 멀티 파이프라인 시에는 아래 코드 수정 필요 (ex. train0, train1..)
             pipeline_prefix = pipeline.split('_')[0] # ex. train_pipeline --> train 
@@ -166,7 +174,7 @@ class ALO:
                     self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
             
             # 외부 데이터 가져오기 (boot on 시엔 skip)
-            if self.boot_on == False:
+            if self.system_envs['boot_on'] == False:
                 self.external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
             
             # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
@@ -181,11 +189,11 @@ class ALO:
             # summary yaml를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
             # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
             # FIXME train - inference pipeline type 일땐 괜찮나? 
-            if (self.sol_meta is not None) and (self.redis_host is not None) and (self.boot_on == False) and (pipeline == 'inference_pipeline'):
+            if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
                 summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
                 if 'inference_summary.yaml' in os.listdir(summary_dir):
                     summary_str = json.dumps(get_yaml(summary_dir + 'inference_summary.yaml'))
-                    self.q_inference_summary.rput(summary_str)
+                    self.system_envs['q_inference_summary'].rput(summary_str)
                     self.proc_logger.process_info("Completes putting inference summary into redis queue.", color='green')
                 else: 
                     self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
@@ -211,11 +219,11 @@ class ALO:
             ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
             # save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
             # solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-            if (self.sol_meta is not None) and (self.redis_host is not None) and (self.boot_on == False) and (pipeline == 'inference_pipeline'):
+            if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
                 # 외부 경로로 잘 artifacts 복사 됐나 체크 
                 if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
                     artifacts_saved_str = json.dumps({"status": "OK"})
-                    self.q_inference_artifacts.rput(artifacts_saved_str)
+                    self.system_envs['q_inference_artifacts'].rput(artifacts_saved_str)
                     self.proc_logger.process_info("Completes putting artifacts creation OK signal into redis queue.", color='green')
                 else: 
                     self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
@@ -269,11 +277,11 @@ class ALO:
         # [중요] SOLUTION_PIPELINE_MODE라는 환경 변수는 ecr build 시 생성하게 되며 (ex. train, inference, all) 이를 ALO mode에 덮어쓰기 한다. 
         sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
         if sol_pipe_mode is not None: 
-            self.alo_mode = sol_pipe_mode
+            self.system_envs['alo_mode'] = sol_pipe_mode
         else:   
             raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
         # solution metadata version 가져오기 --> inference summary yaml의 version도 이걸로 통일 
-        self.solution_metadata_version = self.sol_meta['version']
+        self.system_envs['solution_metadata_version'] = self.sol_meta['version']
         # solution metadata yaml에 pipeline key 있는지 체크 
         if 'pipeline' not in self.sol_meta.keys(): # key check 
             self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
@@ -296,13 +304,13 @@ class ALO:
         if _check_edgeapp_interface() == True: 
             try: 
                 # get redis server host, port 
-                self.redis_host, _redis_port = self.sol_meta['edgeapp_interface']['redis_server_uri'].split(':')
-                self.redis_port = int(_redis_port)
-                if (self.redis_host == None) or (self.redis_port == None): 
+                self.system_envs['redis_host'], _redis_port = self.sol_meta['edgeapp_interface']['redis_server_uri'].split(':')
+                self.system_envs['redis_port'] = int(_redis_port)
+                if (self.system_envs['redis_host'] == None) or (self.system_envs['redis_port'] == None): 
                     self.proc_logger.process_error("Missing host or port of << redis_server_uri >> in solution metadata.")
                 # set redis queues
-                self.q_inference_summary = RedisQueue('inference_summary', host=self.redis_host, port=self.redis_port, db=0)
-                self.q_inference_artifacts = RedisQueue('inference_artifacts', host=self.redis_host, port=self.redis_port, db=0)
+                self.system_envs['q_inference_summary'] = RedisQueue('inference_summary', host=self.system_envs['redis_host'], port=self.system_envs['redis_port'], db=0)
+                self.system_envs['q_inference_artifacts'] = RedisQueue('inference_artifacts', host=self.system_envs['redis_host'], port=self.system_envs['redis_port'], db=0)
             except: 
                 self.proc_logger.process_error(f"Failed to parse << redis_server_uri >>") 
                 
@@ -381,14 +389,13 @@ class ALO:
                 self.proc_logger.process_error(f"Duplicate step exists: {value}")
 
         # 운영 무한 루프 구조일 땐 boot_on 시 에만 install 하고 이후에는 skip 
-        if (self.boot_on == False) and (self.redis_host is not None):
+        if (self.system_envs['boot_on'] == False) and (self.system_envs['redis_host'] is not None):
             pass 
         else: 
             self.install_steps(pipeline, get_asset_source)
         
-        # 최초 init 
-        envs, args, data, config = {}, {}, {}, {}
-        asset_structure = AssetStructure(envs, args, data, config)
+        # AssetStructure instance 생성 
+        asset_structure = AssetStructure()
 
         for step, asset_config in enumerate(self.asset_source[pipeline]):    
             self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
@@ -410,7 +417,7 @@ class ALO:
         # asset2등을 asset으로 수정하는 코드
         _file = ''.join(filter(lambda x: x.isalpha() or x == '_', _file))
         user_asset = import_asset(_path, _file)
-        if self.boot_on == True: 
+        if self.system_envs['boot_on'] == True: 
             self.proc_logger.process_info(f"===== Booting... completes importing << {_file} >>")
             return asset_structure
         
@@ -424,10 +431,9 @@ class ALO:
         # envs에 추후 artifacts 이외의 것들도 담을 가능성을 고려하여 dict구조로 생성
         # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의 
         
-        asset_structure.envs['solution_metadata_version'] = self.solution_metadata_version
-        #asset_structure.envs['stream_name'] = self.stream_name
         asset_structure.envs['project_home'] = PROJECT_HOME
         asset_structure.envs['pipeline'] = pipeline
+        asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
         # asset.py에서 load config, load data 할때 필요 
         if step > 0: 
             asset_structure.envs['prev_step'] = self.user_parameters[pipeline][step - 1]['step']
