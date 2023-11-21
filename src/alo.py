@@ -199,7 +199,7 @@ class ALO:
             if (self.system_envs['wrangler_code_uri'] != None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'): # and (self.system_envs['wrangler_dataset_uri'] != None):
                 wrangler_resp = None 
                 try:
-                    base_dir = os.path.basename(os.path.normpath(self.external_path['load_inference'])) + '/'
+                    base_dir = os.path.basename(os.path.normpath(self.external_path['load_inference_data_path'])) + '/'
                     wrangler_data_path = INPUT_DATA_HOME + "inference/" + base_dir
                     wrangler_resp = subprocess.run(["python", self.system_envs['wrangler_code_uri'], "--data_path", wrangler_data_path], capture_output=True, check=False)
                     self.proc_logger.process_info(f"==================== Done wrangling \n {wrangler_resp.stdout.decode('utf-8')}", color='green')
