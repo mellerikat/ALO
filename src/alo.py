@@ -196,7 +196,7 @@ class ALO:
             # TODO wrangler 종속 패키지는 이미 AIC에서 패키지 충돌 테스트 맞친 상태여야하고, ALO에서는 추후 asset 패키지들 다 설치한 이후 마지막에 설치한다 (boot-on때)
             # FIXME wrangler_dataset_uri 조건 필요할지? 
             # [참고] 아래 try 문 실행 시간 print문 하나만 넣었어도 0.04초 정도 소요 
-            if (self.system_envs['wrangler_code_uri'] != None) and self.system_envs['boot_on'] == False: # and (self.system_envs['wrangler_dataset_uri'] != None):
+            if (self.system_envs['wrangler_code_uri'] != None) and (self.system_envs['boot_on'] == False): # and (self.system_envs['wrangler_dataset_uri'] != None):
                 wrangler_resp = None 
                 try:
                     wrangler_resp = subprocess.run(["python", self.system_envs['wrangler_code_uri'], "--data_path", INPUT_DATA_HOME + "inference/"], capture_output=True, check=False)
