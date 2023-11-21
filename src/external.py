@@ -16,6 +16,22 @@ TEMP_MODEL_DIR = PROJECT_HOME + '.temp_model_dir/'
 
 # FIXME pipeline name까지 추후 반영해야할지? http://clm.lge.com/issue/browse/DXADVTECH-352?attachmentSortBy=dateTime&attachmentOrder=asc
 def external_load_data(pipe_mode, external_path, external_path_permission, get_external_data): 
+    """ Description
+        -----------
+            - external_path로부터 데이터를 다운로드 
+        Parameters
+        -----------
+            - pipe_mode: 호출 시의 파이프라인 (train_pipeline, inference_pipeline)
+            - external_path: experimental_plan.yaml에 적힌 external_path 전체를 dict로 받아옴 
+            - external_path_permission: experimental_plan.yaml에 적힌 external_path_permission 전체를 dict로 받아옴 
+            - get_external_data: external data를 load하는 행위를 한 번만 할 지 여러번 할지 (once, every)
+        Return
+        -----------
+            - 
+        Example
+        -----------
+            - external_load_data(pipe_mode, self.external_path, self.external_path_permission, self.control['get_external_data'])
+    """
     # train, inference pipeline 공통 
     # 미입력 시 every로 default 설정 
     if get_external_data is None:
@@ -108,8 +124,8 @@ def _check_duplicated_basedir(data_path):
                                     which have << data >> as duplicated basename of the path.")
     return base_dir_list # 마지막 base폴더 이름들 리스트          
 
-            
 def _load_data(pipeline, ext_type, ext_path, load_s3_key_path): 
+    # 실제로 데이터 복사 (절대 경로) or 다운로드 (s3) 
     ####################################################
     # inpt_data_dir 변수화 
     input_data_dir = ""
@@ -308,7 +324,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     elif pipe_mode == "inference_pipeline": 
         artifacts_tar_path = _tar_dir(".inference_artifacts") 
         model_tar_path = _tar_dir(".inference_artifacts/models") 
-                
+
     # FIXME external save path 를 지우고 다시 만드는게 맞는가 ? (로컬이든 s3든)
     if (ext_type  == 'absolute') or (ext_type  == 'relative'):
         ext_path = PROJECT_HOME + 'config/' + ext_path if ext_type == 'relative' else ext_path
