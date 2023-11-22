@@ -8,20 +8,33 @@ import shutil
 import datetime
 import yaml 
 from yaml import Dumper
+import botocore
 from botocore.exceptions import ClientError, NoCredentialsError
-
+import subprocess
 
 # yaml = YAML()
 # yaml.preserve_quotes = True
 
 VERSION = 1.0
+ALODIR = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
+WORKINGIDR = os.path.abspath(os.path.dirname(__file__))
 
 class SMC:
-    def __init__(self, bucket, ecr):
+    def __init__(self, workspaces, name):
         self.sm_yaml = {}
         self.ex_yaml = {}
-        self.bucket_name = bucket
-        self.ecr = ecr
+        try:
+            self.bucket_name = workspaces.json()[0]['s3_bucket_name']
+            self.ecr = workspaces.json()[0]['ecr_base_path']
+        except:
+            self.bucket_name = "acp-kubeflow-lhs-s3"
+            self.ecr = "086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/acp-kubeflow-lhs/"
+
+        print(self.bucket_name)
+
+        self.name = name
+        
+        
 
 
     def save_yaml(self):
@@ -73,8 +86,8 @@ class SMC:
         self.sm_yaml['description']['title'] = self._check_parammeter(title)
         self.set_sm_name(self._check_parammeter(title))
         self.sm_yaml['description']['overview'] = self._check_parammeter(overview)
-        self.sm_yaml['description']['input_data'] = self._check_parammeter(input_data)
-        self.sm_yaml['description']['output_data'] = self._check_parammeter(output_data)
+        self.sm_yaml['description']['input_data'] = self._check_parammeter(self.bucket_name + input_data)
+        self.sm_yaml['description']['output_data'] = self._check_parammeter(self.bucket_name + input_data)
         self.sm_yaml['description']['user_parameters'] = self._check_parammeter(user_parameters)
         self.sm_yaml['description']['algorithm'] = self._check_parammeter(algorithm)
         self.sm_yaml['description']['icon'] = self._check_parammeter(icon)
@@ -117,6 +130,12 @@ class SMC:
         print(f"{data['model_uri']} were stored")
 
     def set_edge(self):
+        self.sm_yaml['edgeconductor_interface'] = {
+            'support_labeling': True,
+            'inference_result_datatype': 'image',
+            'train_datatype': 'table'
+        }
+
         self.sm_yaml['edgeapp_interface'] = {'redis_server_uri': ""}
         self.save_yaml()
 
@@ -173,30 +192,33 @@ class SMC:
 
     def s3_access_check(self):
         
-        f = open("/nas001/users/ruci.sung/aws.key", "r")
-        keys = []
-        values = []
-        for line in f:
-            key = line.split(":")[0]
-            value = line.split(":")[1].rstrip()
-            keys.append(key)
-            values.append(value)
-        ACCESS_KEY = values[0]
-        SECRET_KEY = values[1]
-
-        self.s3 = boto3.client('s3',
-                            aws_access_key_id=ACCESS_KEY,
-                            aws_secret_access_key=SECRET_KEY)
-
         try:
-            self.s3.list_buckets()
-            print("S3 접근 성공")
-        except Exception as e:
-            print("S3 접근 실패")
-            print(e)
+            f = open("/nas001/users/ruci.sung/aws.key", "r")
+            keys = []
+            values = []
+            for line in f:
+                key = line.split(":")[0]
+                value = line.split(":")[1].rstrip()
+                keys.append(key)
+                values.append(value)
+            ACCESS_KEY = values[0]
+            SECRET_KEY = values[1]
+
+            self.s3 = boto3.client('s3',
+                                aws_access_key_id=ACCESS_KEY,
+                                aws_secret_access_key=SECRET_KEY)
+        except:
+            self.s3 = boto3.client('s3')
+
+        my_session = boto3.session.Session()
+        self.region = my_session.region_name
+
+        print(isinstance(boto3.client('s3'), botocore.client.BaseClient))
+        return isinstance(boto3.client('s3'), botocore.client.BaseClient)
 
     # def s3_upload(self, pipeline, local_folder = './input/train/'):
     def s3_upload(self, pipeline):
+        self.pipeline = pipeline
 
         def s3_process(s3, bucket_name, data_path, local_folder, s3_path):
             objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
@@ -223,9 +245,9 @@ class SMC:
             
             return True
 
-        if "train" in pipeline:
+        if "train" in self.pipeline:
             # local_folder = '../../input/train/'
-            local_folder = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))+"/input/train/"
+            local_folder = ALODIR+"/input/train/"
             for root, dirs, files in os.walk(local_folder):
                 for file in files:
                     data_path = os.path.join(root, file)
@@ -241,8 +263,8 @@ class SMC:
             # self.sm_yaml['pipeline'][0].update(data)
             self.save_yaml()
             
-        elif "inf" in pipeline:
-            local_folder = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))+"/input/inference/"
+        elif "inf" in self.pipeline:
+            local_folder = ALODIR+"/input/inference/"
             for root, dirs, files in os.walk(local_folder):
                 for file in files:
                     data_path = os.path.join(root, file)
@@ -257,7 +279,7 @@ class SMC:
             # self.sm_yaml['pipeline'][1].update(data)
             self.save_yaml()
         else:
-            print(f"{pipeline}은 지원하지 않는 pipeline 구조 입니다")
+            print(f"{self.pipeline}은 지원하지 않는 pipeline 구조 입니다")
 
     def get_contents(self, url):
         def _is_git_url(url):
@@ -271,19 +293,125 @@ class SMC:
                 shutil.rmtree(contents_path)  # 폴더 제거
             repo = git.Repo.clone_from(url, "./contents")
 
-    def copy_alo(self):
-        alo_src = ['../../main.py', '../../src/', '../../config/', '../../assets/']
+    def set_alo(self):
+        alo_path = ALODIR
+        alo_src = ['/main.py', '/src', '/config', '/assets', '/alolib']
+        work_path = WORKINGIDR + "/alo/"
 
-        dst = './'
+        if os.path.isdir(work_path):
+            shutil.rmtree(work_path)
+        os.mkdir(work_path)
 
         for item in alo_src:
-            src_path = os.path.relpath(item)
+            # src_path = alo_path + os.path.relpath(item)
+            src_path = alo_path + item
             print(src_path)
             if os.path.isfile(src_path):
-                shutil.copy2(src_path, dst)
+                shutil.copy2(src_path, work_path)
             elif os.path.isdir(src_path):
-                shutil.copytree(src_path, dst)
+                shutil.copytree(src_path, work_path + '/' + os.path.basename(src_path))
         
+        print("ALO was setting.")
+
+    def set_docker_contatiner(self):
+        
+        dockerfile = "/Dockerfile"
+        if os.path.isfile(WORKINGIDR + dockerfile):
+            os.remove(WORKINGIDR + dockerfile)
+        
+        shutil.copy(WORKINGIDR + "/origin/" + dockerfile, WORKINGIDR)
+        file_path = WORKINGIDR + dockerfile
+        
+        spm = 'ENV SOLUTION_PIPELINE_MODE='
+
+        d_file = []
+
+        with open(file_path, 'r') as file:
+            for line in file:
+                if line.startswith(spm):
+                    if line.find(self.pipeline) > 0:
+                        # 현재 파이프라인으로 구동
+                        pass
+                    else:
+                        # 다른 파이프라인으로 dockerfile을 수정 후 구동
+                        line = line.replace('train', self.pipeline)
+                d_file.append(line)
+        data = ''.join(d_file)
+        with open(file_path, 'w') as file:
+            file.write(data)
+
+        print("DOCKERFILE was setting.")
+
+    def set_aws_ecr(self, docker = True, tags = {}):
+        
+        self.ecr_url = self.ecr.split("/")[0]
+        self.ecr_repo = self.ecr.split("/")[1] + "/" + self.pipeline + "/" + self.name
+        self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo
+        self.docker = docker
+
+        if self.docker:
+            run = 'docker'
+        else:
+            run = 'buildah'
+
+        p1 = subprocess.Popen(
+            ['aws', 'ecr', 'get-login-password', '--region', f'{self.region}'], stdout=subprocess.PIPE
+        )
+
+        p2 = subprocess.Popen(
+            [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
+        )
+
+        p1.stdout.close()
+        output = p2.communicate()[0]
+        print(output.decode())
+
+        if len(tags) > 0:
+            command = [
+            "aws",
+            "ecr",
+            "create-repository",
+            "--repository-name", self.ecr_repo,
+            "--image-scanning-configuration", "scanOnPush=true",
+            "--tags"
+            ] + tags  # 전달된 태그들을 명령어에 추가합니다.
+        else:
+            command = [
+            "aws",
+            "ecr",
+            "create-repository",
+            "--repository-name", self.ecr_repo,
+            "--image-scanning-configuration", "scanOnPush=true",
+            ]
+
+        # subprocess.run() 함수를 사용하여 명령을 실행합니다.
+        try:
+            result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            print("명령어 실행 결과:", result.stdout)
+        except subprocess.CalledProcessError as e:
+            print("오류 발생:", e.stderr)
+
+
+    
+    def build_docker(self, TAG='latest'):
+        
+        if self.docker:
+            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:{TAG}'])
+        else:
+            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:{TAG}'])
+
+    def docker_push(self, TAG='latest'):
+
+        if self.docker:
+            subprocess.run(['docker', 'push', f'{self.ecr_full_url}:{TAG}'])
+        else:
+            subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{TAG}'])
+        
+        if self.docker:
+            subprocess.run(['docker', 'logout'])
+        else:
+            subprocess.run(['sudo', 'buildah', 'logout', '-a'])
+
     def _check_parammeter(self, param):
         if self._check_str(param):
             return param
@@ -295,18 +423,34 @@ class SMC:
         return isinstance(data, str)
 
 if __name__ == "__main__":
-    s3_bucket = 'acp-kubeflow-lhs-s3'
-    ecr = "acp-kubeflow-lhs-s3"
+    # s3_bucket = 'acp-kubeflow-lhs-s3'
+    # ecr = "acp-kubeflow-lhs-s3"
+    name = 'test2'
+    workspaces = [
+          {
+                "id": "00000000-0000-0000-0000-000000000000",
+                "name": "string",
+                "namespace": "string",
+                "kubeflow_user": "string",
+                "s3_bucket_name": "string",
+                "ecr_base_path": "string",
+                "execution_specs": [
+                    {
+                        "name": "string",
+                        "label": "string",
+                        "vcpu": 0,
+                        "ram_gb": 0,
+                        "gpu": 0
+                    }
+            ],
+            "is_deleted": 0
+        }
+    ]
+    sm = SMC(workspaces=workspaces, name=name)
 
-    new_directory = '/home/ruci.sung/0.repo/release/docker_test/contents/alo/scripts/creating_ai_solution'
-
-    sm = SMC(s3_bucket, ecr)
-
-    # sm.copy_alo()
-
-    os.chdir(new_directory)
-
-
+    os.chdir(WORKINGIDR)
+    sm.set_alo()
+    
     sm.set_yaml()
     sm.set_sm_description("bolt blalal", "테스트중이다", "s3://하하하", "s3://호호호", "params", "alo", "s3://icon")
 
@@ -314,6 +458,22 @@ if __name__ == "__main__":
     
     pipeline = 'train'
     sm.s3_upload(pipeline)
+    sm.set_docker_contatiner()
+    
+    tags = [
+    "Key=Company,Value=LGE",
+    "Key=Owner,Value=IC360",
+    "Key=HQ,Value=CDO",
+    "Key=Division,Value=CDO",
+    "Key=Infra Region,Value=KIC",
+    "Key=Service Mode,Value=DE",
+    "Key=Cost Type,Value=COMPUTING",
+    "Key=Project,Value=CIS",
+    "Key=Sub Project,Value=CISM",
+    "Key=System,Value=AIDX"
+]
+    
+    sm.set_aws_ecr(tags=tags)
     sm.set_container_uri(pipeline) # uri도 그냥 입력되게 수정
     sm.set_cadidate_param(pipeline)
     sm.set_artifacts_uri(pipeline)

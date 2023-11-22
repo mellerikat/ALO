@@ -149,35 +149,27 @@ def setup_asset(asset_config, check_asset_source='once'):
     
     return 
 
-def backup_artifacts(pipelines, exp_plan_file, proc_start_time):
+def backup_artifacts(pipelines, exp_plan_file, proc_start_time, error=False):
     """ Description
         -----------
             - 파이프라인 실행 종료 후 사용한 yaml과 결과 artifacts를 .history에 백업함 
         Parameters
-        -----------
+        ----------- 
             - pipelines: pipeline mode (train, inference)
             - exp_plan_file: 사용자가 입력한, 혹은 default (experimental_plan.yaml) yaml 파일의 절대경로 
             - proc_start_time: ALO instance 생성 시간 (~프로세스 시작시간)
+            - error: error 발생 시 backup artifact할 땐 구분을 위해 폴더명 구분 
         Return
         -----------
             - 
         Example
         -----------
-            - backup_artifacts(pipe_mode)
+            - backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=False)
     """
 
     current_pipeline = pipelines.split("_pipelines")[0]
-    # artifacts_home_생성시간 폴더를 제작
-    # timestamp_option = True
-    # hms_option = True
-    # if timestamp_option == True:  
-    #     if hms_option == True : 
-    #         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-    #     else : 
-    #         timestamp = datetime.now().strftime("%y%m%d")     
-        # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
-    
-    backup_folder= '{}_artifacts'.format(proc_start_time) + f"_{current_pipeline}/"
+    # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
+    backup_folder= '{}_artifacts'.format(proc_start_time) + f"_{current_pipeline}/" if error == False else '{}_artifacts'.format(proc_start_time) + f"_{current_pipeline}_error/"
     
     # TODO current_pipelines 는 차후에 workflow name으로 변경이 필요
     temp_backup_artifacts_dir = PROJECT_HOME + backup_folder
@@ -220,7 +212,11 @@ def backup_artifacts(pipelines, exp_plan_file, proc_start_time):
         PROC_LOGGER.process_error(f"Failed to move {temp_backup_artifacts_dir} into {PROJECT_HOME}/.history/")
     # 잘 move 됐는 지 확인  
     if os.path.exists(PROJECT_HOME + ".history/" + backup_folder):
-        PROC_LOGGER.process_info("Successfully completes << .history >> backup (experimental_plan.yaml & artifacts)", "green")
+        if error == False: 
+            PROC_LOGGER.process_info("Successfully completes << .history >> backup (experimental_plan.yaml & artifacts)", "green")
+        elif error == True: 
+            PROC_LOGGER.process_warning("Error backup completes @ << .history >> (experimental_plan.yaml & artifacts)")
+            
     
     
 # inner function 

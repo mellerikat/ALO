@@ -11,13 +11,16 @@ from copy import deepcopy
 from src.constants import *
 ####################### ALO master requirements 리스트업 및 설치 #######################
 # ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
+ALOMAIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+cmd = f'cd {ALOMAIN} && git symbolic-ref --short HEAD'
 try: 
-    alo_ver = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
-    alolib_git = f'alolib @ git+http://10.185.66.38/hub/dxadvtech/aicontents-framework/alolib-source.git@{alo_ver}'
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
+    ALOVER = result.stdout.decode('utf-8').strip()
+    alolib_git = f'alolib @ git+http://10.185.66.38/hub/dxadvtech/aicontents-framework/alolib-source.git@{ALOVER}'
     try: 
         alolib_pkg = pkg_resources.get_distribution('alolib') # get_distribution tact-time 테스트: 약 0.001s
-        alo_ver = '0' if alo_ver == 'develop' else alo_ver.split('-')[-1] # 가령 release-1.2면 1.2만 가져옴 
-        if str(alolib_pkg.version) != str(alo_ver): 
+        ALOVER = '0' if ALOVER == 'develop' else ALOVER.split('-')[-1] # 가령 release-1.2면 1.2만 가져옴 
+        if str(alolib_pkg.version) != str(ALOVER): 
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall']) # alo version과 같은 alolib 설치  
     except: # alolib 미설치 경우 
         subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall'])
@@ -54,24 +57,20 @@ class ALO:
         
         self.exp_plan = None
         self.artifacts = None 
-        
         self.proc_logger = None
-        self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
-        
+        self.alo_version = ALOVER
+
 
     def set_system_envs(self):
         # solution meta 버전 
         self.system_envs['solution_metadata_version'] = None 
-        # wrangler 관련 
-        self.system_envs['wrangler_code_uri'] = None
-        self.system_envs['wrangler_dataset_uri'] = None
         # edgeapp interface 관련 
         self.system_envs['q_inference_summary'] = None 
         self.system_envs['q_inference_artifacts'] = None 
         self.system_envs['redis_host'] = None
         self.system_envs['redis_port'] = None
-        
-        
+
+
     def set_proc_logger(self):
         # 새 runs 시작 시 기존 log 폴더 삭제 
         train_log_path = PROJECT_HOME + ".train_artifacts/log/"
@@ -85,33 +84,41 @@ class ALO:
             raise NotImplementedError("Failed to empty log directory.")
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
         self.proc_logger = logger.ProcessLogger(PROJECT_HOME)  
-    
 
-    def load_experimental_plan(self, exp_plan_file): # called at preset func.
-        if exp_plan_file == None: 
+
+    def load_experimental_plan(self, exp_plan_file_path): # called at preset func.
+        if exp_plan_file_path == None: 
             if os.path.exists(EXP_PLAN):
                 return EXP_PLAN
             else: 
                 self.proc_logger.process_error(f"<< {EXP_PLAN} >> not found.")
         else: 
             try: 
-                # 입력한 경로가 로컬 절대경로인지 체크 
-                _path, _file = os.path.split(exp_plan_file) 
+                # 입력한 경로가 상대 경로이면 config 기준으로 경로 변환  
+                _path, _file = os.path.split(exp_plan_file_path) 
                 if os.path.isabs(_path) == True:
                     pass
                 else: 
-                    self.proc_logger.process_error(f"Only absolute local experimental_plan.yaml path is allowed for << --config >> option. \n You entered: {_path}")
+                    exp_plan_file_path = PROJECT_HOME + 'config/' + exp_plan_file_path  
+                    _path, _file = os.path.split(exp_plan_file_path) 
+                # 경로가 config랑 동일하면 (samefile은 dir, file 다 비교가능) 그냥 바로 return 
+                if os.path.samefile(_path, PROJECT_HOME + 'config/'): 
+                    self.proc_logger.process_info(f"Successfully loaded experimental plan yaml: \n {PROJECT_HOME + 'config/' + _file}")
+                    return  PROJECT_HOME + 'config/' + _file 
+                
+                # 경로가 config랑 동일하지 않으면 
                 # 외부 exp plan yaml을 config/ 밑으로 복사 
                 if _file in os.listdir(PROJECT_HOME + 'config/'):
                     self.proc_logger.process_warning(f"<< {_file} >> already exists in config directory. The file is overwritten.")
                 try: 
-                    shutil.copy(exp_plan_file, PROJECT_HOME + 'config/')
+                    shutil.copy(exp_plan_file_path, PROJECT_HOME + 'config/')
                 except: 
-                    self.proc_logger.process_error(f"Failed to copy << {exp_plan_file} >> into << {PROJECT_HOME + 'config/'} >>")
+                    self.proc_logger.process_error(f"Failed to copy << {exp_plan_file_path} >> into << {PROJECT_HOME + 'config/'} >>")
                 # self.exp_plan_file 변수에 config/ 경로로 대입하여 return 
+                self.proc_logger.process_info(f"Successfully loaded experimental plan yaml: \n {PROJECT_HOME + 'config/' + _file}")
                 return  PROJECT_HOME + 'config/' + _file 
             except: 
-                self.proc_logger.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {_path}")
+                self.proc_logger.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {exp_plan_file_path}")
             
             
     def preset(self):
@@ -124,7 +131,7 @@ class ALO:
             except: 
                 self.proc_logger.process_error(f"Failed to create directory: {ASSET_HOME}")
         self.read_yaml() # self.exp_plan default 셋팅 완료 
-        # artifacts 세팅 
+        # artifacts 세팅
         # FIXME train만 돌든 inference만 돌든 일단 artifacts 폴더는 둘다 만든다 
         self.artifacts = set_artifacts()
         # step들이 잘 match 되게 yaml에 기술 돼 있는지 체크
@@ -140,122 +147,115 @@ class ALO:
 
 
     def runs(self):
-        # preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
-        # 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
-        self.set_proc_logger()
-        if self.system_envs['boot_on'] == True: 
-            self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
-        self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
-        self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
-        self.proc_logger.process_info("==================== Start ALO preset ==================== ")
-        self.preset()
-        self.proc_logger.process_info("==================== Finish ALO preset ==================== ")
-        
-        for pipeline in self.asset_source:
-            # alo mode (운영 시에는 SOLUTION_PIPELINE_MODE와 동일)에 따른 pipeline run 분기 
-            if self.system_envs['alo_mode'] == 'train':
-                if 'inf' in pipeline: 
-                    continue
-            elif self.system_envs['alo_mode'] == 'inf' or self.system_envs['alo_mode'] == 'inference':
-                if 'train' in pipeline:
-                    continue
-            elif self.system_envs['alo_mode'] == 'all':
-                pass
-            else:
-                raise ValueError(f"{self.system_envs['alo_mode']} is not supported mode.")
-             
-            # TODO 추후 멀티 파이프라인 시에는 아래 코드 수정 필요 (ex. train0, train1..)
-            pipeline_prefix = pipeline.split('_')[0] # ex. train_pipeline --> train 
-            # 현재 파이프라인에 대응되는 artifacts 폴더 비우기 
-            # [주의] 단 .~_artifacts/log 폴더는 지우지 않기! 
-            self.empty_artifacts(pipeline_prefix)
+        try: 
+            # preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
+            # 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
+            self.set_proc_logger()
+            if self.system_envs['boot_on'] == True: 
+                self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
+            self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
+            self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
+            self.proc_logger.process_info("==================== Start ALO preset ==================== ")
+            self.preset()
+            self.proc_logger.process_info("==================== Finish ALO preset ==================== ")
             
-            if pipeline not in ['train_pipeline', 'inference_pipeline']:
-                self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
-            
-            # solution meta가 존재 할 때 (운영 모드), save artifacts 경로 미입력 시 에러
-            if self.sol_meta is not None:
-                if self.external_path[f"save_{pipeline_prefix}_artifacts_path"] is None:  
-                    self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
-            
-            # 외부 데이터 가져오기 (boot on 시엔 skip)
-            if self.system_envs['boot_on'] == False:
-                # [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
-                # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
-                self.external_load_data(pipeline)
+            for pipeline in self.asset_source:
+                # alo mode (운영 시에는 SOLUTION_PIPELINE_MODE와 동일)에 따른 pipeline run 분기 
+                if self.system_envs['alo_mode'] == 'train':
+                    if 'inf' in pipeline: 
+                        continue
+                elif self.system_envs['alo_mode'] == 'inf' or self.system_envs['alo_mode'] == 'inference':
+                    if 'train' in pipeline:
+                        continue
+                elif self.system_envs['alo_mode'] == 'all':
+                    pass
+                else:
+                    raise ValueError(f"{self.system_envs['alo_mode']} is not supported mode.")
                 
-            # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
-            # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
-            # FIXME boot on 때도 모델은 일단 있으면 가져온다 ? 
-            if pipeline == 'inference_pipeline':
-                if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
-                    self.external_load_model()
-            
-            # wrangler code 및 데이터가 존재한다면 input 폴더 경로로 wrangling 해서 데이터 덮어쓰기부터 진행 
-            # wrangler는 boot_on 이 아닐때만 작동 
-            # TODO wrangler 종속 패키지는 이미 AIC에서 패키지 충돌 테스트 맞친 상태여야하고, ALO에서는 추후 asset 패키지들 다 설치한 이후 마지막에 설치한다 (boot-on때)
-            # FIXME wrangler_dataset_uri 조건 필요할지? 
-            # [참고] 아래 try 문 실행 시간 print문 하나만 넣었어도 0.04초 정도 소요 
-            if (self.system_envs['wrangler_code_uri'] != None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'): # and (self.system_envs['wrangler_dataset_uri'] != None):
-                wrangler_resp = None 
-                try:
-                    base_dir = os.path.basename(os.path.normpath(self.external_path['load_inference_data_path'])) + '/'
-                    wrangler_data_path = INPUT_DATA_HOME + "inference/" + base_dir
-                    wrangler_resp = subprocess.run(["python", self.system_envs['wrangler_code_uri'], "--data_path", wrangler_data_path], capture_output=True, check=False)
-                    self.proc_logger.process_info(f"==================== Done wrangling \n {wrangler_resp.stdout.decode('utf-8')}", color='green')
-                except:  
-                    self.proc_logger.process_error(wrangler_resp.stderr.decode('utf-8'))
-        
-            # 각 asset import 및 실행 
-            self.run_import(pipeline)
-
-            # summary yaml를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
-            # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-            # FIXME train - inference pipeline type 일땐 괜찮나? 
-            if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
-                summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
-                if 'inference_summary.yaml' in os.listdir(summary_dir):
-                    summary_str = json.dumps(get_yaml(summary_dir + 'inference_summary.yaml'))
-                    self.system_envs['q_inference_summary'].rput(summary_str)
-                    self.proc_logger.process_info("Completes putting inference summary into redis queue.", color='green')
-                else: 
-                    self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
-            
-            # artifacts backup --> .history 
-            if self.control['backup_artifacts'] == True:
-                backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time)
-            
-            # solution meta가 존재 (운영 모드) 할 때는 artifacts 압축 전에 .*_artifacts/output/<step> 들 중 마지막 step sub-folder만 남기고 나머진 삭제 
-            if self.sol_meta is not None:
-                output_path = PROJECT_HOME + f".{pipeline_prefix}_artifacts/output/"    
-                output_subdirs = os.listdir(output_path)
-                last_output = None 
-                for step in [item['step'] for item in self.asset_source[pipeline]]: 
-                    if step in output_subdirs: 
-                        last_output = step 
-                for subdir in output_subdirs: 
-                    if subdir != last_output: # last output이 아니면 삭제 
-                        shutil.rmtree(output_path + subdir, ignore_errors=True)
-                        self.proc_logger.process_info(f"Removed output sub-directory without last one: \n << {output_path + subdir} >>")
-            
-            # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)      
-            ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
-            # save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
-            # solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-            if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
-                # 외부 경로로 잘 artifacts 복사 됐나 체크 
-                if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
-                    artifacts_saved_str = json.dumps({"status": "OK"})
-                    self.system_envs['q_inference_artifacts'].rput(artifacts_saved_str)
-                    self.proc_logger.process_info("Completes putting artifacts creation OK signal into redis queue.", color='green')
-                else: 
-                    self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
+                # TODO 추후 멀티 파이프라인 시에는 아래 코드 수정 필요 (ex. train0, train1..)
+                pipeline_prefix = pipeline.split('_')[0] # ex. train_pipeline --> train 
+                # 현재 파이프라인에 대응되는 artifacts 폴더 비우기 
+                # [주의] 단 .~_artifacts/log 폴더는 지우지 않기! 
+                self.empty_artifacts(pipeline_prefix)
+                
+                if pipeline not in ['train_pipeline', 'inference_pipeline']:
+                    self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
+                
+                # solution meta가 존재 할 때 (운영 모드), save artifacts 경로 미입력 시 에러
+                if self.sol_meta is not None:
+                    if self.external_path[f"save_{pipeline_prefix}_artifacts_path"] is None:  
+                        self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
+                
+                # 외부 데이터 가져오기 (boot on 시엔 skip)
+                if self.system_envs['boot_on'] == False:
+                    # [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
+                    # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
+                    self.external_load_data(pipeline)
                     
-            self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
-        
-        
-    
+                # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
+                # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
+                # FIXME boot on 때도 모델은 일단 있으면 가져온다 ? 
+                if pipeline == 'inference_pipeline':
+                    if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
+                        self.external_load_model()
+            
+                # 각 asset import 및 실행 
+                try:
+                    self.run_import(pipeline)
+                except: 
+                    self.proc_logger.process_error(f"Failed to run import: {pipeline}")
+                # summary yaml를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
+                # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
+                # FIXME train - inference pipeline type 일땐 괜찮나? 
+                if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
+                    summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
+                    if 'inference_summary.yaml' in os.listdir(summary_dir):
+                        summary_str = json.dumps(get_yaml(summary_dir + 'inference_summary.yaml'))
+                        self.system_envs['q_inference_summary'].rput(summary_str)
+                        self.proc_logger.process_info("Completes putting inference summary into redis queue.", color='green')
+                    else: 
+                        self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
+                
+                # solution meta가 존재 (운영 모드) 할 때는 artifacts 압축 전에 .*_artifacts/output/<step> 들 중 마지막 step sub-folder만 남기고 나머진 삭제 
+                if self.sol_meta is not None:
+                    output_path = PROJECT_HOME + f".{pipeline_prefix}_artifacts/output/"    
+                    output_subdirs = os.listdir(output_path)
+                    last_output = None 
+                    for step in [item['step'] for item in self.asset_source[pipeline]]: 
+                        if step in output_subdirs: 
+                            last_output = step 
+                    for subdir in output_subdirs: 
+                        if subdir != last_output: # last output이 아니면 삭제 
+                            shutil.rmtree(output_path + subdir, ignore_errors=True)
+                            self.proc_logger.process_info(f"Removed output sub-directory without last one: \n << {output_path + subdir} >>")
+                
+                # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)      
+                ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+                # save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
+                # solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
+                if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
+                    # 외부 경로로 잘 artifacts 복사 됐나 체크 
+                    if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
+                        artifacts_saved_str = json.dumps({"status": "OK"})
+                        self.system_envs['q_inference_artifacts'].rput(artifacts_saved_str)
+                        self.proc_logger.process_info("Completes putting artifacts creation OK signal into redis queue.", color='green')
+                    else: 
+                        self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
+                        
+                self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
+
+                # artifacts backup --> .history 
+                if self.control['backup_artifacts'] == True:
+                    backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time)
+        except: 
+            # FIXME 여기에 걸리면 backup_artifacts에 원래 뜨는 process log는 덮히네..?
+            # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
+            backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True)
+            self.proc_logger.process_error("Failed to ALO runs().")
+
+            
+                
     def empty_artifacts(self, pipe_prefix): 
         '''
         - pipe_prefix: 'train', 'inference'
@@ -309,19 +309,30 @@ class ALO:
         if 'pipeline' not in self.sol_meta.keys(): # key check 
             self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
         
-        # wrangler 정보 가져오기 (만약 둘 중 하나라도 부재 시 뒤쪽에서 wrangler.py 돌릴 때 에러날 것임)
-        # FIXME wrangler 도 edgeapp only interface 일지? (train 땐 안한다고 했으니) --> 로컬에서 wrangler 붙여서 추론 실험해볼 수 있으니 일단 밖으로 뺌 
-        if self.sol_meta['wrangler_code_uri'] == None: 
-            self.proc_logger.process_info("<< wrangler_code_uri >> in the solution_metadata.yaml is << None >>")
-        else: 
-            self.system_envs['wrangler_code_uri'] = self.sol_meta['wrangler_code_uri']
-            self.proc_logger.process_info(f"Success loading << wrangler_code_uri >>: {self.system_envs['wrangler_code_uri']}", color='green')
-        if self.sol_meta['wrangler_dataset_uri'] == None: 
-            self.proc_logger.process_info("<< wrangler_dataset_uri >> in the solution_metadata.yaml is << None >>")
-        else:
-            self.system_envs['wrangler_dataset_uri'] = self.sol_meta['wrangler_dataset_uri']
-            # [중요] wrangler_dataset_uri를 external path의 load_inference_data_path로 지정
-            self.proc_logger.process_info(f"Success loading << wrangler_dataset_uri >>: {self.system_envs['wrangler_dataset_uri']}", color='green')
+        # EdgeAPP 전용 : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
+        def _check_edgeapp_interface(): # inner func.
+            if 'edgeapp_interface' not in self.sol_meta.keys():
+                return False 
+            if 'redis_server_uri' not in self.sol_meta['edgeapp_interface'].keys():
+                return False 
+            if self.sol_meta['edgeapp_interface']['redis_server_uri'] == None:
+                return False
+            if self.sol_meta['edgeapp_interface']['redis_server_uri'] == "":
+                return False 
+            return True 
+        
+        if _check_edgeapp_interface() == True: 
+            try: 
+                # get redis server host, port 
+                self.system_envs['redis_host'], _redis_port = self.sol_meta['edgeapp_interface']['redis_server_uri'].split(':')
+                self.system_envs['redis_port'] = int(_redis_port)
+                if (self.system_envs['redis_host'] == None) or (self.system_envs['redis_port'] == None): 
+                    self.proc_logger.process_error("Missing host or port of << redis_server_uri >> in solution metadata.")
+                # set redis queues
+                self.system_envs['q_inference_summary'] = RedisQueue('inference_summary', host=self.system_envs['redis_host'], port=self.system_envs['redis_port'], db=0)
+                self.system_envs['q_inference_artifacts'] = RedisQueue('inference_artifacts', host=self.system_envs['redis_host'], port=self.system_envs['redis_port'], db=0)
+            except: 
+                self.proc_logger.process_error(f"Failed to parse << redis_server_uri >>")
         
         # EdgeAPP 전용 : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
         def _check_edgeapp_interface(): # inner func.
@@ -348,14 +359,12 @@ class ALO:
             except: 
                 self.proc_logger.process_error(f"Failed to parse << redis_server_uri >>") 
                 
-                
         # TODO: multi (list), single (str) 일때 모두 실험 필요 
         for sol_pipe in self.sol_meta['pipeline']: 
             pipe_type = sol_pipe['type'] # train, inference 
             artifact_uri = sol_pipe['artifact_uri']
             dataset_uri = sol_pipe['dataset_uri']
             selected_params = sol_pipe['parameters']['selected_user_parameters']
-
             # plan yaml에서 현재 sol meta pipe type의 index 찾기 
             cur_pipe_idx = None 
             for idx, plan_pipe in enumerate(self.exp_plan['user_parameters']):
@@ -386,11 +395,8 @@ class ALO:
                         self.exp_plan['external_path'][idx]['save_train_artifacts_path'] = artifact_uri          
             elif pipe_type == 'inference':
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
-                    if 'load_inference_data_path' in ext_dict.keys():    
+                    if 'load_inference_data_path' in ext_dict.keys():
                         self.exp_plan['external_path'][idx]['load_inference_data_path'] = dataset_uri  
-                        # [중요] wrangler_dataset_uri 존재 시 external path의 load_inference_data_path로 덮어쓰기 
-                        if self.system_envs['wrangler_dataset_uri'] is not None: 
-                            self.exp_plan['external_path'][idx]['load_inference_data_path'] = self.system_envs['wrangler_dataset_uri']
                     if 'save_inference_artifacts_path' in ext_dict.keys():  
                         self.exp_plan['external_path'][idx]['save_inference_artifacts_path'] = artifact_uri 
                     # inference type인 경우 model_uri를 plan yaml의 external_path의 load_model_path로 덮어쓰기
@@ -414,6 +420,22 @@ class ALO:
         check_install_requirements(requirements_dict)
 
 
+    def set_asset_structure(self):
+        self.asset_structure = AssetStructure() 
+        
+        self.asset_structure.envs['project_home'] = PROJECT_HOME
+        
+        self.asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
+        self.asset_structure.envs['artifacts'] = self.artifacts
+        self.asset_structure.envs['alo_version'] = self.alo_version
+        if self.control['interface_mode'] not in INTERFACE_TYPES:
+            self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
+        self.asset_structure.envs['interface_mode'] = self.control['interface_mode']
+        self.asset_structure.envs['proc_start_time'] = self.proc_start_time
+        self.asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
+        self.asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
+
+
     def run_import(self, pipeline):
         # setup asset (asset을 git clone (or local) 및 requirements 설치)
         get_asset_source = self.control["get_asset_source"]  # once, every
@@ -432,26 +454,17 @@ class ALO:
             self.install_steps(pipeline, get_asset_source)
         
         # AssetStructure instance 생성 
-        asset_structure = AssetStructure() 
-        # asset structure envs pipeline 별 공통부 
-        asset_structure.envs['project_home'] = PROJECT_HOME
-        asset_structure.envs['pipeline'] = pipeline
-        asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
-        asset_structure.envs['artifacts'] = self.artifacts
-        asset_structure.envs['alo_version'] = self.alo_version
-        if self.control['interface_mode'] not in INTERFACE_TYPES:
-            self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
-        asset_structure.envs['interface_mode'] = self.control['interface_mode']
-        asset_structure.envs['proc_start_time'] = self.proc_start_time
-        asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
-        asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
-        
+        self.set_asset_structure()
+
         for step, asset_config in enumerate(self.asset_source[pipeline]):    
             self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
             # 외부에서 arg를 가져와서 수정이 가능한 구조를 위한 구조
-            asset_structure.args = self.get_args(pipeline, step)
-            asset_structure = self.process_asset_step(asset_config, step, pipeline, asset_structure)
-
+            self.asset_structure.args = self.get_args(pipeline, step)
+            try: 
+                self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
+            except: 
+                self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
+                
 
     def get_args(self, pipeline, step):
         if type(self.user_parameters[pipeline][step]['args']) == type(None):
@@ -462,6 +475,8 @@ class ALO:
 
     def process_asset_step(self, asset_config, step, pipeline, asset_structure): 
         # step: int 
+        self.asset_structure.envs['pipeline'] = pipeline
+
         _path = ASSET_HOME + asset_config['step'] + "/"
         _file = "asset_" + asset_config['step']
         # asset2등을 asset으로 수정하는 코드
@@ -483,10 +498,10 @@ class ALO:
         asset_structure.envs['step'] = self.user_parameters[pipeline][step]['step']
         asset_structure.envs['num_step'] = step # int  
         asset_structure.envs['asset_branch'] = asset_config['source']['branch']
-        
+
         ua = user_asset(asset_structure) 
         asset_structure.data, asset_structure.config = ua.run()
-
+     
         # FIXME memory release : on/off 필요 
         try:
             if self.control['reset_assets']:
@@ -497,7 +512,6 @@ class ALO:
         except:
             release(_path)
             sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
-        
         
         self.proc_logger.process_info(f"==================== Finish pipeline: {pipeline} / step: {asset_config['step']}")
         
