@@ -63,7 +63,8 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         # external path 미기입 시 에러 
         if len(external_data_path) == 0: 
             # 이미 input 폴더는 무조건 만들어져 있는 상태임 
-            PROC_LOGGER.process_error(f'External path - << load_train_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
+            PROC_LOGGER.process_warning(f'External path - << load_train_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
+            return
         else: 
             # load_train_data_path와 load_train_data_path 내 중복  base dir (마지막 서브폴더 명) 존재 시 에러 
             external_base_dirs = _check_duplicated_basedir(external_data_path)
@@ -78,7 +79,8 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         ################################################################################################################
         # eexternal path 미기입 시 에러
         if len(external_data_path) == 0: 
-            PROC_LOGGER.process_error(f'External path - << load_inference_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
+            PROC_LOGGER.process_warning(f'External path - << load_inference_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
+            return
         else: 
             external_base_dirs = _check_duplicated_basedir(external_data_path)
         # input 폴더 내에 inference sub폴더 만들기 
