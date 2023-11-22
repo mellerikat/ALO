@@ -80,32 +80,39 @@ class ALO:
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
         self.proc_logger = logger.ProcessLogger(PROJECT_HOME)  
 
-    def load_experimental_plan(self, exp_plan_file): # called at preset func.
-        if exp_plan_file == None: 
+    def load_experimental_plan(self, exp_plan_file_path): # called at preset func.
+        if exp_plan_file_path == None: 
             if os.path.exists(EXP_PLAN):
                 return EXP_PLAN
             else: 
                 self.proc_logger.process_error(f"<< {EXP_PLAN} >> not found.")
         else: 
             try: 
-                # 입력한 경로가 로컬 절대경로인지 체크 
-                _path, _file = os.path.split(exp_plan_file) 
+                # 입력한 경로가 상대 경로이면 config 기준으로 경로 변환  
+                _path, _file = os.path.split(exp_plan_file_path) 
                 if os.path.isabs(_path) == True:
-                    
                     pass
                 else: 
-                    self.proc_logger.process_error(f"Only absolute local experimental_plan.yaml path is allowed for << --config >> option. \n You entered: {_path}")
+                    exp_plan_file_path = PROJECT_HOME + 'config/' + exp_plan_file_path  
+                    _path, _file = os.path.split(exp_plan_file_path) 
+                # 경로가 config랑 동일하면 (samefile은 dir, file 다 비교가능) 그냥 바로 return 
+                if os.path.samefile(_path, PROJECT_HOME + 'config/'): 
+                    self.proc_logger.process_info(f"Successfully loaded experimental plan yaml: \n {PROJECT_HOME + 'config/' + _file}")
+                    return  PROJECT_HOME + 'config/' + _file 
+                
+                # 경로가 config랑 동일하지 않으면 
                 # 외부 exp plan yaml을 config/ 밑으로 복사 
                 if _file in os.listdir(PROJECT_HOME + 'config/'):
                     self.proc_logger.process_warning(f"<< {_file} >> already exists in config directory. The file is overwritten.")
                 try: 
-                    shutil.copy(exp_plan_file, PROJECT_HOME + 'config/')
+                    shutil.copy(exp_plan_file_path, PROJECT_HOME + 'config/')
                 except: 
-                    self.proc_logger.process_error(f"Failed to copy << {exp_plan_file} >> into << {PROJECT_HOME + 'config/'} >>")
+                    self.proc_logger.process_error(f"Failed to copy << {exp_plan_file_path} >> into << {PROJECT_HOME + 'config/'} >>")
                 # self.exp_plan_file 변수에 config/ 경로로 대입하여 return 
+                self.proc_logger.process_info(f"Successfully loaded experimental plan yaml: \n {PROJECT_HOME + 'config/' + _file}")
                 return  PROJECT_HOME + 'config/' + _file 
             except: 
-                self.proc_logger.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {_path}")
+                self.proc_logger.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {exp_plan_file_path}")
             
             
     def preset(self):
@@ -133,105 +140,113 @@ class ALO:
 
 
     def runs(self):
-        # preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
-        # 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
-        self.set_proc_logger()
-        if self.system_envs['boot_on'] == True: 
-            self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
-        self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
-        self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
-        self.proc_logger.process_info("==================== Start ALO preset ==================== ")
-        self.preset()
-        self.proc_logger.process_info("==================== Finish ALO preset ==================== ")
-        
-        for pipeline in self.asset_source:
-            # alo mode (운영 시에는 SOLUTION_PIPELINE_MODE와 동일)에 따른 pipeline run 분기 
-            if self.system_envs['alo_mode'] == 'train':
-                if 'inf' in pipeline: 
-                    continue
-            elif self.system_envs['alo_mode'] == 'inf' or self.system_envs['alo_mode'] == 'inference':
-                if 'train' in pipeline:
-                    continue
-            elif self.system_envs['alo_mode'] == 'all':
-                pass
-            else:
-                raise ValueError(f"{self.system_envs['alo_mode']} is not supported mode.")
-             
-            # TODO 추후 멀티 파이프라인 시에는 아래 코드 수정 필요 (ex. train0, train1..)
-            pipeline_prefix = pipeline.split('_')[0] # ex. train_pipeline --> train 
-            # 현재 파이프라인에 대응되는 artifacts 폴더 비우기 
-            # [주의] 단 .~_artifacts/log 폴더는 지우지 않기! 
-            self.empty_artifacts(pipeline_prefix)
+        try: 
+            # preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
+            # 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
+            self.set_proc_logger()
+            if self.system_envs['boot_on'] == True: 
+                self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
+            self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
+            self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
+            self.proc_logger.process_info("==================== Start ALO preset ==================== ")
+            self.preset()
+            self.proc_logger.process_info("==================== Finish ALO preset ==================== ")
             
-            if pipeline not in ['train_pipeline', 'inference_pipeline']:
-                self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
-            
-            # solution meta가 존재 할 때 (운영 모드), save artifacts 경로 미입력 시 에러
-            if self.sol_meta is not None:
-                if self.external_path[f"save_{pipeline_prefix}_artifacts_path"] is None:  
-                    self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
-            
-            # 외부 데이터 가져오기 (boot on 시엔 skip)
-            if self.system_envs['boot_on'] == False:
-                # [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
-                # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
-                self.external_load_data(pipeline)
+            for pipeline in self.asset_source:
+                # alo mode (운영 시에는 SOLUTION_PIPELINE_MODE와 동일)에 따른 pipeline run 분기 
+                if self.system_envs['alo_mode'] == 'train':
+                    if 'inf' in pipeline: 
+                        continue
+                elif self.system_envs['alo_mode'] == 'inf' or self.system_envs['alo_mode'] == 'inference':
+                    if 'train' in pipeline:
+                        continue
+                elif self.system_envs['alo_mode'] == 'all':
+                    pass
+                else:
+                    raise ValueError(f"{self.system_envs['alo_mode']} is not supported mode.")
                 
-            # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
-            # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
-            # FIXME boot on 때도 모델은 일단 있으면 가져온다 ? 
-            if pipeline == 'inference_pipeline':
-                if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
-                    self.external_load_model()
-        
-            # 각 asset import 및 실행 
-            self.run_import(pipeline)
-
-            # summary yaml를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
-            # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-            # FIXME train - inference pipeline type 일땐 괜찮나? 
-            if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
-                summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
-                if 'inference_summary.yaml' in os.listdir(summary_dir):
-                    summary_str = json.dumps(get_yaml(summary_dir + 'inference_summary.yaml'))
-                    self.system_envs['q_inference_summary'].rput(summary_str)
-                    self.proc_logger.process_info("Completes putting inference summary into redis queue.", color='green')
-                else: 
-                    self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
-            
-            # artifacts backup --> .history 
-            if self.control['backup_artifacts'] == True:
-                backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time)
-            
-            # solution meta가 존재 (운영 모드) 할 때는 artifacts 압축 전에 .*_artifacts/output/<step> 들 중 마지막 step sub-folder만 남기고 나머진 삭제 
-            if self.sol_meta is not None:
-                output_path = PROJECT_HOME + f".{pipeline_prefix}_artifacts/output/"    
-                output_subdirs = os.listdir(output_path)
-                last_output = None 
-                for step in [item['step'] for item in self.asset_source[pipeline]]: 
-                    if step in output_subdirs: 
-                        last_output = step 
-                for subdir in output_subdirs: 
-                    if subdir != last_output: # last output이 아니면 삭제 
-                        shutil.rmtree(output_path + subdir, ignore_errors=True)
-                        self.proc_logger.process_info(f"Removed output sub-directory without last one: \n << {output_path + subdir} >>")
-            
-            # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)      
-            ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
-            # save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
-            # solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-            if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
-                # 외부 경로로 잘 artifacts 복사 됐나 체크 
-                if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
-                    artifacts_saved_str = json.dumps({"status": "OK"})
-                    self.system_envs['q_inference_artifacts'].rput(artifacts_saved_str)
-                    self.proc_logger.process_info("Completes putting artifacts creation OK signal into redis queue.", color='green')
-                else: 
-                    self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
+                # TODO 추후 멀티 파이프라인 시에는 아래 코드 수정 필요 (ex. train0, train1..)
+                pipeline_prefix = pipeline.split('_')[0] # ex. train_pipeline --> train 
+                # 현재 파이프라인에 대응되는 artifacts 폴더 비우기 
+                # [주의] 단 .~_artifacts/log 폴더는 지우지 않기! 
+                self.empty_artifacts(pipeline_prefix)
+                
+                if pipeline not in ['train_pipeline', 'inference_pipeline']:
+                    self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
+                
+                # solution meta가 존재 할 때 (운영 모드), save artifacts 경로 미입력 시 에러
+                if self.sol_meta is not None:
+                    if self.external_path[f"save_{pipeline_prefix}_artifacts_path"] is None:  
+                        self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
+                
+                # 외부 데이터 가져오기 (boot on 시엔 skip)
+                if self.system_envs['boot_on'] == False:
+                    # [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
+                    # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
+                    self.external_load_data(pipeline)
                     
-            self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
-        
+                # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
+                # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
+                # FIXME boot on 때도 모델은 일단 있으면 가져온다 ? 
+                if pipeline == 'inference_pipeline':
+                    if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
+                        self.external_load_model()
+            
+                # 각 asset import 및 실행 
+                self.run_import(pipeline)
+
+                # summary yaml를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
+                # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
+                # FIXME train - inference pipeline type 일땐 괜찮나? 
+                if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
+                    summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
+                    if 'inference_summary.yaml' in os.listdir(summary_dir):
+                        summary_str = json.dumps(get_yaml(summary_dir + 'inference_summary.yaml'))
+                        self.system_envs['q_inference_summary'].rput(summary_str)
+                        self.proc_logger.process_info("Completes putting inference summary into redis queue.", color='green')
+                    else: 
+                        self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
+                
+                # solution meta가 존재 (운영 모드) 할 때는 artifacts 압축 전에 .*_artifacts/output/<step> 들 중 마지막 step sub-folder만 남기고 나머진 삭제 
+                if self.sol_meta is not None:
+                    output_path = PROJECT_HOME + f".{pipeline_prefix}_artifacts/output/"    
+                    output_subdirs = os.listdir(output_path)
+                    last_output = None 
+                    for step in [item['step'] for item in self.asset_source[pipeline]]: 
+                        if step in output_subdirs: 
+                            last_output = step 
+                    for subdir in output_subdirs: 
+                        if subdir != last_output: # last output이 아니면 삭제 
+                            shutil.rmtree(output_path + subdir, ignore_errors=True)
+                            self.proc_logger.process_info(f"Removed output sub-directory without last one: \n << {output_path + subdir} >>")
+                
+                # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)      
+                ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+                # save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
+                # solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
+                if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
+                    # 외부 경로로 잘 artifacts 복사 됐나 체크 
+                    if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
+                        artifacts_saved_str = json.dumps({"status": "OK"})
+                        self.system_envs['q_inference_artifacts'].rput(artifacts_saved_str)
+                        self.proc_logger.process_info("Completes putting artifacts creation OK signal into redis queue.", color='green')
+                    else: 
+                        self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
+                        
+                self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
+
+                # artifacts backup --> .history 
+                if self.control['backup_artifacts'] == True:
+                    backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time)
+        except: 
+            self.proc_logger.process_error("Failed to ALO runs().")
+        finally:
+            # FIXME 여기에 걸리면 backup_artifacts에 원래 뜨는 process log는 덮히네..?
+            # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
+            backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True)
+            
+                
     def empty_artifacts(self, pipe_prefix): 
         '''
         - pipe_prefix: 'train', 'inference'
