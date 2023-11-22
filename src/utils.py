@@ -168,15 +168,10 @@ def backup_artifacts(pipelines, exp_plan_file, proc_start_time):
 
     current_pipeline = pipelines.split("_pipelines")[0]
     # artifacts_home_생성시간 폴더를 제작
-    # timestamp_option = True
-    # hms_option = True
-    # if timestamp_option == True:  
-    #     if hms_option == True : 
-    #         timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
-    #     else : 
-    #         timestamp = datetime.now().strftime("%y%m%d")     
-        # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
+    timestamp_option = True
+    hms_option = True
     
+    # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
     backup_folder= '{}_artifacts'.format(proc_start_time) + f"_{current_pipeline}/"
     
     # TODO current_pipelines 는 차후에 workflow name으로 변경이 필요

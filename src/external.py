@@ -112,7 +112,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
             _load_data(pipe_mode, ext_type, ext_path, load_s3_key_path)
             PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>", color='green') 
         
-        return             
+        return
 
 def _check_duplicated_basedir(data_path):
     base_dir_list = [] 
@@ -124,8 +124,7 @@ def _check_duplicated_basedir(data_path):
                                     For example, these are not allowed: \n \
                                     - load_train_data_path: [/users/train1/data/, /users/train2/data/] \n \
                                     which have << data >> as duplicated basename of the path.")
-    return base_dir_list # 마지막 base폴더 이름들 리스트 
-
+    return base_dir_list # 마지막 base폴더 이름들 리스트          
 
 def _load_data(pipeline, ext_type, ext_path, load_s3_key_path): 
     # 실제로 데이터 복사 (절대 경로) or 다운로드 (s3) 
@@ -270,7 +269,6 @@ def external_load_model(external_path, external_path_permission):
         finally:
             # TEMP_MODEL_DIR는 삭제 
             shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
-
         
 def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     """ Description
@@ -328,7 +326,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     elif pipe_mode == "inference_pipeline": 
         artifacts_tar_path = _tar_dir(".inference_artifacts") 
         model_tar_path = _tar_dir(".inference_artifacts/models") 
-    
+
     # FIXME external save path 를 지우고 다시 만드는게 맞는가 ? (로컬이든 s3든)
     if (ext_type  == 'absolute') or (ext_type  == 'relative'):
         ext_path = PROJECT_HOME + 'config/' + ext_path if ext_type == 'relative' else ext_path
@@ -384,7 +382,6 @@ def _get_ext_path_type(_ext_path: str): # inner function
         return 'relative'
     else: 
         PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path. \n Do not enter the file path. (Finish the path with directory name)')
-            
             
 def _tar_dir(_path): 
     ## _path: .train_artifacts / .inference_artifacts     
