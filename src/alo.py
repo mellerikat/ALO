@@ -60,6 +60,7 @@ class ALO:
         self.proc_logger = None
         self.alo_version = ALOVER
 
+
     def set_system_envs(self):
         # solution meta 버전 
         self.system_envs['solution_metadata_version'] = None 
@@ -68,6 +69,7 @@ class ALO:
         self.system_envs['q_inference_artifacts'] = None 
         self.system_envs['redis_host'] = None
         self.system_envs['redis_port'] = None
+
 
     def set_proc_logger(self):
         # 새 runs 시작 시 기존 log 폴더 삭제 
@@ -82,6 +84,7 @@ class ALO:
             raise NotImplementedError("Failed to empty log directory.")
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
         self.proc_logger = logger.ProcessLogger(PROJECT_HOME)  
+
 
     def load_experimental_plan(self, exp_plan_file_path): # called at preset func.
         if exp_plan_file_path == None: 
@@ -133,6 +136,7 @@ class ALO:
         self.artifacts = set_artifacts()
         # step들이 잘 match 되게 yaml에 기술 돼 있는지 체크
         match_steps(self.user_parameters, self.asset_source)
+
 
     def external_load_data(self, pipeline):
         external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
@@ -196,8 +200,10 @@ class ALO:
                         self.external_load_model()
             
                 # 각 asset import 및 실행 
-                self.run_import(pipeline)
-
+                try:
+                    self.run_import(pipeline)
+                except: 
+                    self.proc_logger.process_error(f"Failed to run import: {pipeline}")
                 # summary yaml를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
                 # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
                 # FIXME train - inference pipeline type 일땐 괜찮나? 
@@ -243,11 +249,11 @@ class ALO:
                 if self.control['backup_artifacts'] == True:
                     backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time)
         except: 
-            self.proc_logger.process_error("Failed to ALO runs().")
-        finally:
             # FIXME 여기에 걸리면 backup_artifacts에 원래 뜨는 process log는 덮히네..?
             # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
             backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True)
+            self.proc_logger.process_error("Failed to ALO runs().")
+
             
                 
     def empty_artifacts(self, pipe_prefix): 
@@ -413,6 +419,7 @@ class ALO:
         
         check_install_requirements(requirements_dict)
 
+
     def set_asset_structure(self):
         self.asset_structure = AssetStructure() 
         
@@ -447,17 +454,17 @@ class ALO:
             self.install_steps(pipeline, get_asset_source)
         
         # AssetStructure instance 생성 
-        
         self.set_asset_structure()
-        # asset structure envs pipeline 별 공통부 
-        
 
         for step, asset_config in enumerate(self.asset_source[pipeline]):    
             self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
             # 외부에서 arg를 가져와서 수정이 가능한 구조를 위한 구조
             self.asset_structure.args = self.get_args(pipeline, step)
-            self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
-
+            try: 
+                self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
+            except: 
+                self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
+                
 
     def get_args(self, pipeline, step):
         if type(self.user_parameters[pipeline][step]['args']) == type(None):
@@ -486,7 +493,6 @@ class ALO:
 
         # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의         
         # asset structure envs pipeline 별 가변부 (alolib에서도 사용하므로 필요)
-
         if step > 0: 
             asset_structure.envs['prev_step'] = self.user_parameters[pipeline][step - 1]['step'] # asset.py에서 load config, load data 할때 필요 
         asset_structure.envs['step'] = self.user_parameters[pipeline][step]['step']
@@ -495,7 +501,7 @@ class ALO:
 
         ua = user_asset(asset_structure) 
         asset_structure.data, asset_structure.config = ua.run()
-
+     
         # FIXME memory release : on/off 필요 
         try:
             if self.control['reset_assets']:
@@ -506,7 +512,6 @@ class ALO:
         except:
             release(_path)
             sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
-        
         
         self.proc_logger.process_info(f"==================== Finish pipeline: {pipeline} / step: {asset_config['step']}")
         

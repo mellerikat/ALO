@@ -212,7 +212,11 @@ def backup_artifacts(pipelines, exp_plan_file, proc_start_time, error=False):
         PROC_LOGGER.process_error(f"Failed to move {temp_backup_artifacts_dir} into {PROJECT_HOME}/.history/")
     # 잘 move 됐는 지 확인  
     if os.path.exists(PROJECT_HOME + ".history/" + backup_folder):
-        PROC_LOGGER.process_info("Successfully completes << .history >> backup (experimental_plan.yaml & artifacts)", "green")
+        if error == False: 
+            PROC_LOGGER.process_info("Successfully completes << .history >> backup (experimental_plan.yaml & artifacts)", "green")
+        elif error == True: 
+            PROC_LOGGER.process_warning("Error backup completes @ << .history >> (experimental_plan.yaml & artifacts)")
+            
     
     
 # inner function 
