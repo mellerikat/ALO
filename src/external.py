@@ -90,7 +90,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
     ################################################################################################################
     # external base 폴더 이름들과 현재 input 폴더 내 구성의 일치여부 확인 후 once, every에 따른 동작 분기 
     if get_external_data == 'once':
-        if external_base_dirs == os.listdir(INPUT_DATA_HOME): # 외부 경로와 input 폴더 내 구성이 완전히 동등하면 데이터 새로 가져오지 않고 return 
+        if external_base_dirs == os.listdir(input_data_dir): # 외부 경로와 input 폴더 내 구성이 완전히 동등하면 데이터 새로 가져오지 않고 return 
             PROC_LOGGER.process_info(f"Skip loading external data. All the data in the external load data path already exist in << {INPUT_DATA_HOME} >> equally. \n : << external_base_dirs >>")
             return # 외부 데이터 가져오지 않고 return 
         else: 
