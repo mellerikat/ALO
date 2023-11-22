@@ -54,17 +54,12 @@ class ALO:
         
         self.exp_plan = None
         self.artifacts = None 
-        
         self.proc_logger = None
-        
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
 
     def set_system_envs(self):
         # solution meta 버전 
         self.system_envs['solution_metadata_version'] = None 
-        # wrangler 관련 
-        self.system_envs['wrangler_code_uri'] = None
-        self.system_envs['wrangler_dataset_uri'] = None
         # edgeapp interface 관련 
         self.system_envs['q_inference_summary'] = None 
         self.system_envs['q_inference_artifacts'] = None 
@@ -84,32 +79,6 @@ class ALO:
             raise NotImplementedError("Failed to empty log directory.")
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
         self.proc_logger = logger.ProcessLogger(PROJECT_HOME)  
-    
-    def load_experimental_plan(self, exp_plan_file): # called at preset func.
-        if exp_plan_file == None: 
-            if os.path.exists(EXP_PLAN):
-                return EXP_PLAN
-            else: 
-                self.proc_logger.process_error(f"<< {EXP_PLAN} >> not found.")
-        else: 
-            try: 
-                # 입력한 경로가 로컬 절대경로인지 체크 
-                _path, _file = os.path.split(exp_plan_file) 
-                if os.path.isabs(_path) == True:
-                    pass
-                else: 
-                    self.proc_logger.process_error(f"Only absolute local experimental_plan.yaml path is allowed for << --config >> option. \n You entered: {_path}")
-                # 외부 exp plan yaml을 config/ 밑으로 복사 
-                if _file in os.listdir(PROJECT_HOME + 'config/'):
-                    self.proc_logger.process_warning(f"<< {_file} >> already exists in config directory. The file is overwritten.")
-                try: 
-                    shutil.copy(exp_plan_file, PROJECT_HOME + 'config/')
-                except: 
-                    self.proc_logger.process_error(f"Failed to copy << {exp_plan_file} >> into << {PROJECT_HOME + 'config/'} >>")
-                # self.exp_plan_file 변수에 config/ 경로로 대입하여 return 
-                return  PROJECT_HOME + 'config/' + _file 
-            except: 
-                self.proc_logger.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {_path}")
 
     def load_experimental_plan(self, exp_plan_file): # called at preset func.
         if exp_plan_file == None: 
@@ -122,6 +91,7 @@ class ALO:
                 # 입력한 경로가 로컬 절대경로인지 체크 
                 _path, _file = os.path.split(exp_plan_file) 
                 if os.path.isabs(_path) == True:
+                    
                     pass
                 else: 
                     self.proc_logger.process_error(f"Only absolute local experimental_plan.yaml path is allowed for << --config >> option. \n You entered: {_path}")
@@ -213,21 +183,6 @@ class ALO:
             if pipeline == 'inference_pipeline':
                 if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
                     self.external_load_model()
-
-            # wrangler code 및 데이터가 존재한다면 input 폴더 경로로 wrangling 해서 데이터 덮어쓰기부터 진행 
-            # wrangler는 boot_on 이 아닐때만 작동 
-            # TODO wrangler 종속 패키지는 이미 AIC에서 패키지 충돌 테스트 맞친 상태여야하고, ALO에서는 추후 asset 패키지들 다 설치한 이후 마지막에 설치한다 (boot-on때)
-            # FIXME wrangler_dataset_uri 조건 필요할지? 
-            # [참고] 아래 try 문 실행 시간 print문 하나만 넣었어도 0.04초 정도 소요 
-            if (self.system_envs['wrangler_code_uri'] != None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'): # and (self.system_envs['wrangler_dataset_uri'] != None):
-                wrangler_resp = None 
-                try:
-                    base_dir = os.path.basename(os.path.normpath(self.external_path['load_inference_data_path'])) + '/'
-                    wrangler_data_path = INPUT_DATA_HOME + "inference/" + base_dir
-                    wrangler_resp = subprocess.run(["python", self.system_envs['wrangler_code_uri'], "--data_path", wrangler_data_path], capture_output=True, check=False)
-                    self.proc_logger.process_info(f"==================== Done wrangling \n {wrangler_resp.stdout.decode('utf-8')}", color='green')
-                except:  
-                    self.proc_logger.process_error(wrangler_resp.stderr.decode('utf-8'))
         
             # 각 asset import 및 실행 
             self.run_import(pipeline)
@@ -329,20 +284,6 @@ class ALO:
         # solution metadata yaml에 pipeline key 있는지 체크 
         if 'pipeline' not in self.sol_meta.keys(): # key check 
             self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
-
-        # wrangler 정보 가져오기 (만약 둘 중 하나라도 부재 시 뒤쪽에서 wrangler.py 돌릴 때 에러날 것임)
-        # FIXME wrangler 도 edgeapp only interface 일지? (train 땐 안한다고 했으니) --> 로컬에서 wrangler 붙여서 추론 실험해볼 수 있으니 일단 밖으로 뺌 
-        if self.sol_meta['wrangler_code_uri'] == None: 
-            self.proc_logger.process_info("<< wrangler_code_uri >> in the solution_metadata.yaml is << None >>")
-        else: 
-            self.system_envs['wrangler_code_uri'] = self.sol_meta['wrangler_code_uri']
-            self.proc_logger.process_info(f"Success loading << wrangler_code_uri >>: {self.system_envs['wrangler_code_uri']}", color='green')
-        if self.sol_meta['wrangler_dataset_uri'] == None: 
-            self.proc_logger.process_info("<< wrangler_dataset_uri >> in the solution_metadata.yaml is << None >>")
-        else:
-            self.system_envs['wrangler_dataset_uri'] = self.sol_meta['wrangler_dataset_uri']
-            # [중요] wrangler_dataset_uri를 external path의 load_inference_data_path로 지정
-            self.proc_logger.process_info(f"Success loading << wrangler_dataset_uri >>: {self.system_envs['wrangler_dataset_uri']}", color='green')
         
         # EdgeAPP 전용 : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
         def _check_edgeapp_interface(): # inner func.
@@ -369,20 +310,6 @@ class ALO:
             except: 
                 self.proc_logger.process_error(f"Failed to parse << redis_server_uri >>")
         
-        # wrangler 정보 가져오기 (만약 둘 중 하나라도 부재 시 뒤쪽에서 wrangler.py 돌릴 때 에러날 것임)
-        # FIXME wrangler 도 edgeapp only interface 일지? (train 땐 안한다고 했으니) --> 로컬에서 wrangler 붙여서 추론 실험해볼 수 있으니 일단 밖으로 뺌 
-        if self.sol_meta['wrangler_code_uri'] == None: 
-            self.proc_logger.process_info("<< wrangler_code_uri >> in the solution_metadata.yaml is << None >>")
-        else: 
-            self.system_envs['wrangler_code_uri'] = self.sol_meta['wrangler_code_uri']
-            self.proc_logger.process_info(f"Success loading << wrangler_code_uri >>: {self.system_envs['wrangler_code_uri']}", color='green')
-        if self.sol_meta['wrangler_dataset_uri'] == None: 
-            self.proc_logger.process_info("<< wrangler_dataset_uri >> in the solution_metadata.yaml is << None >>")
-        else:
-            self.system_envs['wrangler_dataset_uri'] = self.sol_meta['wrangler_dataset_uri']
-            # [중요] wrangler_dataset_uri를 external path의 load_inference_data_path로 지정
-            self.proc_logger.process_info(f"Success loading << wrangler_dataset_uri >>: {self.system_envs['wrangler_dataset_uri']}", color='green')
-        
         # EdgeAPP 전용 : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
         def _check_edgeapp_interface(): # inner func.
             if 'edgeapp_interface' not in self.sol_meta.keys():
@@ -408,14 +335,12 @@ class ALO:
             except: 
                 self.proc_logger.process_error(f"Failed to parse << redis_server_uri >>") 
                 
-                
         # TODO: multi (list), single (str) 일때 모두 실험 필요 
         for sol_pipe in self.sol_meta['pipeline']: 
             pipe_type = sol_pipe['type'] # train, inference 
             artifact_uri = sol_pipe['artifact_uri']
             dataset_uri = sol_pipe['dataset_uri']
             selected_params = sol_pipe['parameters']['selected_user_parameters']
-
             # plan yaml에서 현재 sol meta pipe type의 index 찾기 
             cur_pipe_idx = None 
             for idx, plan_pipe in enumerate(self.exp_plan['user_parameters']):
@@ -448,9 +373,6 @@ class ALO:
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
                     if 'load_inference_data_path' in ext_dict.keys():
                         self.exp_plan['external_path'][idx]['load_inference_data_path'] = dataset_uri  
-                        # [중요] wrangler_dataset_uri 존재 시 external path의 load_inference_data_path로 덮어쓰기 
-                        if self.system_envs['wrangler_dataset_uri'] is not None: 
-                            self.exp_plan['external_path'][idx]['load_inference_data_path'] = self.system_envs['wrangler_dataset_uri']
                     if 'save_inference_artifacts_path' in ext_dict.keys():  
                         self.exp_plan['external_path'][idx]['save_inference_artifacts_path'] = artifact_uri 
                     # inference type인 경우 model_uri를 plan yaml의 external_path의 load_model_path로 덮어쓰기
