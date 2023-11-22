@@ -60,7 +60,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         # 1개여서 str인 경우도 list로 바꾸고, 여러개인 경우는 그냥 그대로 list로 
         external_data_path = [external_data_path] if type(external_data_path) == str else external_data_path
         ################################################################################################################
-        # external path 미기입 시 에러 
+        # FIXME external path 미기입 시 warning 발생 후 return (데이터 없는데 사용하려고 하면 어짜피 input asset에서 에러날 것임)
         if len(external_data_path) == 0: 
             # 이미 input 폴더는 무조건 만들어져 있는 상태임 
             PROC_LOGGER.process_warning(f'External path - << load_train_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
