@@ -120,8 +120,8 @@ user_parameters:
               # Number of time series samples for each training. Default = 32.
               nbeats_batch_size: 32
               # Number of iterative training on a same set of samples. Default = 100.
-              #nbeats_n_epochs: 30
-              nbeats_n_epochs: 10
+              nbeats_n_epochs: 30
+              #nbeats_n_epochs: 10
               # ---------- common to nbeats and gam_stat hyper params -----------
               n_group_key_variates: 0
               list_n_group_key_uval: []
@@ -161,8 +161,8 @@ user_parameters:
               # One of LCB, EI, PI, gp_hedge, EIps, PIps. Default = EI.
               baysian_opt_acq_func: EI
               # Baysian optimization's acquision function tries n_calls times to find the global optima point.
-              #n_calls: 20
-              n_calls: 10
+              n_calls: 30
+              #n_calls: 10
               # tsfresh's fc_param value. 'minimal' or 'comprehensive'. Default = 'minimal
               tsf_param: minimal
               # Default = 0.001. Outlier screening threshold for Isolated Forest.
@@ -326,7 +326,8 @@ user_parameters:
               # One of LCB, EI, PI, gp_hedge, EIps, PIps. Default = EI.
               baysian_opt_acq_func: EI
               # Baysian optimization's acquision function tries n_calls times to find the global optima point.
-              n_calls: 20
+              #n_calls: 10
+              n_calls: 30
               # tsfresh's fc_param value. 'minimal' or 'comprehensive'. Default = 'minimal
               tsf_param: minimal
               # Default = 0.001. Outlier screening threshold for Isolated Forest.
