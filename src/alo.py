@@ -11,13 +11,16 @@ from copy import deepcopy
 from src.constants import *
 ####################### ALO master requirements 리스트업 및 설치 #######################
 # ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
+ALOMAIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+cmd = f'cd {ALOMAIN} && git symbolic-ref --short HEAD'
 try: 
-    alo_ver = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
-    alolib_git = f'alolib @ git+http://10.185.66.38/hub/dxadvtech/aicontents-framework/alolib-source.git@{alo_ver}'
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
+    ALOVER = result.stdout.decode('utf-8').strip()
+    alolib_git = f'alolib @ git+http://10.185.66.38/hub/dxadvtech/aicontents-framework/alolib-source.git@{ALOVER}'
     try: 
         alolib_pkg = pkg_resources.get_distribution('alolib') # get_distribution tact-time 테스트: 약 0.001s
-        alo_ver = '0' if alo_ver == 'develop' else alo_ver.split('-')[-1] # 가령 release-1.2면 1.2만 가져옴 
-        if str(alolib_pkg.version) != str(alo_ver): 
+        ALOVER = '0' if ALOVER == 'develop' else ALOVER.split('-')[-1] # 가령 release-1.2면 1.2만 가져옴 
+        if str(alolib_pkg.version) != str(ALOVER): 
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall']) # alo version과 같은 alolib 설치  
     except: # alolib 미설치 경우 
         subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall'])
@@ -55,7 +58,7 @@ class ALO:
         self.exp_plan = None
         self.artifacts = None 
         self.proc_logger = None
-        self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+        self.alo_version = ALOVER
 
     def set_system_envs(self):
         # solution meta 버전 
@@ -410,6 +413,21 @@ class ALO:
         
         check_install_requirements(requirements_dict)
 
+    def set_asset_structure(self):
+        self.asset_structure = AssetStructure() 
+        
+        self.asset_structure.envs['project_home'] = PROJECT_HOME
+        
+        self.asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
+        self.asset_structure.envs['artifacts'] = self.artifacts
+        self.asset_structure.envs['alo_version'] = self.alo_version
+        if self.control['interface_mode'] not in INTERFACE_TYPES:
+            self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
+        self.asset_structure.envs['interface_mode'] = self.control['interface_mode']
+        self.asset_structure.envs['proc_start_time'] = self.proc_start_time
+        self.asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
+        self.asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
+
 
     def run_import(self, pipeline):
         # setup asset (asset을 git clone (or local) 및 requirements 설치)
@@ -429,25 +447,16 @@ class ALO:
             self.install_steps(pipeline, get_asset_source)
         
         # AssetStructure instance 생성 
-        asset_structure = AssetStructure() 
+        
+        self.set_asset_structure()
         # asset structure envs pipeline 별 공통부 
-        asset_structure.envs['project_home'] = PROJECT_HOME
-        asset_structure.envs['pipeline'] = pipeline
-        asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
-        asset_structure.envs['artifacts'] = self.artifacts
-        asset_structure.envs['alo_version'] = self.alo_version
-        if self.control['interface_mode'] not in INTERFACE_TYPES:
-            self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
-        asset_structure.envs['interface_mode'] = self.control['interface_mode']
-        asset_structure.envs['proc_start_time'] = self.proc_start_time
-        asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
-        asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
+        
 
         for step, asset_config in enumerate(self.asset_source[pipeline]):    
             self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
             # 외부에서 arg를 가져와서 수정이 가능한 구조를 위한 구조
-            asset_structure.args = self.get_args(pipeline, step)
-            asset_structure = self.process_asset_step(asset_config, step, pipeline, asset_structure)
+            self.asset_structure.args = self.get_args(pipeline, step)
+            self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
 
 
     def get_args(self, pipeline, step):
@@ -459,6 +468,8 @@ class ALO:
 
     def process_asset_step(self, asset_config, step, pipeline, asset_structure): 
         # step: int 
+        self.asset_structure.envs['pipeline'] = pipeline
+
         _path = ASSET_HOME + asset_config['step'] + "/"
         _file = "asset_" + asset_config['step']
         # asset2등을 asset으로 수정하는 코드
