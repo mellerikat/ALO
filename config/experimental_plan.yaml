@@ -4,7 +4,7 @@ external_path:
     - load_inference_data_path: /nas001/projects/aicontents_forecast/fcst_samples/inference_input_path/
     - save_train_artifacts_path:
     - save_inference_artifacts_path:
-    - load_s3_key_path: /nas001/users/woosung.jang/aws_key
+    #- load_s3_key_path: /nas001/users/woosung.jang/aws_key
 
 external_path_permission:
     - s3_private_key_file:
@@ -42,8 +42,8 @@ user_parameters:
               # Optional
               static_covariates: []
               holiday_covariates: []
-              inference_sample_length: None # Sample lengths for inference sets. None or an integer.
-              time_index_cutoff: None
+              inference_sample_length: 16 # Sample lengths for inference sets. None or an integer.
+              time_index_cutoff:
               ## Hyper parameters - Optional. It will be determined automaticlly.
               ## 1) gam_stat hyper params to be HPO
               # Regulation method. > 0. The higher it is, the less regulation. Default = 10 (very less regulation). 
@@ -80,8 +80,8 @@ user_parameters:
               interval_width: 0.8
               interval_width_x_covariates: 0.8
               # User specific changepoints like ['2023-01-01', '2023-07-01']. Default = None
-              changepoints: None
-              changepoints_x_covariates: None
+              changepoints:
+              changepoints_x_covariates:
               # Number of changepoints for automatic changepoint detection. Default = 25
               n_changepoints: 25
               n_changepoints_x_covariates: 25
@@ -120,7 +120,8 @@ user_parameters:
               # Number of time series samples for each training. Default = 32.
               nbeats_batch_size: 32
               # Number of iterative training on a same set of samples. Default = 100.
-              nbeats_n_epochs: 30
+              #nbeats_n_epochs: 30
+              nbeats_n_epochs: 10
               # ---------- common to nbeats and gam_stat hyper params -----------
               n_group_key_variates: 0
               list_n_group_key_uval: []
@@ -146,7 +147,7 @@ user_parameters:
               validation_set_size: 0
               # Kfolds - The validation set and test set will be further divided into kfolds sections.
               # Forcasting will be made for each section, and the overall evaluation will be made over the all sections.
-              kfolds_cv: 3
+              kfolds_cv: 1
               kfolds_test: 1
               # The threshold on the sum of x_covariates' normalized feature importances in descending order.
               # 0 <= value <= 1. Default = 0.7.
@@ -160,7 +161,8 @@ user_parameters:
               # One of LCB, EI, PI, gp_hedge, EIps, PIps. Default = EI.
               baysian_opt_acq_func: EI
               # Baysian optimization's acquision function tries n_calls times to find the global optima point.
-              n_calls: 20
+              #n_calls: 20
+              n_calls: 10
               # tsfresh's fc_param value. 'minimal' or 'comprehensive'. Default = 'minimal
               tsf_param: minimal
               # Default = 0.001. Outlier screening threshold for Isolated Forest.
@@ -206,8 +208,8 @@ user_parameters:
               # Optional
               static_covariates: []
               holiday_covariates: []
-              inference_sample_length: None # Sample lengths for inference sets. None or an integer.
-              time_index_cutoff: None
+              inference_sample_length: # Sample lengths for inference sets. None or an integer.
+              time_index_cutoff:
               ## Hyper parameters - Optional. It will be determined automaticlly.
               ## 1) gam_stat hyper params to be HPO
               # Regulation method. > 0. The higher it is, the less regulation. Default = 10 (very less regulation). 
@@ -244,8 +246,8 @@ user_parameters:
               interval_width: 0.8
               interval_width_x_covariates: 0.8
               # User specific changepoints like ['2023-01-01', '2023-07-01']. Default = None
-              changepoints: None
-              changepoints_x_covariates: None
+              changepoints:
+              changepoints_x_covariates:
               # Number of changepoints for automatic changepoint detection. Default = 25
               n_changepoints: 25
               n_changepoints_x_covariates: 25
@@ -310,7 +312,7 @@ user_parameters:
               validation_set_size: 0
               # Kfolds - The validation set and test set will be further divided into kfolds sections.
               # Forcasting will be made for each section, and the overall evaluation will be made over the all sections.
-              kfolds_cv: 3
+              kfolds_cv: 1
               kfolds_test: 1
               # The threshold on the sum of x_covariates' normalized feature importances in descending order.
               # 0 <= value <= 1. Default = 0.7.
