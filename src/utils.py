@@ -4,6 +4,7 @@ import sys
 import re
 import shutil
 from datetime import datetime
+from datetime import timedelta
 import git
 
 from src.constants import *
@@ -160,7 +161,7 @@ def get_folder_size(folder_path):
     return total_size
 
 def delete_old_files(folder_path, days_old):
-    cutoff_date = datetime.now() - datetime.timedelta(days=days_old)
+    cutoff_date = datetime.now() - timedelta(days=days_old)
     for dirpath, dirnames, filenames in os.walk(folder_path):
         for d in dirnames:
             folder = os.path.join(dirpath, d)
