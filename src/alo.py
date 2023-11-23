@@ -247,11 +247,11 @@ class ALO:
 
                 # artifacts backup --> .history 
                 if self.control['backup_artifacts'] == True:
-                    backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time)
+                    backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, size=self.control['backup_size'])
         except: 
             # FIXME 여기에 걸리면 backup_artifacts에 원래 뜨는 process log는 덮히네..?
             # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
-            backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True)
+            backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
             self.proc_logger.process_error("Failed to ALO runs().")
 
             
