@@ -28,7 +28,7 @@ except:
     raise NotImplementedError('Failed to install << alolib >>')
 #######################################################################################
 from src.install import *
-from src.utils import set_artifacts, setup_asset, match_steps, import_asset, release, backup_artifacts
+from src.utils import set_artifacts, setup_asset, match_steps, import_asset, release, backup_artifacts, move_output_files
 from src.compare_yamls import get_yaml, compare_yaml
 from src.external import external_load_data, external_load_model, external_save_artifacts
 from src.redisqueue import RedisQueue
@@ -48,7 +48,6 @@ class ALO:
         self.proc_start_time = datetime.now().strftime("%y%m%d_%H%M%S")
         self.exp_plan_file = exp_plan_file
         self.sol_meta = json.loads(sol_meta_str) if sol_meta_str != None else None # None or dict from json 
-
         # solution metadata를 통해, 혹은 main.py 실행 시 인자로 받는 정보는 system_envs로 wrapping 
         self.system_envs = {}
         self.set_system_envs() 
@@ -69,6 +68,9 @@ class ALO:
         self.system_envs['q_inference_artifacts'] = None 
         self.system_envs['redis_host'] = None
         self.system_envs['redis_port'] = None
+        # edgeconductor interface 관련 
+        self.system_envs['inference_result_datatype'] = None 
+        self.system_envs['train_datatype'] = None 
 
 
     def set_proc_logger(self):
@@ -130,7 +132,10 @@ class ALO:
                 os.makedirs(ASSET_HOME)
             except: 
                 self.proc_logger.process_error(f"Failed to create directory: {ASSET_HOME}")
-        self.read_yaml() # self.exp_plan default 셋팅 완료 
+        try:
+            self.read_yaml() # self.exp_plan default 셋팅 완료 
+        except: 
+            self.proc_logger.process_error("Failed to read experimental plan yaml.")
         # artifacts 세팅
         # FIXME train만 돌든 inference만 돌든 일단 artifacts 폴더는 둘다 만든다 
         self.artifacts = set_artifacts()
@@ -156,7 +161,10 @@ class ALO:
             self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
             self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
             self.proc_logger.process_info("==================== Start ALO preset ==================== ")
-            self.preset()
+            try:
+                self.preset()
+            except:
+                self.proc_logger.process_error("Failed to preset ALO.")
             self.proc_logger.process_info("==================== Finish ALO preset ==================== ")
             
             for pipeline in self.asset_source:
@@ -180,9 +188,15 @@ class ALO:
                 
                 if pipeline not in ['train_pipeline', 'inference_pipeline']:
                     self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
-                
+                # summary yaml를 redis q로 put. redis q는 _update_yaml 에서 이미 set 완료  
+                # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
+                # FIXME train - inference pipeline type 일땐 괜찮나? 
+                # Edgeapp과 interface 중인지 (운영 모드인지 체크)
+                is_operation_mode = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
+                    and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
+
                 # solution meta가 존재 할 때 (운영 모드), save artifacts 경로 미입력 시 에러
-                if self.sol_meta is not None:
+                if is_operation_mode:
                     if self.external_path[f"save_{pipeline_prefix}_artifacts_path"] is None:  
                         self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
                 
@@ -197,17 +211,15 @@ class ALO:
                 # FIXME boot on 때도 모델은 일단 있으면 가져온다 ? 
                 if pipeline == 'inference_pipeline':
                     if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
-                        self.external_load_model()
-            
+                        self.external_load_model() 
+
                 # 각 asset import 및 실행 
                 try:
                     self.run_import(pipeline)
                 except: 
                     self.proc_logger.process_error(f"Failed to run import: {pipeline}")
-                # summary yaml를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
-                # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-                # FIXME train - inference pipeline type 일땐 괜찮나? 
-                if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
+                
+                if is_operation_mode:
                     summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
                     if 'inference_summary.yaml' in os.listdir(summary_dir):
                         summary_str = json.dumps(get_yaml(summary_dir + 'inference_summary.yaml'))
@@ -215,25 +227,31 @@ class ALO:
                         self.proc_logger.process_info("Completes putting inference summary into redis queue.", color='green')
                     else: 
                         self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
+      
+                # solution meta가 존재 (운영 모드) 할 때는 artifacts 압축 전에 .inference_artifacts/output/<step> 들 중 
+                # solution_metadata yaml의 edgeconductor_interface를 참고하여 csv 생성 마지막 step의 csv, jpg 생성 마지막 step의 jpg (혹은 png, jpeg)를 
+                # .inference_artifacts/output/ 바로 하단 (step명 없이)으로 move한다 (copy (x) : cost down 목적)
+                if is_operation_mode:
+                    try:
+                        move_output_files(pipeline, self.asset_source, self.system_envs['inference_result_datatype'], self.system_envs['train_datatype'])
+                    except: 
+                        self.proc_logger.process_error("Failed to move output files for edge conductor view.")
+                        
+                # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)
+                try:      
+                    ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+                except:
+                    self.proc_logger.process_error("Failed to save artifacts into external path.") 
                 
-                # solution meta가 존재 (운영 모드) 할 때는 artifacts 압축 전에 .*_artifacts/output/<step> 들 중 마지막 step sub-folder만 남기고 나머진 삭제 
-                if self.sol_meta is not None:
-                    output_path = PROJECT_HOME + f".{pipeline_prefix}_artifacts/output/"    
-                    output_subdirs = os.listdir(output_path)
-                    last_output = None 
-                    for step in [item['step'] for item in self.asset_source[pipeline]]: 
-                        if step in output_subdirs: 
-                            last_output = step 
-                    for subdir in output_subdirs: 
-                        if subdir != last_output: # last output이 아니면 삭제 
-                            shutil.rmtree(output_path + subdir, ignore_errors=True)
-                            self.proc_logger.process_info(f"Removed output sub-directory without last one: \n << {output_path + subdir} >>")
-                
-                # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)      
-                ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+                # artifacts backup --> .history 
+                if self.control['backup_artifacts'] == True:
+                    try:
+                        backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, size=self.control['backup_size'])
+                    except: 
+                        self.proc_logger.process_error("Failed to backup artifacts into << .history >>") 
                 # save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
                 # solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-                if (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline'):
+                if is_operation_mode:
                     # 외부 경로로 잘 artifacts 복사 됐나 체크 
                     if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
                         artifacts_saved_str = json.dumps({"status": "OK"})
@@ -244,12 +262,8 @@ class ALO:
                         
                 self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
-
-                # artifacts backup --> .history 
-                if self.control['backup_artifacts'] == True:
-                    backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, size=self.control['backup_size'])
         except: 
-            # FIXME 여기에 걸리면 backup_artifacts에 원래 뜨는 process log는 덮히네..?
+            # FIXME 여기에 걸리면 backup_artifacts에 원래 뜨는 process log는 덮히네..? & traceback은 .log에 안적힘 << 해결필요
             # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
             backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
             self.proc_logger.process_error("Failed to ALO runs().")
@@ -281,6 +295,7 @@ class ALO:
         # solution metadata yaml --> exp plan yaml overwrite 
         if self.sol_meta is not None:
             self._update_yaml() 
+            self.proc_logger.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml", color='green')
         
         def get_yaml_data(key): # inner func.
             data_dict = {}
@@ -309,32 +324,14 @@ class ALO:
         if 'pipeline' not in self.sol_meta.keys(): # key check 
             self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
         
-        # EdgeAPP 전용 : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
-        def _check_edgeapp_interface(): # inner func.
-            if 'edgeapp_interface' not in self.sol_meta.keys():
-                return False 
-            if 'redis_server_uri' not in self.sol_meta['edgeapp_interface'].keys():
-                return False 
-            if self.sol_meta['edgeapp_interface']['redis_server_uri'] == None:
-                return False
-            if self.sol_meta['edgeapp_interface']['redis_server_uri'] == "":
-                return False 
-            return True 
+        # EdgeConductor Interface
+        self.system_envs['inference_result_datatype'] = self.sol_meta['edgeconductor_interface']['inference_result_datatype']
+        self.system_envs['train_datatype'] =  self.sol_meta['edgeconductor_interface']['train_datatype']
+        if (self.system_envs['inference_result_datatype'] not in ['image', 'table']) or (self.system_envs['train_datatype'] not in ['image', 'table']):
+            self.proc_logger.process_error(f"Only << image >> or << table >> is supported for \n \
+                train_datatype & inference_result_datatype of edge-conductor interface.")
         
-        if _check_edgeapp_interface() == True: 
-            try: 
-                # get redis server host, port 
-                self.system_envs['redis_host'], _redis_port = self.sol_meta['edgeapp_interface']['redis_server_uri'].split(':')
-                self.system_envs['redis_port'] = int(_redis_port)
-                if (self.system_envs['redis_host'] == None) or (self.system_envs['redis_port'] == None): 
-                    self.proc_logger.process_error("Missing host or port of << redis_server_uri >> in solution metadata.")
-                # set redis queues
-                self.system_envs['q_inference_summary'] = RedisQueue('inference_summary', host=self.system_envs['redis_host'], port=self.system_envs['redis_port'], db=0)
-                self.system_envs['q_inference_artifacts'] = RedisQueue('inference_artifacts', host=self.system_envs['redis_host'], port=self.system_envs['redis_port'], db=0)
-            except: 
-                self.proc_logger.process_error(f"Failed to parse << redis_server_uri >>")
-        
-        # EdgeAPP 전용 : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
+        # EdgeAPP Interface : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
         def _check_edgeapp_interface(): # inner func.
             if 'edgeapp_interface' not in self.sol_meta.keys():
                 return False 
@@ -408,7 +405,7 @@ class ALO:
         # [중요] system 인자가 존재해서 _update_yaml이 실행될 때는 항상 get_external_data를 every로한다. every로 하면 항상 input/train (or input/inference)를 비우고 새로 데이터 가져온다.
         self.exp_plan['control'][0]['get_external_data'] = 'every'
 
-            
+        
     def install_steps(self, pipeline, get_asset_source):
         requirements_dict = dict() 
         for step, asset_config in enumerate(self.asset_source[pipeline]):
