@@ -4,6 +4,8 @@ import sys
 import re
 import shutil
 from datetime import datetime
+from datetime import timedelta
+import glob
 import git
 
 from src.constants import *
@@ -12,7 +14,7 @@ from alolib import logger
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
-
+OUTPUT_IMAGE_EXTENSIONS = ["*.jpg", "*.jpeg", "*.png"]
 #--------------------------------------------------------------------------------------------------------------------------
 
         
@@ -149,7 +151,28 @@ def setup_asset(asset_config, check_asset_source='once'):
     
     return 
 
-def backup_artifacts(pipelines, exp_plan_file, proc_start_time, error=False):
+def get_folder_size(folder_path):
+    
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(folder_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            if not os.path.islink(fp) and os.path.isfile(fp):
+                total_size += os.path.getsize(fp)
+    return total_size
+
+def delete_old_files(folder_path, days_old):
+    cutoff_date = datetime.now() - timedelta(days=days_old)
+    for dirpath, dirnames, filenames in os.walk(folder_path):
+        for d in dirnames:
+            folder = os.path.join(dirpath, d)
+            if os.path.isdir(folder):
+                folder_modified_date = datetime.fromtimestamp(os.path.getmtime(folder))
+                if folder_modified_date < cutoff_date:
+                    os.rmdir(folder)
+                    print(folder)
+
+def backup_artifacts(pipelines, exp_plan_file, proc_start_time, error=False, size=1000):
     """ Description
         -----------
             - 파이프라인 실행 종료 후 사용한 yaml과 결과 artifacts를 .history에 백업함 
@@ -166,6 +189,13 @@ def backup_artifacts(pipelines, exp_plan_file, proc_start_time, error=False):
         -----------
             - backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=False)
     """
+
+    size_limit = size * 1024 * 1024
+
+    backup_size = get_folder_size(PROJECT_HOME + ".history/")
+    
+    if backup_size > size_limit:
+        delete_old_files(PROJECT_HOME + ".history/", 10)
 
     current_pipeline = pipelines.split("_pipelines")[0]
     # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
@@ -261,7 +291,71 @@ def release(_path):
     except:
         PROC_LOGGER.process_error("An issue occurred while releasing the memory of module")
 
+def move_output_files(pipeline, asset_source, inference_result_datatype, train_datatype):
+    """
+    # solution meta가 존재 (운영 모드) 할 때는 artifacts 압축 전에 .inference_artifacts/output/<step> 들 중 
+    # solution_metadata yaml의 edgeconductor_interface를 참고하여 csv 생성 마지막 step의 csv, jpg 생성 마지막 step의 jpg (혹은 png, jpeg)를 
+    # .inference_artifacts/output/ 바로 하단 (step명 없이)으로 move한다 (copy (x) : cost down 목적)
+    # custom이라는 step 폴더 밑에 output.csv와 extra_files라는 폴더가 있으면 extra_files 폴더는 무시한다. 
+    # inference_result_datatype 와 train_datatype를 or 연산자 하여 edgeconductor에서 보여져야하는 solution type을 결정할 수 있다. 
+    """
+    pipeline_prefix = pipeline.split('_')[0]
+    output_path = PROJECT_HOME + f".{pipeline_prefix}_artifacts/output/"    
+    
+    # output 하위 경로 중 csv를 가진 모든 경로 
+    output_csv_path_list = glob.glob(output_path + "*/*.csv") # 첫번째 *은 step명 폴더, 두번째 *은 모든 csv 
+    # .csv를 가진 step 명 (sub폴더 이름)
+    steps_csv_exist = list(set([os.path.basename(os.path.normpath(os.path.split(output_csv_path)[0])) for output_csv_path in output_csv_path_list]))
+    # output 하위 경로 중 image 파일을 가진 모든 경로 
+    output_image_path_list = []
+    for ext in OUTPUT_IMAGE_EXTENSIONS:
+        output_image_path_list += glob.glob(output_path + f"*/{ext}") 
+    # .jpg, .jpeg, .png를 가진 step 명 (sub폴더 이름)
+    steps_image_exist = list(set([os.path.basename(os.path.normpath(os.path.split(output_image_path)[0])) for output_image_path in output_image_path_list]))
 
+    csv_last_step = None # csv 파일이 존재하는 마지막 step  
+    image_last_step = None # image 파일이 존재하는 마지막 step
+    # pipeline의 step 순서대로 순회하며 last step을 찾아냄 
+    for step in [item['step'] for item in asset_source[pipeline]]: 
+        if step in steps_csv_exist: 
+            csv_last_step = step 
+        if step in steps_image_exist:
+            image_last_step = step
+    
+    # table only 
+    if list(set([inference_result_datatype, train_datatype])) == ['table']:
+        csv_list = glob.glob(output_path + f"{csv_last_step}/*.csv")
+        if len(csv_list) != 1:
+            PROC_LOGGER.process_error(f"Failed to move output files for edge conductor view. \n More than single file exist in the last step: {csv_last_step}")
+        shutil.move(csv_list[0], output_path) 
+    # image only
+    elif list(set([inference_result_datatype, train_datatype])) == ['image']:
+        img_list = [] 
+        for ext in OUTPUT_IMAGE_EXTENSIONS:
+            img_list += glob.glob(output_path + f"{image_last_step}/{ext}")
+        if len(img_list) != 1:
+             PROC_LOGGER.process_error(f"Failed to move output files for edge conductor view. \n More than single file exist in the last step: {image_last_step}")
+        shutil.move(img_list[0], output_path) 
+    # table, image both (each 1)
+    elif list(set([inference_result_datatype, train_datatype])) == list(set(['table','image'])):
+        # table move
+        csv_list = glob.glob(output_path + f"{csv_last_step}/*.csv")
+        if len(csv_list) != 1:
+            PROC_LOGGER.process_error(f"Failed to move output files for edge conductor view. \n More than single file exist in the last step: {csv_last_step}")
+        shutil.move(csv_list[0], output_path) 
+        # image move 
+        img_list = [] 
+        for ext in OUTPUT_IMAGE_EXTENSIONS:
+            img_list += glob.glob(output_path + f"{image_last_step}/{ext}")
+        if len(img_list) != 1:
+             PROC_LOGGER.process_error(f"Failed to move output files for edge conductor view. \n More than single file exist in the last step: {image_last_step}")
+        shutil.move(img_list[0], output_path) 
+
+        
+        
+        
+        
+        
 ### LEGACY
 
 ## alo.py의 empty_artifacts로 대체함 
