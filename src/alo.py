@@ -3,6 +3,7 @@ import sys
 import json 
 import shutil
 import subprocess
+import traceback
 from datetime import datetime
 from collections import Counter
 import pkg_resources
@@ -126,7 +127,7 @@ class ALO:
     def preset(self):
         # exp_plan_file은 config 폴더로 복사해서 가져옴. 단, 외부 exp plan 파일 경로는 로컬 절대 경로만 지원 
         self.exp_plan_file = self.load_experimental_plan(self.exp_plan_file) 
-        self.proc_logger.process_info(f"Successfully loaded << experimental_plan.yaml >> from: \n {self.exp_plan_file}", color = 'green')
+        self.proc_logger.process_info(f"Successfully loaded << experimental_plan.yaml >> from: \n {self.exp_plan_file}") 
         if not os.path.exists(ASSET_HOME):
             try:
                 os.makedirs(ASSET_HOME)
@@ -224,7 +225,7 @@ class ALO:
                     if 'inference_summary.yaml' in os.listdir(summary_dir):
                         summary_str = json.dumps(get_yaml(summary_dir + 'inference_summary.yaml'))
                         self.system_envs['q_inference_summary'].rput(summary_str)
-                        self.proc_logger.process_info("Completes putting inference summary into redis queue.", color='green')
+                        self.proc_logger.process_info("Completes putting inference summary into redis queue.")
                     else: 
                         self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
       
@@ -256,7 +257,7 @@ class ALO:
                     if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
                         artifacts_saved_str = json.dumps({"status": "OK"})
                         self.system_envs['q_inference_artifacts'].rput(artifacts_saved_str)
-                        self.proc_logger.process_info("Completes putting artifacts creation OK signal into redis queue.", color='green')
+                        self.proc_logger.process_info("Completes putting artifacts creation OK signal into redis queue.")
                     else: 
                         self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
                         
@@ -266,7 +267,8 @@ class ALO:
             # FIXME 여기에 걸리면 backup_artifacts에 원래 뜨는 process log는 덮히네..? & traceback은 .log에 안적힘 << 해결필요
             # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
             backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
-            self.proc_logger.process_error("Failed to ALO runs().")
+            #https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
+            self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) 
 
             
                 
@@ -295,7 +297,7 @@ class ALO:
         # solution metadata yaml --> exp plan yaml overwrite 
         if self.sol_meta is not None:
             self._update_yaml() 
-            self.proc_logger.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml", color='green')
+            self.proc_logger.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
         
         def get_yaml_data(key): # inner func.
             data_dict = {}

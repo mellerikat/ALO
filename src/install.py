@@ -48,14 +48,14 @@ def _install_packages(dup_checked_requirements_dict, dup_chk_set):
     count = 1
     # 사용자 환경에 priority_sorted_pkg_list의 각 패키지 존재 여부 체크 및 없으면 설치
     for step_name, package_list in dup_checked_requirements_dict.items(): # 마지막 step_name 은 force-reinstall 
-        PROC_LOGGER.process_info(f"======================================== Start dependency installation : << {step_name} >> ", 'blue')
+        PROC_LOGGER.process_info(f"======================================== Start dependency installation : << {step_name} >> ")
         for package in package_list:
-            PROC_LOGGER.process_info(f"Start checking existence & installing package - {package} | Progress: ( {count} / {total_num_install} total packages ) ", 'blue')
+            PROC_LOGGER.process_info(f"Start checking existence & installing package - {package} | Progress: ( {count} / {total_num_install} total packages ) ")
             count += 1
             
             if "--force-reinstall" in package: 
                 try: 
-                    PROC_LOGGER.process_info(f'>>> Start installing package - {package}', 'blue')
+                    PROC_LOGGER.process_info(f'>>> Start installing package - {package}')
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package.replace('--force-reinstall', '').strip(), '--force-reinstall'])            
                 except OSError as e:
                     PROC_LOGGER.process_error(f"Error occurs while --force-reinstalling {package} ~ " + e)  
@@ -66,10 +66,10 @@ def _install_packages(dup_checked_requirements_dict, dup_chk_set):
                 # 가령 aiplib @ git+http://mod.lge.com/hub/smartdata/aiplatform/module/aip.lib.git@ver2  같은 version 표기가 requirements.txt에 존재해도 conflict 안나는 것 확인 완료 
                 # FIXME 사용자가 가령 pandas 처럼 (==version 없이) 작성하여도 아래 코드는 통과함 
                 pkg_resources.get_distribution(package) # get_distribution tact-time 테스트: 약 0.001s
-                PROC_LOGGER.process_info(f'[OK] << {package} >> already exists', 'green')
+                PROC_LOGGER.process_info(f'[OK] << {package} >> already exists')
             except pkg_resources.DistributionNotFound: # 사용자 가상환경에 해당 package 설치가 아예 안 돼있는 경우 
                 try: # nested try/except 
-                    PROC_LOGGER.process_info(f'>>> Start installing package - {package}', 'blue')
+                    PROC_LOGGER.process_info(f'>>> Start installing package - {package}')
                     subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
                 except OSError as e:
                     # 가령 asset을 만든 사람은 abc.txt라는 파일 기반으로 pip install -r abc.txt 하고 싶었는데, 우리는 requirements.txt 라는 이름만 허용하므로 관련 안내문구 추가  
@@ -90,7 +90,7 @@ def _install_packages(dup_checked_requirements_dict, dup_chk_set):
             # except pkg_resources.UnknownExtra: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
             #     PROC_LOGGER.process_error(f'UnknownExtra occurs while installing package {package} @ {step_name} step. \n Please check the package name or dependency with other asset.')   
             
-    PROC_LOGGER.process_info(f"======================================== Finish dependency installation \n", 'blue')
+    PROC_LOGGER.process_info(f"======================================== Finish dependency installation \n")
     
     return 
 
@@ -167,7 +167,7 @@ def check_install_requirements(requirements_dict):
                                 
             # ALO master 및 모든 asset들의 종속 패키지를 취합했을 때 버전 다른 중복 패키지 존재 시 먼저 진행되는 step(=asset)의 종속 패키지만 설치  
             if base_pkg_name in dup_chk_set: 
-                PROC_LOGGER.process_info(f'>>> Ignored installing << {pkg_name} >>. Another version would be installed in the previous step.', 'blue')
+                PROC_LOGGER.process_info(f'>>> Ignored installing << {pkg_name} >>. Another version would be installed in the previous step.')
             else: 
                 dup_chk_set.add(base_pkg_name)
                 dup_checked_requirements_dict[step_name].append(pkg_name)

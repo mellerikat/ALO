@@ -36,7 +36,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
     # 미입력 시 every로 default 설정 
     if get_external_data is None:
         get_external_data = 'every'
-        PROC_LOGGER.process_warning('You did not entered << get_external_data >> control parameter in your experimental_plan.yaml \n << every >> is automatically set as default. \n', 'blue') 
+        PROC_LOGGER.process_warning('You did not entered << get_external_data >> control parameter in your experimental_plan.yaml \n << every >> is automatically set as default. \n')
     # once 나 every로 입력하지 않고 이상한 값 입력 시 혹은 비워놨을 시 에러 
     if get_external_data not in ['once', 'every']:
         PROC_LOGGER.process_error(f"Check your << get_external_data >> control parameter in experimental_plan.yaml. \n You entered: {get_external_data}. Only << once >> or << every >> is allowed.")
@@ -60,7 +60,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         # 1개여서 str인 경우도 list로 바꾸고, 여러개인 경우는 그냥 그대로 list로 
         external_data_path = [external_data_path] if type(external_data_path) == str else external_data_path
         ################################################################################################################
-        # FIXME external path 미기입 시 warning 발생 후 return (데이터 없는데 사용하려고 하면 어짜피 input asset에서 에러날 것임)
+        # external path 미기입 시 에러 
         if len(external_data_path) == 0: 
             # 이미 input 폴더는 무조건 만들어져 있는 상태임 
             PROC_LOGGER.process_warning(f'External path - << load_train_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
@@ -110,7 +110,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         for ext_path in external_data_path:
             ext_type = _get_ext_path_type(ext_path) # absolute / relative / s3
             _load_data(pipe_mode, ext_type, ext_path, load_s3_key_path)
-            PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>", color='green') 
+            PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
         
         return
 
@@ -171,7 +171,7 @@ def _load_data(pipeline, ext_type, ext_path, load_s3_key_path):
         except:
             PROC_LOGGER.process_error(f'Failed to download s3 data folder from << {ext_path} >>')
 
-    PROC_LOGGER.process_info(f'==================== Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}', color='green')
+    PROC_LOGGER.process_info(f'==================== Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}') 
     
     return 
 
@@ -201,12 +201,12 @@ def external_load_model(external_path, external_path_permission):
     # get s3 key 
     try:
         load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
-        PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n', 'green')   
+        PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n')
     except:
-        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' , 'blue')
+        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
         load_s3_key_path = None
     
-    PROC_LOGGER.process_info(f"Start load model from external path: << {ext_path} >>. \n", "blue")
+    PROC_LOGGER.process_info(f"Start load model from external path: << {ext_path} >>. \n")
     
     ext_type = _get_ext_path_type(ext_path) # absolute / relative / s3
 
@@ -238,7 +238,7 @@ def external_load_model(external_path, external_path_permission):
                 shutil.copytree(ext_path, TEMP_MODEL_DIR + base_norm_path, dirs_exist_ok=True)
                 for i in os.listdir(TEMP_MODEL_DIR + base_norm_path):
                     shutil.move(TEMP_MODEL_DIR + base_norm_path + i, models_path + i) 
-            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
+            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>')
         except:
             PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
         finally:
@@ -263,7 +263,7 @@ def external_load_model(external_path, external_path_permission):
             else:
                 PROC_LOGGER.process_warning(f"No << model.tar.gz >> exists in the path << ext_path >>. \n Instead, try to download the all of << ext_path >> ")
                 s3_downloader.download_folder(models_path)  
-            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
+            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>') 
         except:
             PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
         finally:
@@ -290,7 +290,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     
     # external path가 train, inference 둘다 존재 안하는 경우 
     if (external_path['save_train_artifacts_path'] is None) and (external_path['save_inference_artifacts_path'] is None): 
-        PROC_LOGGER.process_info('None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n', 'blue')
+        PROC_LOGGER.process_info('None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n')
         return
     
     save_artifacts_path = None 
@@ -302,20 +302,20 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
         PROC_LOGGER.process_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
 
     if save_artifacts_path == None: 
-        PROC_LOGGER.process_info(f'[@{pipe_mode}] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n', 'blue')
+        PROC_LOGGER.process_info(f'[@{pipe_mode}] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n')
         return  
         
     # get s3 key 
     try:
         load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
-        PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n', 'green')   
+        PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n')
     except:
-        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' , 'blue')
+        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' )
         load_s3_key_path = None
 
     # external path가 존재하는 경우 
     # save artifacts 
-    PROC_LOGGER.process_info(f" Start saving generated artifacts into external path << {save_artifacts_path} >>. \n", "blue")
+    PROC_LOGGER.process_info(f" Start saving generated artifacts into external path << {save_artifacts_path} >>. \n")
     ext_path = save_artifacts_path
     ext_type = _get_ext_path_type(ext_path) # absolute / s3
     artifacts_tar_path = None 
@@ -361,7 +361,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
         # 미지원 external data storage type
         PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
     
-    PROC_LOGGER.process_info(f" Successfully done saving << {artifacts_tar_path} >> & << {model_tar_path} >> \n onto << {save_artifacts_path} >> & removing local files.", "green")  
+    PROC_LOGGER.process_info(f" Successfully done saving << {artifacts_tar_path} >> & << {model_tar_path} >> \n onto << {save_artifacts_path} >> & removing local files.")
     
     return ext_path 
 

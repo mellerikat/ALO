@@ -25,9 +25,12 @@ if __name__ == "__main__":
                 alo = ALO(sol_meta_str = args.system, alo_mode = args.mode)
         except:
             raise ValueError("Inappropriate config yaml file.")
-            
-        alo.runs()
 
+        try:
+            alo.runs()
+        except Exception as e: 
+            print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
+            
     elif args.loop == True: 
         ##### import RedisQueue ##### 
         from src.redisqueue import RedisQueue
@@ -36,6 +39,7 @@ if __name__ == "__main__":
         ##### parse redis server port, ip #####
         sol_meta_json = json.loads(args.system)
         redis_host, redis_port = sol_meta_json['edgeapp_interface']['redis_server_uri'].split(':')
+        # FIXME 이런데서 죽으면 EdgeApp은 ALO가 죽었는 지 알 수 없다? >> 아마 alo 실행 실패 시 error catch하는 게 EdgeAPP 이든 host든 어디선가 필요하겠지? 
         if (redis_host == None) or (redis_port == None): 
             raise ValueError("Missing redis server uri in solution metadata.")
         
@@ -50,28 +54,30 @@ if __name__ == "__main__":
         # FIXME alo_mode train-inference 인 경우 검증 필요 
         alo = ALO(alo_mode = args.mode, boot_on = True)
         alo.runs() 
-        print('===== Finish boot-on')
+        print('==================== Finish boot-on ====================\n')
         # TODO boot-on 끝났다는 메시지 전송 필요 ?
 
         ##### Infinite loop ##### 
         while True: 
             start_msg = q.rget(isBlocking=True) # 큐가 비어있을 때 대기
             if start_msg is not None:
-                # http://clm.lge.com/issue/browse/AIADVISOR-705?attachmentSortBy=dateTime&attachmentOrder=asc
-                msg_dict = json.loads(start_msg.decode('utf-8')) # dict 
-                sol_meta_str = msg_dict['solution_metadata']
-                try:
-                    if args.config != None: 
-                        if args.config == "": # FIXME 임시 (AIC에서도 임시)
-                            alo = ALO(sol_meta_str = sol_meta_str, alo_mode = args.mode)
+                try: 
+                    # http://clm.lge.com/issue/browse/AIADVISOR-705?attachmentSortBy=dateTime&attachmentOrder=asc
+                    msg_dict = json.loads(start_msg.decode('utf-8')) # dict 
+                    sol_meta_str = msg_dict['solution_metadata']
+                    try:
+                        if args.config != None: 
+                            if args.config == "": # FIXME 임시 (AIC에서도 임시)
+                                alo = ALO(sol_meta_str = sol_meta_str, alo_mode = args.mode)
+                            else: 
+                                alo = ALO(exp_plan_file = args.config, sol_meta_str = sol_meta_str, alo_mode = args.mode)  # exp plan path
                         else: 
-                            alo = ALO(exp_plan_file = args.config, sol_meta_str = sol_meta_str, alo_mode = args.mode)  # exp plan path
-                    else: 
-                        alo = ALO(sol_meta_str = sol_meta_str, alo_mode = args.mode)
-                except:
-                    raise ValueError("Inappropriate config yaml file.")
-                    
-                alo.runs()
-    
+                            alo = ALO(sol_meta_str = sol_meta_str, alo_mode = args.mode)
+                    except:
+                        raise ValueError("Inappropriate config yaml file.")
+                    alo.runs()
+                except Exception as e: 
+                    print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
+                    continue # loop는 죽이지 않는다. 
     else: 
         raise ValueError("Invalid << loop >> arguments. It must be True or False.")
