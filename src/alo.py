@@ -263,12 +263,14 @@ class ALO:
                         
                 self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
-        except: 
+        except Exception as e: 
             # FIXME 여기에 걸리면 backup_artifacts에 원래 뜨는 process log는 덮히네..? & traceback은 .log에 안적힘 << 해결필요
             # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
             backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
-            #https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
-            self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) 
+            # [ref] https://medium.com/@rahulkumar_33287/logger-error-versus-logger-exception-4113b39beb4b
+            self.proc_logger.process_error("Failed to ALO runs():\n" + str(e)) 
+            # [ref2] https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
+            # + traceback.format_exc() << 이 방법은 alolib logger에서 exc_info=True 안할 시에 사용가능  
 
             
                 
