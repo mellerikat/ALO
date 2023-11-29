@@ -26,6 +26,7 @@ if __name__ == "__main__":
         except:
             raise ValueError("Inappropriate config yaml file.")
 
+
         try:
             alo.runs()
         except Exception as e: 
