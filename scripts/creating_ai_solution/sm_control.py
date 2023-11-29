@@ -73,6 +73,10 @@ class SMC:
             self.sm_yaml = data
         elif 'experimental' in yaml_file_path:
             self.ex_yaml = data
+            if self.ex_yaml['control'][0]['get_asset_source'] == 'every':
+                self.ex_yaml['control'][0]['get_asset_source'] = 'once'
+            with open(yaml_file_path, 'w') as file:
+                yaml.safe_dump(self.ex_yaml, file)
         else:
             pass
 
@@ -149,6 +153,8 @@ class SMC:
     def set_cadidate_param(self, pipeline):
         yaml_path = "../../config/experimental_plan.yaml"
         self.read_yaml(yaml_path)
+
+        
 
         def rename_key(d, old_key, new_key):
             if old_key in d:
