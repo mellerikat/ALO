@@ -19,7 +19,7 @@ def extract_requirements_txt(step_name):
             - master 혹은 각 asset (=slave) 내의 requirements.txt가 존재 시 내부에 작성된 패키지들을 list로 추출 
         Parameters
         -----------
-            - step_name: master 혹은 scripts 밑에 설치될 asset 이름 
+            - step_name: assets 밑에 설치될 asset 이름 
         Return
         -----------
             - 
@@ -37,7 +37,7 @@ def extract_requirements_txt(step_name):
                 packages_in_txt.append(pkg)
         return packages_in_txt
     else: 
-        PROC_LOGGER.process_error(f"<< {fixed_txt_name} >> dose not exist in << scripts/{step_name} folder >>. \n \
+        PROC_LOGGER.process_error(f"<< {fixed_txt_name} >> dose not exist in << assets/{step_name} folder >>. \n \
             However, you have written {fixed_txt_name} at that step in << config/experimental_plan.yaml >>. \n \
             Please remove {fixed_txt_name} in the yaml file.")
 
@@ -113,11 +113,11 @@ def check_install_requirements(requirements_dict):
     """
     # 0. asset_source_code가 local이든 git이든, check_asset_source가 once든 every든 모두 동일하게 항상 모듈의 설치여부는 패키지명, 버전 check 후 없으면 설치 (ver 다르면 notify 후 설치) 
     # 1. 한 pipline 내의 각 step을 루프 돌면서 직접 작성된 패키지 (ex. pandas==3.4)는 직접 설치하고
-    # 2. experimental_plan.yaml에 requirements.txt가 기입 돼 있다면 먼저 scripts 폴더 내 해당 asset 폴더 밑에 requirements.txt가 존재하는 지 확인 (없으면 에러)
+    # 2. experimental_plan.yaml에 requirements.txt가 기입 돼 있다면 먼저 assets 폴더 내 해당 asset 폴더 밑에 requirements.txt가 존재하는 지 확인 (없으면 에러)
     # 3. 만약 이미 설치돼 있는 패키지 중 버전이 달라서 재설치 하는 경우는 (pandas==3.4 & pandas==3.2) PROC_LOGGER.process_info로 사용자 notify  
     fixed_txt_name = 'requirements.txt'
 
-    # 어떤 step에 requirements.txt가 존재하면, scripts/asset폴더 내에 txt파일 존재유무 확인 후 그 내부에 기술된 패키지들을 추출  
+    # 어떤 step에 requirements.txt가 존재하면, assets/asset폴더 내에 txt파일 존재유무 확인 후 그 내부에 기술된 패키지들을 추출  
     extracted_requirements_dict = dict() 
     for step_name, requirements_list in requirements_dict.items(): 
         # yaml의 requirements에 requirements.txt를 적었다면, 해당 step 폴더에 requirements.txt가 존재하는 지 확인하고 존재한다면 내부에 작성된 패키지 명들을 추출하여 아래 loop에서 check & install 수행 
