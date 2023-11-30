@@ -23,6 +23,7 @@ class SMC:
     def __init__(self, workspaces, uri_scope, tag, name, pipeline):
         self.sm_yaml = {}
         self.ex_yaml = {}
+        self.uri_scope = uri_scope
         try:
             self.bucket_name = workspaces.json()[0]['s3_bucket_name'][uri_scope] # bucket_scope: private, public
             self.ecr = workspaces.json()[0]['ecr_base_path'][uri_scope]
@@ -30,18 +31,14 @@ class SMC:
             self.bucket_name = "acp-kubeflow-lhs-s3"
             self.ecr = "086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/acp-kubeflow-lhs/"
 
+        print(self.ecr)
         print(">> bucket name: ", self.bucket_name)
 
         # FIXME sm.set_aws_ecr 할 때 boto3 session 생성 시 region 을 None으로 받아와서 에러나므로 일단 임시로 추가 
         self.region = "ap-northeast-2"
         self.name = name
-        self.s3_path = f'ai-solutions/{name}/v{VERSION}/train/data'
-        self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"
-        
         self.pipeline = pipeline
-        self.ecr_url = self.ecr.split("/")[0]
-        self.ecr_repo = self.ecr.split("/")[1] + "/ai-solutions/" + uri_scope + "/" + name + "/" + self.pipeline + "/" # + name + ":" + tag
-        self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo
+        self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"
         
 
     def save_yaml(self):
@@ -112,11 +109,11 @@ class SMC:
 
     def set_container_uri(self, type):
         if type == 'train':
-            data = {'container_uri': self.ecr + "train/" + self.name}
+            data = {'container_uri': self.ecr + "train/" + self.name + "/"}
             self.sm_yaml['pipeline'][0].update(data)
             print(f"container uri is {data['container_uri']}")
         elif type == 'inf' or type == 'inference':
-            data = {'container_uri': self.ecr + "inference/" + self.name}
+            data = {'container_uri': self.ecr + "inference/" + self.name + "/"}
             self.sm_yaml['pipeline'][1].update(data)
             print(f"container uri is {data['container_uri']}")
         self.save_yaml()
@@ -204,6 +201,8 @@ class SMC:
         self.save_yaml()
 
     def s3_access_check(self):
+        self.s3_path = f'ai-solutions/{self.name}/v{VERSION}/{self.pipeline}/data'
+        
         
         try:
             f = open(self.s3_access_key_path, "r")
@@ -360,26 +359,31 @@ class SMC:
 
     def set_aws_ecr(self, docker = True, tags = {}):
         self.docker = docker
-
+        self.ecr_url = self.ecr.split("/")[0]
+        self.ecr_repo = self.ecr.split("/")[1] + "/ai-solution/" + self.uri_scope + "/" + self.name + "/" + self.pipeline + "/"  + self.name  #+ ":" + tag
+        self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo
+        
         if self.docker:
             run = 'docker'
         else:
             run = 'buildah'
 
         print(">> region: ", self.region)
-        # p1 = subprocess.Popen(
-        #     ['aws', 'ecr', 'get-login-password', '--region', f'{self.region}'], stdout=subprocess.PIPE
-        #)
+        p1 = subprocess.Popen(
+            ['aws', 'ecr', 'get-login-password', '--region', f'{self.region}'], stdout=subprocess.PIPE
+        )
         print(">> ecr url: ", self.ecr_url)
-        # p2 = subprocess.Popen(
-        #     [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
-        # )
+        p2 = subprocess.Popen(
+            [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
+        )
 
-        # p1.stdout.close()
-        # output = p2.communicate()[0]
-        #print(output.decode())
-        #subprocess.run(f'aws ecr get-login-password --region {self.region}  | docker login --username AWS --password-stdin {self.ecr_url}', shell=True)
-        subprocess.run("sudo aws ecr get-login-password --region ap-northeast-2  | sudo docker login --username AWS --password-stdin 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com", shell=True)
+        p1.stdout.close()
+        output = p2.communicate()[0]
+        print(output.decode())
+        # subprocess.run("echo ws.jang | sudo -S usermod -aG docker $USER", shell=True)
+        # subprocess.run("echo ws.jang | newgrp docker", shell=True)
+        # subprocess.run(f'aws ecr get-login-password --region {self.region}  | docker login --username AWS --password-stdin {self.ecr_url}', shell=True)
+        #subprocess.run("echo ws.jang | sudo aws ecr get-login-password --region ap-northeast-2  | sudo docker login --username AWS --password-stdin 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com", shell=True)
         print(">> ecr repo: ", self.ecr_repo)
         if len(tags) > 0:
             command = [
@@ -400,7 +404,7 @@ class SMC:
             "--repository-name", self.ecr_repo,
             "--image-scanning-configuration", "scanOnPush=true",
             ]
-
+        print('command: ', command)
         # subprocess.run() 함수를 사용하여 명령을 실행합니다.
         try:
             result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
