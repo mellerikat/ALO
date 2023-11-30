@@ -1,0 +1,8 @@
+description: {}
+name: ''
+pipeline:
+- dataset_uri:
+  - s3://s3-an2-hyunsoo-dev-cism/ai-solutions/solution_woosung_test/v1/train/data/
+  type: train
+- type: inference
+version: 1
