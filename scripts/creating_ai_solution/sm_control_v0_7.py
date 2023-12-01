@@ -124,7 +124,8 @@ class SMC:
         self.sm_yaml['description']['output_data'] = self._check_parammeter(self.bucket_name + input_data)
         self.sm_yaml['description']['user_parameters'] = self._check_parammeter(user_parameters)
         self.sm_yaml['description']['algorithm'] = self._check_parammeter(algorithm)
-        self.sm_yaml['description']['icon'] = self._check_parammeter(icon)
+        # FIXME icon 관련 하드코딩 변경필요 
+        self.sm_yaml['description']['icon'] = self.icon_s3_uri  #self._check_parammeter(icon)
         self.save_yaml()
         print("solution metadata description이 작성되었습니다")
 
@@ -163,10 +164,11 @@ class SMC:
         self.save_yaml()
         print(f"{data['model_uri']} were stored")
 
+    # FIXME hardcoding 고쳐야함 (image, table)
     def set_edge(self):
         self.sm_yaml['edgeconductor_interface'] = {
             'support_labeling': True,
-            'inference_result_datatype': 'image',
+            'inference_result_datatype': 'table', # mql 
             'train_datatype': 'table'
         }
 
@@ -255,8 +257,45 @@ class SMC:
         print(">> access check: ", isinstance(boto3.client('s3'), botocore.client.BaseClient))
         print(">> my region: ", self.region)
         return isinstance(boto3.client('s3'), botocore.client.BaseClient)
+    
+            
+    def s3_upload_icon(self):
+  
+        # inner func.
+        def s3_process(s3, bucket_name, data_path, s3_path):
+            print(">> Upload bucket + s3 path: ", bucket_name, s3_path)
+            objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
 
-    # def s3_upload(self, pipeline, local_folder = './input/train/'):
+            if 'Contents' in objects_to_delete:
+                for obj in objects_to_delete['Contents']:
+                    self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                    print(f'>> Deleted pre-existing object: {obj["Key"]}')
+
+            s3.delete_object(Bucket=bucket_name, Key=s3_path)
+            s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
+
+            try:    
+                response = s3.upload_file(data_path, bucket_name, s3_path)
+            except NoCredentialsError:
+                print("NoCredentialsError")
+            except ClientError as e:
+                print(f"ClientError{e}")
+                return False
+            print(f">> [Success Uploading] S3 {bucket_name + s3_path} ")
+            return True
+
+        # FIXME hardcoding icon.png 솔루션 이름등으로 변경 필요 
+        data_path = './image/icon.png'
+        s3_file_path = f'icons/{self.name}/icon.png'
+        s3_process(self.s3, self.bucket_name, data_path, s3_file_path)
+        
+        self.icon_s3_uri = "s3://" + self.bucket_name + '/' + s3_file_path   # 값을 리스트로 감싸줍니다
+        self.sm_yaml['description']['icon'] = self.icon_s3_uri
+    
+        self.save_yaml()
+        
+
+
     def s3_upload(self, pipeline):
         self.pipeline = pipeline
 
