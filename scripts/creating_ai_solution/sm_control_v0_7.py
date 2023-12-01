@@ -11,13 +11,39 @@ from yaml import Dumper
 import botocore
 from botocore.exceptions import ClientError, NoCredentialsError
 import subprocess
-
+# 모듈 import 
+import os
+import json
+import requests
 # yaml = YAML()
 # yaml.preserve_quotes = True
 
 VERSION = 1
 ALODIR = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 WORKINGDIR = os.path.abspath(os.path.dirname(__file__))
+# REST API Endpoints
+BASE_URI = 'api/v1/'
+# 0. 로그인
+LOGIN = BASE_URI + 'auth/static/login' # POST
+# 1. 시스템 정보 획득
+SYSTEM_INFO = BASE_URI + 'workspaces' # GET
+# 2. AI Solution 이름 설정 / 3. AI Solution 등록
+AI_SOLUTION = BASE_URI + 'solutions' # 이름 설정 시 GET, 등록 시 POST
+# 4. AI Solution Instance 등록
+SOLUTION_INSTANCE = BASE_URI + 'instances' # POST
+# 5. Stream 등록
+STREAMS = BASE_URI + 'streams' # POST
+# 6. Train pipeline 요청
+# STREAMS + '/{stream_id}/start # POST
+# 7. Train pipeline 확인
+# STREAMS + '/{stream_history_id}/info # GET
+# 9.a Stream 삭제 
+# STREAMS + '/{stream_id} # DELETE
+# 9.b AI Solution Instance 삭제
+# SOLUTION_INSTANCES + '/{instance_id}' # DELETE
+# 9.c AI Solution 삭제
+# AI_SOLUTION + '/{solution_id}' # DELETE 
+#################################
 
 class SMC:
     def __init__(self, workspaces, uri_scope, tag, name, pipeline):
@@ -40,7 +66,7 @@ class SMC:
         self.pipeline = pipeline
         self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"
         
-
+    
     def save_yaml(self):
         # YAML 파일로 데이터 저장
         class NoAliasDumper(Dumper):
@@ -109,11 +135,11 @@ class SMC:
 
     def set_container_uri(self, type):
         if type == 'train':
-            data = {'container_uri': self.ecr + "train/" + self.name + "/"}
+            data = {'container_uri': self.ecr_full_url}
             self.sm_yaml['pipeline'][0].update(data)
             print(f"container uri is {data['container_uri']}")
         elif type == 'inf' or type == 'inference':
-            data = {'container_uri': self.ecr + "inference/" + self.name + "/"}
+            data = {'container_uri': self.ecr_full_url}
             self.sm_yaml['pipeline'][1].update(data)
             print(f"container uri is {data['container_uri']}")
         self.save_yaml()

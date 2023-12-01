@@ -6,27 +6,37 @@ import subprocess
 import traceback
 from datetime import datetime
 from collections import Counter
-import pkg_resources
-from copy import deepcopy
-# local import
 from src.constants import *
-####################### ALO master requirements 리스트업 및 설치 #######################
-# ALO master requirements 는 최우선 순위로 설치 > 만약 ALO master requirements는 aiplib v2.1인데 slave 제작자가 aiplib v2.2로 명시해놨으면 2.1이 우선 
-ALOMAIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-cmd = f'cd {ALOMAIN} && git symbolic-ref --short HEAD'
-try: 
-    result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
-    ALOVER = result.stdout.decode('utf-8').strip()
-    alolib_git = f'alolib @ git+http://10.185.66.38/hub/dxadvtech/aicontents-framework/alolib-source.git@{ALOVER}'
-    try: 
-        alolib_pkg = pkg_resources.get_distribution('alolib') # get_distribution tact-time 테스트: 약 0.001s
-        ALOVER = '0' if ALOVER == 'develop' else ALOVER.split('-')[-1] # 가령 release-1.2면 1.2만 가져옴 
-        if str(alolib_pkg.version) != str(ALOVER): 
-            subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall']) # alo version과 같은 alolib 설치  
-    except: # alolib 미설치 경우 
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', alolib_git, '--force-reinstall'])
-except: 
-    raise NotImplementedError('Failed to install << alolib >>')
+# local import
+#######################################################################################
+# alolib 설치 
+
+def set_alolib():
+    if not os.path.exists(PROJECT_HOME + 'alolib'): 
+        repository_url = "http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git"
+        destination_directory = "./alolib"
+        result = subprocess.run(['git', 'clone', repository_url, destination_directory], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            print("alolib git pull success.")
+        else:
+            raise NotImplementedError("alolib git pull failed.")
+    else: 
+        print("alolib already exists in local path.")
+        pass
+    alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
+    sys.path.append(alolib_path)
+    
+    req = os.path.join(alolib_path, "requirements.txt")
+    result = subprocess.run(['pip', 'install', '-r', req], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if result.returncode == 0:
+        print("패키지 설치 성공")
+        print(result.stdout)
+    else:
+        print("패키지 설치 실패")
+        print(result.stderr)
+        
+set_alolib()
+
 #######################################################################################
 from src.install import *
 from src.utils import set_artifacts, setup_asset, match_steps, import_asset, release, backup_artifacts, move_output_files
@@ -58,7 +68,10 @@ class ALO:
         self.exp_plan = None
         self.artifacts = None 
         self.proc_logger = None
-        self.alo_version = ALOVER
+
+        self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+    
+
 
 
     def set_system_envs(self):
