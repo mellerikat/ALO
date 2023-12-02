@@ -391,8 +391,10 @@ class ALO:
             for sol_step_dict in selected_params: 
                 sol_step = sol_step_dict['step']
                 sol_args = sol_step_dict['args']
-                # sol_args None이면 패스 
-                if sol_args is None: 
+                # sol_args None 이거나 []이면 패스 
+                # FIXME (231202 == [] 체크추가) 종원선임님처럼 마지막에 custom step 붙일 때 - args: null
+                # 라는 식으로 args 가 필요없는 step이면 업데이트를 시도하는거 자체가 잘못된거고 스킵되는게 맞다
+                if  (sol_args == []) or (sol_args is None): 
                     continue
                 for idx, plan_step_dict in enumerate(init_exp_plan):  
                     if sol_step == plan_step_dict['step']:
