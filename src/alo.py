@@ -390,17 +390,19 @@ class ALO:
             init_exp_plan = self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'].copy()
             for sol_step_dict in selected_params: 
                 sol_step = sol_step_dict['step']
-                sol_args = sol_step_dict['args']
+                sol_args = sol_step_dict['args']                   
                 # sol_args None 이거나 []이면 패스 
                 # FIXME (231202 == [] 체크추가) 종원선임님처럼 마지막에 custom step 붙일 때 - args: null
                 # 라는 식으로 args 가 필요없는 step이면 업데이트를 시도하는거 자체가 잘못된거고 스킵되는게 맞다
-                if  (sol_args == []) or (sol_args is None): 
-                    continue
+                if sol_step != 'input':
+                    if (sol_args is None) or (sol_args == []) : 
+                        continue
                 for idx, plan_step_dict in enumerate(init_exp_plan):  
                     if sol_step == plan_step_dict['step']:
                         self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args)
-                        # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. 
-                        self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
+                        # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. (그냥 s3에서 다운받으면 그 밑에있는거 다사용하도록) 
+                        if sol_step == 'input':
+                            self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
             
             # external path 덮어 쓰기 
             if pipe_type == 'train': 
