@@ -332,7 +332,7 @@ class SMC:
             for root, dirs, files in os.walk(local_folder):
                 for file in files:
                     data_path = os.path.join(root, file)
-
+            print(f'from local data folder: {local_folder}')
             s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path)
             # self.sm_yaml['pipeline'].append({'dataset_uri': 'train'})
 
