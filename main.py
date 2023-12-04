@@ -30,8 +30,8 @@ if __name__ == "__main__":
         try:
             alo.runs()
         except Exception as e: 
-            print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
-            
+            #print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
+            raise NotImplementedError(str(e))
     elif args.loop == True: 
         ##### import RedisQueue ##### 
         from src.redisqueue import RedisQueue
