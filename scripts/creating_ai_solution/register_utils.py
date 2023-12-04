@@ -580,17 +580,20 @@ class RegisterUtils:
 
     # FIXME [임시] amd docker ecr 등록 실험용 
     def rename_docker(self, docker_repo: str, docker_tag: str): 
-        # [중요] docker_push 할 때도 tag 정보는 사용자가 설정한 것 유지하기 위해 
-        self.ECR_TAG = docker_tag
-        # 이미 존재하는 
-        pre_existing_docker = docker_repo + ':' + self.ECR_TAG 
-        if self.docker:
-            subprocess.run(['docker', 'tag', pre_existing_docker, f'{self.ecr_full_url}:{self.ECR_TAG}'])
-        ## FIXME buildah도 tag 명령어 있는지? 
-        # else:
-        #     subprocess.run(['sudo', 'buildah', 'tag', pre_existing_docker, f'{self.ecr_full_url}:{self.ECR_TAG}'])
-            
-            
+        try: 
+            # [중요] docker_push 할 때도 tag 정보는 사용자가 설정한 것 유지하기 위해 
+            self.ECR_TAG = docker_tag
+            # 이미 존재하는 
+            pre_existing_docker = docker_repo + ':' + self.ECR_TAG 
+            if self.docker:
+                subprocess.run(['docker', 'tag', pre_existing_docker, f'{self.ecr_full_url}:{self.ECR_TAG}'])
+            ## FIXME buildah도 tag 명령어 있는지? 
+            # else:
+            #     subprocess.run(['sudo', 'buildah', 'tag', pre_existing_docker, f'{self.ecr_full_url}:{self.ECR_TAG}'])
+            print_color(f"[Success] done renaming docker: \n {pre_existing_docker} --> {self.ecr_full_url}:{self.ECR_TAG}", color='green')
+        except: 
+            raise NotImplementedError("Failed to rename docker.")
+        
     # FIXME 그냥 무조건 latest로 박히나? 
     def build_docker(self):
         if self.docker:
