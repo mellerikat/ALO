@@ -224,15 +224,10 @@ def external_load_model(external_path, external_path_permission):
                 shutil.copy(ext_path + 'model.tar.gz', TEMP_MODEL_DIR)  
                 tar = tarfile.open(TEMP_MODEL_DIR + 'model.tar.gz') # model.tar.gz은 models 폴더를 통째로 압축한것 
                 # FIXME [주의] 만약 models를 통째로 압축한 model.tar.gz 이 아니고 내부 구조가 다르면 이후 진행과정 에러날 것임 
-                #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 압축해지 필요  
-                tar.extractall(TEMP_MODEL_DIR) 
+                #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 압축해지 필요   
+                tar.extractall(models_path) # TEMP_MODEL_DIR) 본인경로에 풀면안되는듯 
                 tar.close() 
-                if 'models' in os.listdir(TEMP_MODEL_DIR):
-                    for i in os.listdir(TEMP_MODEL_DIR + 'models/'):
-                        shutil.move(TEMP_MODEL_DIR + 'models/' + i, models_path + i) 
-                else: 
-                    PROC_LOGGER.process_error(f'No << models >> directory exists in the model.tar.gz extracted path << {TEMP_MODEL_DIR} >>') 
-            else: 
+            else: # model.tar.gz 이 없을때 대응 코드  
                 base_norm_path = os.path.basename(os.path.normpath(ext_path)) + '/' # ex. 'aa/bb/' --> bb/
                 os.makedirs(TEMP_MODEL_DIR + base_norm_path)
                 shutil.copytree(ext_path, TEMP_MODEL_DIR + base_norm_path, dirs_exist_ok=True)
@@ -252,14 +247,8 @@ def external_load_model(external_path, external_path_permission):
             if model_existence: # TEMP_MODEL_DIR로 model.tar.gz 이 다운로드 된 상태 
                 tar = tarfile.open(TEMP_MODEL_DIR + 'model.tar.gz')
                 #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 옮기기 필요  
-                tar.extractall(TEMP_MODEL_DIR)
+                tar.extractall(models_path)
                 tar.close()
-
-                if 'models' in os.listdir(TEMP_MODEL_DIR):
-                    for i in os.listdir(TEMP_MODEL_DIR + 'models/'):
-                        shutil.move(TEMP_MODEL_DIR + 'models/' + i, models_path + i) 
-                else: 
-                    PROC_LOGGER.process_error(f'No << models >> directory exists in the model.tar.gz extracted path << {TEMP_MODEL_DIR} >>') 
             else:
                 PROC_LOGGER.process_warning(f"No << model.tar.gz >> exists in the path << ext_path >>. \n Instead, try to download the all of << ext_path >> ")
                 s3_downloader.download_folder(models_path)  
@@ -269,6 +258,7 @@ def external_load_model(external_path, external_path_permission):
         finally:
             # TEMP_MODEL_DIR는 삭제 
             shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+        
         
 def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     """ Description
@@ -323,10 +313,12 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     if pipe_mode == "train_pipeline":
         artifacts_tar_path = _tar_dir(".train_artifacts") 
         model_tar_path = _tar_dir(".train_artifacts/models") 
+    # FIXME train-inference 같이 돌릴 때 train, inf 같은 external save 경로로 plan yaml에 지정하면  models tar gz 덮어씌워질수있음 
     elif pipe_mode == "inference_pipeline": 
         artifacts_tar_path = _tar_dir(".inference_artifacts") 
-        model_tar_path = _tar_dir(".inference_artifacts/models") 
-
+        if "models" in os.listdir(PROJECT_HOME + ".inference_artifacts/"): # FIXME 이거 필요할지? 
+            model_tar_path = _tar_dir(".inference_artifacts/models") 
+        
     # FIXME external save path 를 지우고 다시 만드는게 맞는가 ? (로컬이든 s3든)
     if (ext_type  == 'absolute') or (ext_type  == 'relative'):
         ext_path = PROJECT_HOME + 'config/' + ext_path if ext_type == 'relative' else ext_path
@@ -341,6 +333,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
             os.remove(model_tar_path)
             # [중요] 압축 파일 업로드 끝나면 TEMP_TAR_DIR 삭제 
             shutil.rmtree(TEMP_TAR_DIR, ignore_errors=True)
+            shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
             
     elif ext_type  == 's3':  
         try: 
@@ -357,6 +350,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
             os.remove(model_tar_path)
             # [중요] 압축 파일 업로드 끝나면 TEMP_TAR_DIR 삭제 
             shutil.rmtree(TEMP_TAR_DIR, ignore_errors=True)
+            shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
     else: 
         # 미지원 external data storage type
         PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
@@ -386,9 +380,10 @@ def _get_ext_path_type(_ext_path: str): # inner function
 def _tar_dir(_path): 
     ## _path: .train_artifacts / .inference_artifacts     
     os.makedirs(TEMP_TAR_DIR, exist_ok=True)
+    os.makedirs(TEMP_MODEL_DIR, exist_ok=True)
     last_dir = None
     if 'models' in _path: 
-        _save_path = TEMP_TAR_DIR + 'model.tar.gz'
+        _save_path = TEMP_MODEL_DIR + 'model.tar.gz'
         last_dir = 'models/'
     else: 
         _save_file_name = _path.strip('.') 

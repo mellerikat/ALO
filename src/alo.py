@@ -223,6 +223,7 @@ class ALO:
                 # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
                 # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
                 # FIXME boot on 때도 모델은 일단 있으면 가져온다 ? 
+
                 if pipeline == 'inference_pipeline':
                     if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
                         self.external_load_model() 
