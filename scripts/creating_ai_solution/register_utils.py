@@ -106,16 +106,20 @@ class RegisterUtils:
         }
         solution_name = requests.get(self.URI + AI_SOLUTION, params=solution_data, cookies=self.aic_cookie)
         solution_name_json = solution_name.json()
-        solution_list = [sol['name'] for sol in solution_name_json['solutions']]
-
-        # 기존 solution 존재하면 에러 나게 하기 
-        if user_solution_name in solution_list: 
-            txt = f"\n[Error] Not allowed name: {user_solution_name} - The name already exists in the AI solution list. \n Please enter another name."
-            print_color(txt, color='red')
-        else:
-            txt = f"[Success] Allowed name: << {user_solution_name} >>" 
-            self.solution_name = user_solution_name
-            print_color(txt, color='green')
+        # FIXME AIC 초기화시 solution_name이 존재 안할 수 있음 
+        if 'solutions' not in solution_name_json.keys(): 
+            print_color("<< solutions >> key not found.", color='yellow')
+            pass
+        else: 
+            solution_list = [sol['name'] for sol in solution_name_json['solutions']]
+            # 기존 solution 존재하면 에러 나게 하기 
+            if user_solution_name in solution_list: 
+                txt = f"\n[Error] Not allowed name: {user_solution_name} - The name already exists in the AI solution list. \n Please enter another name."
+                print_color(txt, color='red')
+  
+        txt = f"[Success] Allowed name: << {user_solution_name} >>" 
+        self.solution_name = user_solution_name
+        print_color(txt, color='green')
         # 이미 존재하는 solutino list 리스트업 
         pre_existences = pd.DataFrame(solution_list, columns=["Pre-existing AI solutions"])
         print_color("\n\n < Reference: Pre-existing AI solutions list > \n", color='cyan')
