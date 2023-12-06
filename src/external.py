@@ -373,6 +373,8 @@ def _get_ext_path_type(_ext_path: str): # inner function
         # 외부 데이터 폴더는 main.py랑 같은 경로에 두면 안된다. 물론 절대경로로도 alo/ 포함 시키는 등 뚫릴 수 있는 방법은 많지만, 사용자 가이드 목적의 에러이다. 
         if parent_dir == '../':
             PROC_LOGGER.process_error(f'Placing the external data in the same path as << {PROJECT_HOME} >> is not allowed.')
+        if parent_dir == '~/':
+            PROC_LOGGER.process_error(f'External path starting with << ~/ >> is not allowed.')
         return 'relative'
     else: 
         PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path. \n Do not enter the file path. (Finish the path with directory name)')
