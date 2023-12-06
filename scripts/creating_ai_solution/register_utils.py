@@ -108,7 +108,7 @@ class RegisterUtils:
         solution_name_json = solution_name.json()
         # FIXME AIC 초기화시 solution_name이 존재 안할 수 있음 
         if 'solutions' not in solution_name_json.keys(): 
-            print_color("<< solutions >> key not found.", color='yellow')
+            print_color("<< solutions >> key not found in AI Solution data.", color='yellow')
             pass
         else: 
             solution_list = [sol['name'] for sol in solution_name_json['solutions']]
@@ -116,14 +116,15 @@ class RegisterUtils:
             if user_solution_name in solution_list: 
                 txt = f"\n[Error] Not allowed name: {user_solution_name} - The name already exists in the AI solution list. \n Please enter another name."
                 print_color(txt, color='red')
-  
+                # 이미 존재하는 solutino list 리스트업 
+                pre_existences = pd.DataFrame(solution_list, columns=["Pre-existing AI solutions"])
+                print_color("\n\n < Reference: Pre-existing AI solutions list > \n", color='cyan')
+                print_color(pre_existences.to_markdown(tablefmt='fancy_grid'), color='cyan')
+                raise ValueError("Not allowed solution name.")
         txt = f"[Success] Allowed name: << {user_solution_name} >>" 
         self.solution_name = user_solution_name
         print_color(txt, color='green')
-        # 이미 존재하는 solutino list 리스트업 
-        pre_existences = pd.DataFrame(solution_list, columns=["Pre-existing AI solutions"])
-        print_color("\n\n < Reference: Pre-existing AI solutions list > \n", color='cyan')
-        print_color(pre_existences.to_markdown(tablefmt='fancy_grid'), color='cyan')
+
 
     
     def check_workspace(self): 
