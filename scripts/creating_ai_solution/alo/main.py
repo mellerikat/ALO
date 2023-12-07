@@ -25,12 +25,13 @@ if __name__ == "__main__":
                 alo = ALO(sol_meta_str = args.system, alo_mode = args.mode)
         except:
             raise ValueError("Inappropriate config yaml file.")
+
+
         try:
             alo.runs()
         except Exception as e: 
             #print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
             raise NotImplementedError(str(e))
-        
     elif args.loop == True: 
         ##### import RedisQueue ##### 
         from src.redisqueue import RedisQueue
@@ -52,13 +53,11 @@ if __name__ == "__main__":
         # [주의] boot-on을 위해선 solution meta yaml 과 일치하는 experimental plan yaml 이 이미 존재해야한다. 
         # boot-on: inference alo_mode로 하면 약 3.xx 초 
         # FIXME alo_mode train-inference 인 경우 검증 필요 
-        try: 
-            alo = ALO(alo_mode = args.mode, boot_on = True)
-            alo.runs() 
-            print('\033[92m==================== Finish ALO boot-on ====================\033[0m \n')
-            # TODO boot-on 끝났다는 메시지 전송 필요 ?
-        except: 
-            raise NotImplementedError("Failed to ALO boot-on.")
+        alo = ALO(alo_mode = args.mode, boot_on = True)
+        alo.runs() 
+        print('\033[92m==================== Finish ALO boot-on ====================\033[0m \n')
+        # TODO boot-on 끝났다는 메시지 전송 필요 ?
+
         ##### Infinite loop ##### 
         while True: 
             start_msg = q.lget(isBlocking=True) # 큐가 비어있을 때 대기 / lget, rput으로 통일 

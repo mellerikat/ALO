@@ -33,7 +33,8 @@ WORKINGDIR = os.path.abspath(os.path.dirname(__file__)) + '/'
 # REST API Endpoints
 BASE_URI = 'api/v1/'
 # 0. 로그인
-LOGIN = BASE_URI + 'auth/static/login' # POST
+STATIC_LOGIN = BASE_URI + 'auth/static/login' # POST
+LDAP_LOGIN = BASE_URI + 'auth/ldap/login'
 # 1. 시스템 정보 획득
 SYSTEM_INFO = BASE_URI + 'workspaces' # GET
 # 2. AI Solution 이름 설정 / 3. AI Solution 등록
@@ -53,12 +54,20 @@ STREAMS = BASE_URI + 'streams' # POST
 # 9.c AI Solution 삭제
 # AI_SOLUTION + '/{solution_id}' # DELETE 
 #----------------------------------------#
-
+#----------------------------------------#
+#              URI SCOPE                 #
+#----------------------------------------#
+# 231207 임현수C: 사용자는 public 사용못하게 해달라 
+ONLY_PUBLIC = 0 #1 --> 1로 해야 public, private 다 받아옴 
+#----------------------------------------#
 class RegisterUtils:
     #def __init__(self, workspaces, uri_scope, tag, name, pipeline):
     def __init__(self, user_input):
         self.user_input = user_input # dict 
         self.set_user_input() # dict 
+        self.URI_SCOPE = self.WORKSPACE_NAME #'magna-ws' #'public'
+        print('URI_SCOPE: ', self.URI_SCOPE)
+        self.access_scope = 'private' # 'public'
         
         self.sm_yaml = {}
         self.exp_yaml = {}
@@ -76,21 +85,31 @@ class RegisterUtils:
         self.sm_yaml_file_path = './solution_metadata.yaml'
         self.exp_yaml_path = "../../config/experimental_plan.yaml"
         
+
         
     def set_user_input(self): 
+        # TODO user input 다 잘 작성했나 체크필요 
         # 각 key 별 value 클래스 self 변수화 
         for key, value in self.user_input.items():
             setattr(self, key, value)
+        
+
     
-    
-    def login(self): 
+    def login(self, login_way = 'ldap'): 
         # 로그인 (관련 self 변수들은 set_user_input 에서 setting 됨)
         login_data = json.dumps({
         "login_id": self.LOGIN_ID,
         "login_pw": self.LOGIN_PW
         })
+        if login_way == 'ldap':
+            LOGIN = LDAP_LOGIN 
+        elif login_way == 'static':
+            LOGIN = STATIC_LOGIN
+        else: 
+            raise ValueError(f'Unsupported login way: {login_way}')
         login_response = requests.post(self.URI + LOGIN, data = login_data)
         login_response_json = login_response.json()
+
         cookies = login_response.cookies.get_dict()
         access_token = cookies.get('access-token', None)
         self.aic_cookie = {
@@ -106,7 +125,7 @@ class RegisterUtils:
     def check_solution_name(self, user_solution_name): 
         solution_data = {
             "workspace_name": self.WORKSPACE_NAME, 
-            "only_public": self.ONLY_PUBLIC 
+            "only_public": ONLY_PUBLIC 
         }
         solution_name = requests.get(self.URI + AI_SOLUTION, params=solution_data, cookies=self.aic_cookie)
         solution_name_json = solution_name.json()
@@ -156,8 +175,8 @@ class RegisterUtils:
 
         # workspace로부터 받아온 ecr, s3 정보를 내부 변수화 
         try:
-            self.bucket_name = self.workspaces.json()[0]['s3_bucket_name'][self.URI_SCOPE] # bucket_scope: private, public
-            self.ecr = self.workspaces.json()[0]['ecr_base_path'][self.URI_SCOPE]
+            self.bucket_name = self.workspaces.json()[0]['s3_bucket_name'][self.access_scope] # bucket_scope: private, public
+            self.ecr = self.workspaces.json()[0]['ecr_base_path'][self.access_scope]
         except Exception as e:
             raise ValueError(f"Wrong format of << workspaces >> received from REST API:\n {e}")
             
@@ -631,7 +650,11 @@ class RegisterUtils:
     def set_aws_ecr(self, docker = True, tags = {}):
         self.docker = docker
         self.ecr_url = self.ecr.split("/")[0]
-        self.ecr_repo = self.ecr.split("/")[1] + "/ai-solutions/" + self.URI_SCOPE + "/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
+        # FIXME 마지막에 붙는 container 이름은 solution_name 과 같게 
+        # http://collab.lge.com/main/pages/viewpage.action?pageId=2126915782
+        # [중요] container uri 는 magna-ws 말고 magna 같은 식으로 쓴다 (231207 임현수C)
+        ecr_scope = self.URI_SCOPE.split('-')[0] # magna-ws --> magna
+        self.ecr_repo = self.ecr.split("/")[1] + "/ai-solutions/" + ecr_scope + "/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
         self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
         if self.docker == True:
             run = 'docker'
@@ -885,12 +908,9 @@ if __name__ == "__main__":
         'WORKSPACE_NAME': "magna-ws", # "cism-ws"
         
         # 로그인 정보 
-        'LOGIN_ID': 'magna-dev', # "cism-dev"
-        'LOGIN_PW': 'magna-dev@com', # "cism-dev@com"
+        'LOGIN_ID': '', # "cism-dev"
+        'LOGIN_PW': '', # "cism-dev@com"
         
-        # Scope: public / private  
-        'ONLY_PUBLIC': 0, # 0: public으로 등록된 solution / 1: magna-ws으로 등록된 solution
-        'URI_SCOPE': 'public', #'private' #'public'
         
         # ECR에 올라갈 컨테이너 URI TAG 
         'ECR_TAG': 'latest', 
