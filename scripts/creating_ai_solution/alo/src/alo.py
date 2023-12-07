@@ -70,6 +70,8 @@ class ALO:
         self.proc_logger = None
 
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
+    
+
 
 
     def set_system_envs(self):
@@ -80,8 +82,6 @@ class ALO:
         self.system_envs['q_inference_artifacts'] = None 
         self.system_envs['redis_host'] = None
         self.system_envs['redis_port'] = None
-        # 'init': initial status / 'summary': success until 'q_inference_summary'/ 'artifacts': success until 'q_inference_artifacts'
-        self.system_envs['runs_status'] = 'init'
         # edgeconductor interface 관련 
         self.system_envs['inference_result_datatype'] = None 
         self.system_envs['train_datatype'] = None 
@@ -242,8 +242,7 @@ class ALO:
                         summary_dict = get_yaml(summary_dir + 'inference_summary.yaml')
                         self.success_str = json.dumps({'status':'success', 'message': summary_dict})
                         self.system_envs['q_inference_summary'].rput(self.success_str)
-                        self.proc_logger.process_info("Successfully completes putting inference summary into redis queue.")
-                        self.system_envs['runs_status'] = 'summary'
+                        self.proc_logger.process_info("Completes putting inference summary into redis queue.")
                     else: 
                         self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
       
@@ -275,7 +274,6 @@ class ALO:
                     if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
                         self.system_envs['q_inference_artifacts'].rput(self.success_str) # summary yaml을 다시 한번 전송 
                         self.proc_logger.process_info("Completes putting artifacts creation << success >> signal into redis queue.")
-                        self.system_envs['runs_status'] = 'artifacts'
                     else: 
                         self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
                         
@@ -291,16 +289,11 @@ class ALO:
             finally:
                 if self.is_operation_mode:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
-                    if self.system_envs['runs_status'] == 'init':
-                        self.system_envs['q_inference_summary'].rput(fail_str)
-                        self.system_envs['q_inference_artifacts'].rput(fail_str)
-                    elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
-                        self.system_envs['q_inference_artifacts'].rput(fail_str)
+                    self.system_envs['q_inference_summary'].rput(fail_str)
+                    self.system_envs['q_inference_artifacts'].rput(fail_str)
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
-                # error 발생해도 external save artifacts 하도록                
-                ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
-      
+
              
                 
     def empty_artifacts(self, pipe_prefix): 
