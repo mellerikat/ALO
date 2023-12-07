@@ -172,6 +172,8 @@ class ALO:
             self.set_proc_logger()
             if self.system_envs['boot_on'] == True: 
                 self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
+            else: 
+                self.proc_logger.process_meta(f"Loaded solution_metadata: \n{self.sol_meta}\n")
             self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
             self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
             self.proc_logger.process_info("==================== Start ALO preset ==================== ")
@@ -206,11 +208,11 @@ class ALO:
                 # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
                 # FIXME train - inference pipeline type 일땐 괜찮나? 
                 # Edgeapp과 interface 중인지 (운영 모드인지 체크)
-                is_operation_mode = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
+                self.is_operation_mode = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
                     and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
 
                 # solution meta가 존재 할 때 (운영 모드), save artifacts 경로 미입력 시 에러
-                if is_operation_mode:
+                if self.is_operation_mode:
                     if self.external_path[f"save_{pipeline_prefix}_artifacts_path"] is None:  
                         self.proc_logger.process_error(f"You did not enter the << save_{pipeline_prefix}_artifacts_path >> in the experimental_plan.yaml") 
                 
@@ -234,11 +236,12 @@ class ALO:
                 except: 
                     self.proc_logger.process_error(f"Failed to run import: {pipeline}")
                 
-                if is_operation_mode:
+                if self.is_operation_mode:
                     summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
                     if 'inference_summary.yaml' in os.listdir(summary_dir):
-                        summary_str = json.dumps(get_yaml(summary_dir + 'inference_summary.yaml'))
-                        self.system_envs['q_inference_summary'].rput(summary_str)
+                        summary_dict = get_yaml(summary_dir + 'inference_summary.yaml')
+                        self.success_str = json.dumps({'status':'success', 'message': summary_dict})
+                        self.system_envs['q_inference_summary'].rput(self.success_str)
                         self.proc_logger.process_info("Completes putting inference summary into redis queue.")
                     else: 
                         self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
@@ -246,7 +249,7 @@ class ALO:
                 # solution meta가 존재 (운영 모드) 할 때는 artifacts 압축 전에 .inference_artifacts/output/<step> 들 중 
                 # solution_metadata yaml의 edgeconductor_interface를 참고하여 csv 생성 마지막 step의 csv, jpg 생성 마지막 step의 jpg (혹은 png, jpeg)를 
                 # .inference_artifacts/output/ 바로 하단 (step명 없이)으로 move한다 (copy (x) : cost down 목적)
-                if is_operation_mode:
+                if self.is_operation_mode:
                     try:
                         move_output_files(pipeline, self.asset_source, self.system_envs['inference_result_datatype'], self.system_envs['train_datatype'])
                     except: 
@@ -266,27 +269,32 @@ class ALO:
                         self.proc_logger.process_error("Failed to backup artifacts into << .history >>") 
                 # save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
                 # solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-                if is_operation_mode:
-                    # 외부 경로로 잘 artifacts 복사 됐나 체크 
+                if self.is_operation_mode:
+                    # 외부 경로로 잘 artifacts 복사 됐나 체크 (edge app에선 고유한 경로로 항상 줄것임)
                     if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
-                        artifacts_saved_str = json.dumps({"status": "OK"})
-                        self.system_envs['q_inference_artifacts'].rput(artifacts_saved_str)
-                        self.proc_logger.process_info("Completes putting artifacts creation OK signal into redis queue.")
+                        self.system_envs['q_inference_artifacts'].rput(self.success_str) # summary yaml을 다시 한번 전송 
+                        self.proc_logger.process_info("Completes putting artifacts creation << success >> signal into redis queue.")
                     else: 
                         self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
                         
                 self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
+                return # FIXME return 안하면 except의 finally로 들어가버리는 듯 (정상동작해도?)
         except: 
-            try:
-                # [ref] https://medium.com/@rahulkumar_33287/logger-error-versus-logger-exception-4113b39beb4b 
-                # [ref2] https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
-                # + traceback.format_exc() << 이 방법은 alolib logger에서 exc_info=True 안할 시에 사용가능  
+            # [ref] https://medium.com/@rahulkumar_33287/logger-error-versus-logger-exception-4113b39beb4b 
+            # [ref2] https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
+            # + traceback.format_exc() << 이 방법은 alolib logger에서 exc_info=True 안할 시에 사용가능
+            try:  # 여기에 try, finally 구조로 안쓰면 main.py 로 raise 되버리면서 backup_artifacts가 안됨 
                 self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
             finally:
+                if self.is_operation_mode:
+                    fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
+                    self.system_envs['q_inference_summary'].rput(fail_str)
+                    self.system_envs['q_inference_artifacts'].rput(fail_str)
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
-            
+
+             
                 
     def empty_artifacts(self, pipe_prefix): 
         '''
@@ -379,7 +387,7 @@ class ALO:
             pipe_type = sol_pipe['type'] # train, inference 
             artifact_uri = sol_pipe['artifact_uri']
             dataset_uri = sol_pipe['dataset_uri']
-            selected_params = sol_pipe['parameters']['selected_user_parameters']
+            selected_params = sol_pipe['parameters']['selected_user_parameters']  
             # plan yaml에서 현재 sol meta pipe type의 index 찾기 
             cur_pipe_idx = None 
             for idx, plan_pipe in enumerate(self.exp_plan['user_parameters']):
@@ -391,16 +399,16 @@ class ALO:
             init_exp_plan = self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'].copy()
             for sol_step_dict in selected_params: 
                 sol_step = sol_step_dict['step']
-                sol_args = sol_step_dict['args']                   
+                sol_args = sol_step_dict['args'] #[주의] solution meta v9 기준 elected user params의 args는 list아니고 dict
                 # sol_args None 이거나 []이면 패스 
                 # FIXME (231202 == [] 체크추가) 종원선임님처럼 마지막에 custom step 붙일 때 - args: null
                 # 라는 식으로 args 가 필요없는 step이면 업데이트를 시도하는거 자체가 잘못된거고 스킵되는게 맞다
                 if sol_step != 'input':
-                    if (sol_args is None) or (sol_args == []) : 
+                    if (sol_args is None) or (sol_args == {}) or (len(sol_args) == 0): 
                         continue
                 for idx, plan_step_dict in enumerate(init_exp_plan):  
                     if sol_step == plan_step_dict['step']:
-                        self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args)
+                        self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args) #dict update
                         # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. (그냥 s3에서 다운받으면 그 밑에있는거 다사용하도록) 
                         if sol_step == 'input':
                             self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None

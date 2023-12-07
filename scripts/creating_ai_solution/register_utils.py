@@ -17,7 +17,7 @@ import json
 import requests
 import pandas as pd 
 import shutil
-
+import tarfile 
 # yaml = YAML()
 # yaml.preserve_quotes = True
 #----------------------------------------#
@@ -25,6 +25,10 @@ import shutil
 #----------------------------------------#
 VERSION = 1
 ALODIR = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file__)))) + '/'
+TEMP_ARTIFACTS_DIR = ALODIR + '.temp_artifacts_dir/'
+# 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
+TEMP_MODEL_DIR = ALODIR + '.temp_model_dir/'
+#---------------------------------------------------------
 WORKINGDIR = os.path.abspath(os.path.dirname(__file__)) + '/'
 # REST API Endpoints
 BASE_URI = 'api/v1/'
@@ -344,13 +348,17 @@ class RegisterUtils:
             self.sm_yaml['pipeline'][1].update({'parameters' : temp_dict})
     
         subkeys = {}
-        output_datas = []
+        user_parameters = []
         for step in temp_dict['candidate_parameters']:
-            output_data = {'step': step['step'], 'args': []}
-            output_datas.append(output_data)
-        
-        subkeys['user_parameters'] = output_datas
-        subkeys['selected_user_parameters'] = output_datas
+            output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
+            user_parameters.append(output_data)
+        subkeys['user_parameters'] = user_parameters
+
+        selected_user_parameters = []
+        for step in temp_dict['candidate_parameters']:
+            output_data = {'step': step['step'], 'args': {}} # solution metadata v9 기준 args가 dict 
+            selected_user_parameters.append(output_data)
+        subkeys['selected_user_parameters'] = selected_user_parameters
     
         if self.pipeline == 'train':
             self.sm_yaml['pipeline'][0]['parameters'].update(subkeys)
@@ -371,8 +379,9 @@ class RegisterUtils:
 
 
     # FIXME access key file 기반으로 하는거 꼭 필요할지? 
-    def s3_access_check(self):
-        self.s3_path = f'ai-solutions/{self.solution_name}/v{VERSION}/{self.pipeline}/data'
+    def s3_access_check(self, contents: str):
+        # contents: 'data' or 'artifacts'
+        self.s3_path = f'ai-solutions/{self.solution_name}/v{VERSION}/{self.pipeline}/{contents}'
         try:
             f = open(self.s3_access_key_path, "r")
             keys = []
@@ -432,7 +441,7 @@ class RegisterUtils:
         self.save_yaml()
         
 
-    def s3_upload(self):
+    def s3_upload_data(self):
         # inner func.
         def s3_process(s3, bucket_name, data_path, local_folder, s3_path):
             objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
@@ -453,7 +462,7 @@ class RegisterUtils:
             uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
             print_color(f"\nSuccess uploading into S3: \n{uploaded_path }", color='green')
             return True
-
+ 
         if "train" in self.pipeline:
             local_folder = ALODIR + "input/train/"
             for root, dirs, files in os.walk(local_folder):
@@ -473,17 +482,92 @@ class RegisterUtils:
             for root, dirs, files in os.walk(local_folder):
                 for file in files:
                     data_path = os.path.join(root, file)
-            print_color(f'\n[INFO] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
+            print_color(f'\n[INFO] Start uploading << data >> into S3 from local folder:\n {local_folder}', color='cyan')
             s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path)
-            
-            data = {'dataset_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
-            self.sm_yaml['pipeline'][1].update(data)
-            self.save_yaml()
-            print_color(f'\nSuccess updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline}', color='green')
+            try:
+                data = {'dataset_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
+                self.sm_yaml['pipeline'][1].update(data)
+                self.save_yaml()
+                print_color(f'\nSuccess updating solution_metadata.yaml - << dataset_uri >> info. / pipeline: {self.pipeline}', color='green')
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline} \n{e}')
         else:
             raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
 
 
+    def s3_upload_artifacts(self):
+        # inner func.
+        def s3_process(s3, bucket_name, data_path, local_folder, s3_path, delete=True):
+            if delete == True: 
+                objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
+                if 'Contents' in objects_to_delete:
+                    for obj in objects_to_delete['Contents']:
+                        self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                        print_color(f'\n[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
+                s3.delete_object(Bucket=bucket_name, Key=s3_path)
+            s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
+            try:    
+                response = s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
+            except NoCredentialsError as e:
+                raise NoCredentialsError("NoCredentialsError: \n{e}")
+            except ClientError as e:
+                print(f"ClientError: ", e)
+                return False
+            # temp = s3_path + "/" + data_path[len(local_folder):]
+            uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
+            print_color(f"\nSuccess uploading into S3: \n{uploaded_path }", color='green')
+            return True
+
+        
+        if "train" in self.pipeline:
+            artifacts_path = _tar_dir(".train_artifacts")  # artifacts tar.gz이 저장된 local 경로 return
+            local_folder = os.path.split(artifacts_path)[0] + '/'
+            print_color(f'\n[INFO] Start uploading << train artifacts >> into S3 from local folder:\n {local_folder}', color='cyan')
+            s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path) # self.s3_path 는 s3_access_check 할때 셋팅
+            try: 
+                artifact_uri = {'artifact_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
+                self.sm_yaml['pipeline'][0].update(artifact_uri)
+                self.save_yaml()
+                print_color(f'\nSuccess updating solution_metadata.yaml - << artifact_uri >> info. / pipeline: {self.pipeline}', color='green')
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
+            finally:
+                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+        elif "inf" in self.pipeline:
+            ## inference artifacts 업로드 
+            artifacts_path = _tar_dir(".inference_artifacts")  # artifacts tar.gz이 저장된 local 경로 
+            local_folder = os.path.split(artifacts_path)[0] + '/'
+            print_color(f'\n[INFO] Start uploading << inference artifacts >> into S3 from local folder:\n {local_folder}', color='cyan')
+            s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path)
+            try: 
+                artifact_uri = {'artifact_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
+                self.sm_yaml['pipeline'][1].update(artifact_uri)
+                self.save_yaml()
+                print_color(f'\nSuccess updating solution_metadata.yaml - << artifact_uri >> info. / pipeline: {self.pipeline}', color='green')
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
+            finally:
+                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+            # [중요] model_uri는 inference type 밑에 넣어야되는데, 경로는 inference 대신 train이라고 pipeline 들어가야함 (train artifacts 경로에 저장)
+            train_artifacts_s3_path = self.s3_path.replace(f'v{VERSION}/inference', f'v{VERSION}/train')
+            model_path = _tar_dir(".train_artifacts/models")  # model tar.gz이 저장된 local 경로 return 
+            local_folder = os.path.split(model_path)[0] + '/'
+            print_color(f'\n[INFO] Start uploading << model >> into S3 from local folder:\n {local_folder}', color='cyan')
+            # 주의! 이미 train artifacts도 같은 경로에 업로드 했으므로 model.tar.gz올릴 땐 delete object하지 않는다. 
+            s3_process(self.s3, self.bucket_name, model_path, local_folder, train_artifacts_s3_path, delete=False) 
+            try: 
+                model_uri = {'model_uri': ["s3://" + self.bucket_name + "/" + train_artifacts_s3_path + "/"]}  # 값을 리스트로 감싸줍니다
+                self.sm_yaml['pipeline'][1].update(model_uri)
+                self.save_yaml()
+                print_color(f'\nSuccess updating solution_metadata.yaml - << model_uri >> info. / pipeline: {self.pipeline}', color='green')
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << model_uri >> info / pipeline: {self.pipeline} \n{e}')
+            finally:
+                shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+        else:
+            raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
+        
+        
     def get_contents(self, url):
         def _is_git_url(url):
             git_url_pattern = r'^(https?|git)://[^\s/$.?#].[^\s]*$'
@@ -817,3 +901,25 @@ if __name__ == "__main__":
     }
     registerer = RegisterUtils(user_input)
 
+
+def _tar_dir(_path): 
+    ## _path: .train_artifacts / .inference_artifacts     
+    os.makedirs(TEMP_ARTIFACTS_DIR , exist_ok=True)
+    os.makedirs(TEMP_MODEL_DIR, exist_ok=True)
+    last_dir = None
+    if 'models' in _path: 
+        _save_path = TEMP_MODEL_DIR + 'model.tar.gz'
+        last_dir = 'models/'
+    else: 
+        _save_file_name = _path.strip('.') 
+        _save_path = TEMP_ARTIFACTS_DIR +  f'{_save_file_name}.tar.gz' 
+        last_dir = _path # ex. .train_artifacts/
+    tar = tarfile.open(_save_path, 'w:gz')
+    for root, dirs, files in os.walk(ALODIR  + _path):
+        base_dir = root.split(last_dir)[-1] + '/'
+        for file_name in files:
+            #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
+            tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 .train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
+    tar.close()
+    
+    return _save_path

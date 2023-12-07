@@ -8,8 +8,8 @@ from alolib import logger
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
-# artifacts.tar.gz (혹은 model.tar.gz) 압축 파일을 외부 업로드하기 전 로컬 임시 저장 경로 
-TEMP_TAR_DIR = PROJECT_HOME + '.temp_tar_dir/'
+# artifacts.tar.gz  압축 파일을 외부 업로드하기 전 로컬 임시 저장 경로 
+TEMP_ARTIFACTS_DIR = PROJECT_HOME + '.temp_artifacts_dir/'
 # 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
 TEMP_MODEL_DIR = PROJECT_HOME + '.temp_model_dir/'
 #--------------------------------------------------------------------------------------------------------------------------
@@ -325,15 +325,16 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
         try: 
             os.makedirs(ext_path, exist_ok=True) 
             shutil.copy(artifacts_tar_path, ext_path)
-            shutil.copy(model_tar_path, ext_path)
+            if model_tar_path is not None: 
+                shutil.copy(model_tar_path, ext_path)
         except: 
             PROC_LOGGER.process_error(f'Failed to copy compressed artifacts from << {artifacts_tar_path} >> & << {model_tar_path} >> into << {ext_path} >>.')
         finally: 
             os.remove(artifacts_tar_path)
-            os.remove(model_tar_path)
-            # [중요] 압축 파일 업로드 끝나면 TEMP_TAR_DIR 삭제 
-            shutil.rmtree(TEMP_TAR_DIR, ignore_errors=True)
-            shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+            shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+            if model_tar_path is not None: 
+                os.remove(model_tar_path)
+                shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
             
     elif ext_type  == 's3':  
         try: 
@@ -341,21 +342,23 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
             # s3 접근권한 없으면 에러 발생 
             s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
             s3_uploader.upload_file(artifacts_tar_path)
-            s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
-            s3_uploader.upload_file(model_tar_path)
+            if model_tar_path is not None: 
+                s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
+                s3_uploader.upload_file(model_tar_path)
         except:
             PROC_LOGGER.process_error(f'Failed to upload << {artifacts_tar_path} >> & << {model_tar_path} >> onto << {ext_path} >>')
         finally: 
             os.remove(artifacts_tar_path)
-            os.remove(model_tar_path)
-            # [중요] 압축 파일 업로드 끝나면 TEMP_TAR_DIR 삭제 
-            shutil.rmtree(TEMP_TAR_DIR, ignore_errors=True)
-            shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+            # [중요] 압축 파일 업로드 끝나면 TEMP_ARTIFACTS_DIR 삭제 
+            shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+            if model_tar_path is not None: 
+                os.remove(model_tar_path)
+                shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
     else: 
         # 미지원 external data storage type
         PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
     
-    PROC_LOGGER.process_info(f" Successfully done saving << {artifacts_tar_path} >> & << {model_tar_path} >> \n onto << {save_artifacts_path} >> & removing local files.")
+    PROC_LOGGER.process_info(f" Successfully done saving << artifacts: {artifacts_tar_path} >> & << model: {model_tar_path} >> \n onto << {save_artifacts_path} >> & removing local files.")
     
     return ext_path 
 
@@ -381,7 +384,7 @@ def _get_ext_path_type(_ext_path: str): # inner function
             
 def _tar_dir(_path): 
     ## _path: .train_artifacts / .inference_artifacts     
-    os.makedirs(TEMP_TAR_DIR, exist_ok=True)
+    os.makedirs(TEMP_ARTIFACTS_DIR , exist_ok=True)
     os.makedirs(TEMP_MODEL_DIR, exist_ok=True)
     last_dir = None
     if 'models' in _path: 
@@ -389,7 +392,7 @@ def _tar_dir(_path):
         last_dir = 'models/'
     else: 
         _save_file_name = _path.strip('.') 
-        _save_path = TEMP_TAR_DIR +  f'{_save_file_name}.tar.gz' 
+        _save_path = TEMP_ARTIFACTS_DIR +  f'{_save_file_name}.tar.gz' 
         last_dir = _path # ex. .train_artifacts/
     tar = tarfile.open(_save_path, 'w:gz')
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):
