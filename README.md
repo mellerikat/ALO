@@ -351,7 +351,7 @@ Inference pipeline 은 output.csv, output.jpg, output.csv & output.jpg 중에 �
 
 
 ### asset_{step_name}.py 의 skeleton code
-Sample 로 제공되는 [./samles/user_asset/asset_stepname.py](./samles/user_asset/asset_stepname.py) 파일를 copy 하여 제작하시기 바랍니다. 
+Sample 로 제공되는 [./samples/user_asset/asset_stepname.py](./samples/user_asset/asset_stepname.py) 파일를 copy 하여 제작하시기 바랍니다. 
 
 ```python
 # -*- coding: utf-8 -*-
