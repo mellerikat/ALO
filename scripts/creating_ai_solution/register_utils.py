@@ -484,12 +484,15 @@ class RegisterUtils:
  
         if "train" in self.pipeline:
             local_folder = ALODIR + "input/train/"
-            for root, dirs, files in os.walk(local_folder):
-                for file in files:
-                    data_path = os.path.join(root, file)
             print_color(f'\n[INFO] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
-            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path) # self.s3_path 는 s3_access_check 할때 셋팅
             try: 
+                for root, dirs, files in os.walk(local_folder):
+                    for file in files:
+                        data_path = os.path.join(root, file)
+                        s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path) # self.s3_path 는 s3_access_check 할때 셋팅
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
+            try:    
                 data = {'dataset_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
                 self.sm_yaml['pipeline'][0].update(data)
                 self.save_yaml()
@@ -498,11 +501,14 @@ class RegisterUtils:
                 raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline} \n{e}')
         elif "inf" in self.pipeline:
             local_folder = ALODIR + "input/inference/"
-            for root, dirs, files in os.walk(local_folder):
-                for file in files:
-                    data_path = os.path.join(root, file)
             print_color(f'\n[INFO] Start uploading << data >> into S3 from local folder:\n {local_folder}', color='cyan')
-            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path)
+            try: 
+                for root, dirs, files in os.walk(local_folder):
+                    for file in files:
+                        data_path = os.path.join(root, file)
+                        s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path)
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
             try:
                 data = {'dataset_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
                 self.sm_yaml['pipeline'][1].update(data)
@@ -553,7 +559,7 @@ class RegisterUtils:
             finally:
                 shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
         elif "inf" in self.pipeline:
-            ## inference artifacts 업로드 
+            ## inference artifacts tar gz 업로드 
             artifacts_path = _tar_dir(".inference_artifacts")  # artifacts tar.gz이 저장된 local 경로 
             local_folder = os.path.split(artifacts_path)[0] + '/'
             print_color(f'\n[INFO] Start uploading << inference artifacts >> into S3 from local folder:\n {local_folder}', color='cyan')
@@ -567,6 +573,7 @@ class RegisterUtils:
                 raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
             finally:
                 shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+            ## model tar gz 업로드 
             # [중요] model_uri는 inference type 밑에 넣어야되는데, 경로는 inference 대신 train이라고 pipeline 들어가야함 (train artifacts 경로에 저장)
             train_artifacts_s3_path = self.s3_path.replace(f'v{VERSION}/inference', f'v{VERSION}/train')
             model_path = _tar_dir(".train_artifacts/models")  # model tar.gz이 저장된 local 경로 return 
