@@ -281,13 +281,16 @@ class ALO:
                         
                 self.proc_finish_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.proc_logger.process_info(f"Process finish-time: {self.proc_finish_time}")
-                return # FIXME return 안하면 except의 finally로 들어가버리는 듯 (정상동작해도?)
         except: 
             # [ref] https://medium.com/@rahulkumar_33287/logger-error-versus-logger-exception-4113b39beb4b 
             # [ref2] https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
             # + traceback.format_exc() << 이 방법은 alolib logger에서 exc_info=True 안할 시에 사용가능
             try:  # 여기에 try, finally 구조로 안쓰면 main.py 로 raise 되버리면서 backup_artifacts가 안됨 
                 self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
+                # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
+                backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
+                # error 발생해도 external save artifacts 하도록                
+                ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
             finally:
                 if self.is_operation_mode:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
@@ -296,12 +299,7 @@ class ALO:
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
                     elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
-                # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
-                backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
-                # error 발생해도 external save artifacts 하도록                
-                ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
       
-             
                 
     def empty_artifacts(self, pipe_prefix): 
         '''
