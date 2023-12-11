@@ -1,23 +1,23 @@
 description:
   algorithm: ALO
-  icon: s3://s3-an2-hyunsoo-dev-cism/icons/woosung-test-1207-1526/icon.png
-  input_data: s3-an2-hyunsoo-dev-cismTest input s3 bucket
-  output_data: s3-an2-hyunsoo-dev-cismTest input s3 bucket
+  icon: s3://s3-an2-cism-dev-cism/icons/magna-231208-1557/icon.png
+  input_data: s3-an2-cism-dev-cismTest input s3 bucket
+  output_data: s3-an2-cism-dev-cismTest input s3 bucket
   overview: AI Advisor Test
-  title: woosung-test-1207-1526
+  title: magna-231208-1557
   user_parameters: Test params
 edgeapp_interface:
   redis_server_uri: ''
 edgeconductor_interface:
-  inference_result_datatype: table
-  support_labeling: false
+  inference_result_datatype: image
+  support_labeling: true
   train_datatype: table
-name: woosung-test-1207-1526
+name: magna-231208-1557
 pipeline:
-- artifact_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/woosung-test-1207-1526/v1/train/artifacts/
-  container_uri: 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/ai-solutions/magna/woosung-test-1207-1526/train/woosung-test-1207-1526
+- artifact_uri: s3://s3-an2-cism-dev-cism/ai-solutions/magna-231208-1557/v1/train/artifacts/
+  container_uri: 042969618971.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-cism-dev/ai-solutions/magna/magna-231208-1557/train/magna-231208-1557
   dataset_uri:
-  - s3://s3-an2-hyunsoo-dev-cism/ai-solutions/woosung-test-1207-1526/v1/train/data/
+  - s3://s3-an2-cism-dev-cism/ai-solutions/magna-231208-1557/v1/train/data/
   parameters:
     candidate_parameters:
     - args:
@@ -25,31 +25,37 @@ pipeline:
         drop_columns: null
         encoding: null
         groupkey_columns: null
-        input_path: default_train
+        input_path: train
         time_column: null
         use_all_x: false
         x_columns:
-        - input_x0
-        - input_x1
-        - input_x2
-        - input_x3
-        y_column: target
+        - Count
+        - Converted Torque
+        - angle_min
+        - angle_mean
+        - angle_median
+        - angle_std
+        - angle_max
+        - torque_min
+        - torque_mean
+        - torque_median
+        - torque_std
+        - torque_max
+        y_column: current_cls
       step: input
     - args:
-      - custom: {}
-        mode: auto
-      step: preprocess
-    - args:
-      - ignore_label_class: null
-        label_sampling: false
-        label_sampling_num: null
-        label_sampling_num_type: null
+      - ignore_label_class: NG
+        label_sampling: true
+        label_sampling_num:
+          NG: 1
+          OK: 10
+        label_sampling_num_type: compare
         negative_target_class: null
         sampling_groupkey_columns: null
-        sampling_method: random
-        sampling_num: 0.8
-        sampling_num_type: ratio
-        sampling_type: none
+        sampling_method: cluster
+        sampling_num: null
+        sampling_num_type: null
+        sampling_type: under
       step: sampling
     - args:
       - data_split_method: cross_validate
@@ -97,28 +103,15 @@ pipeline:
         shap_ratio: 1.0
       step: train
     selected_user_parameters:
-    - args: 
-        x_columns: 
-
-      step: input
     - args: {}
-      step: preprocess
+      step: input
     - args: {}
       step: sampling
     - args: {}
       step: train
     user_parameters:
-    - args:           
-      - name: x_columns
-        description: 모델링에 사용될 features list. "x1, x2, x3" 으로 표시 해야 함
-        type: string
-        default:
-        range:
-          - 2
-          - 100
-      step: input
     - args: []
-      step: preprocess
+      step: input
     - args: []
       step: sampling
     - args: []
@@ -126,11 +119,11 @@ pipeline:
   resource:
     default: standard
   type: train
-- artifact_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/woosung-test-1207-1526/v1/inference/artifacts/
-  container_uri: 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/ai-solutions/magna/woosung-test-1207-1526/inference/woosung-test-1207-1526
+- artifact_uri: s3://s3-an2-cism-dev-cism/ai-solutions/magna-231208-1557/v1/inference/artifacts/
+  container_uri: 042969618971.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-cism-dev/ai-solutions/magna/magna-231208-1557/inference/magna-231208-1557
   dataset_uri:
-  - s3://s3-an2-hyunsoo-dev-cism/ai-solutions/woosung-test-1207-1526/v1/inference/data/
-  model_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/woosung-test-1207-1526/v1/train/artifacts/
+  - s3://s3-an2-cism-dev-cism/ai-solutions/magna-231208-1557/v1/inference/data/
+  model_uri: s3://s3-an2-cism-dev-cism/ai-solutions/magna-231208-1557/v1/train/artifacts/
   parameters:
     candidate_parameters:
     - args:
@@ -138,38 +131,44 @@ pipeline:
         drop_columns: null
         encoding: null
         groupkey_columns: null
-        input_path: default_inference
+        input_path: test
         time_column: null
         use_all_x: false
         x_columns:
-        - input_x0
-        - input_x1
-        - input_x2
-        - input_x3
+        - Count
+        - Converted Torque
+        - angle_min
+        - angle_mean
+        - angle_median
+        - angle_std
+        - angle_max
+        - torque_min
+        - torque_mean
+        - torque_median
+        - torque_std
+        - torque_max
         y_column: null
       step: input
     - args:
-      - custom: {}
-        mode: auto
-      step: preprocess
-    - args:
       - model_type: classification
-        run_shapley: true
+        run_shapley: false
       step: inference
+    - args: null
+      step: output
     selected_user_parameters:
     - args: {}
       step: input
     - args: {}
-      step: preprocess
-    - args: {}
       step: inference
+    - args: {}
+      step: output
     user_parameters:
     - args: []
       step: input
     - args: []
-      step: preprocess
-    - args: []
       step: inference
+    - args: []
+      step: output
   resource:
     default: standard
   type: inference
