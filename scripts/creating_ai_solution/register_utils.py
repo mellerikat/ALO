@@ -928,7 +928,29 @@ def print_color(msg, color):
     else:
         raise ValueError('[ERROR] print_color() function call error. - selected color : {}'.format(COLOR_DICT.keys()))
     
+def _tar_dir(_path): 
+    ## _path: .train_artifacts / .inference_artifacts     
+    os.makedirs(TEMP_ARTIFACTS_DIR , exist_ok=True)
+    os.makedirs(TEMP_MODEL_DIR, exist_ok=True)
+    last_dir = None
+    if 'models' in _path: 
+        _save_path = TEMP_MODEL_DIR + 'model.tar.gz'
+        last_dir = 'models/'
+    else: 
+        _save_file_name = _path.strip('.') 
+        _save_path = TEMP_ARTIFACTS_DIR +  f'{_save_file_name}.tar.gz' 
+        last_dir = _path # ex. .train_artifacts/
+    tar = tarfile.open(_save_path, 'w:gz')
+    for root, dirs, files in os.walk(ALODIR  + _path):
+        base_dir = root.split(last_dir)[-1] + '/'
+        for file_name in files:
+            #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
+            tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 .train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
+    tar.close()
     
+    return _save_path
+
+
 if __name__ == "__main__":
     user_input ={
         # 시스템 URI
@@ -952,24 +974,3 @@ if __name__ == "__main__":
     registerer = RegisterUtils(user_input)
 
 
-def _tar_dir(_path): 
-    ## _path: .train_artifacts / .inference_artifacts     
-    os.makedirs(TEMP_ARTIFACTS_DIR , exist_ok=True)
-    os.makedirs(TEMP_MODEL_DIR, exist_ok=True)
-    last_dir = None
-    if 'models' in _path: 
-        _save_path = TEMP_MODEL_DIR + 'model.tar.gz'
-        last_dir = 'models/'
-    else: 
-        _save_file_name = _path.strip('.') 
-        _save_path = TEMP_ARTIFACTS_DIR +  f'{_save_file_name}.tar.gz' 
-        last_dir = _path # ex. .train_artifacts/
-    tar = tarfile.open(_save_path, 'w:gz')
-    for root, dirs, files in os.walk(ALODIR  + _path):
-        base_dir = root.split(last_dir)[-1] + '/'
-        for file_name in files:
-            #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
-            tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 .train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
-    tar.close()
-    
-    return _save_path
