@@ -18,6 +18,7 @@ import requests
 import pandas as pd 
 import shutil
 import tarfile 
+
 # yaml = YAML()
 # yaml.preserve_quotes = True
 #----------------------------------------#
@@ -78,11 +79,13 @@ class RegisterUtils:
         # FIXME sm.set_aws_ecr 할 때 boto3 session 생성 시 region 을 None으로 받아와서 에러나므로 일단 임시로 추가 
         self.region = "ap-northeast-2"
         self.ECR_TAG = 'latest' # 사용자 설정가능 
+        # FIXME aws login 방법 고민필요
         self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"
         
         # solution instance 등록을 위한 interface 폴더 
         self.interface_dir = './interface'
         self.sm_yaml_file_path = './solution_metadata.yaml'
+        # FIXME 다른 이름으로 exp plan yaml 사용하면 ?
         self.exp_yaml_path = "../../config/experimental_plan.yaml"
         
 
@@ -175,7 +178,6 @@ class RegisterUtils:
         print_color(f"- private: {ECR_NAME['private']}", color='cyan') 
 
         # workspace로부터 받아온 ecr, s3 정보를 내부 변수화 
-
         try:
             self.bucket_name = S3_BUCKET_NAME[self.access_scope] # bucket_scope: private, public
             self.ecr = ECR_NAME[self.access_scope]
@@ -344,12 +346,12 @@ class RegisterUtils:
         self.save_yaml()
 
 
-    def set_train_dataset_uri(self):
-        pass
+    # def set_train_dataset_uri(self):
+    #     pass
 
 
-    def set_train_artifact_uri(self):
-        pass
+    # def set_train_artifact_uri(self):
+    #     pass
 
 
     def set_candidate_parameters(self):
@@ -359,24 +361,34 @@ class RegisterUtils:
             if old_key in d:
                 d[new_key] = d.pop(old_key)
         
+        ### candidate parameters setting
         if "train" in self.pipeline:
-            temp_dict = self.exp_yaml['user_parameters'][0]
-            rename_key(temp_dict, 'train_pipeline', 'candidate_parameters')
-            self.sm_yaml['pipeline'][0].update({'parameters' : temp_dict})
+            self.candidate_params = self.exp_yaml['user_parameters'][0]
+            rename_key(self.candidate_params, 'train_pipeline', 'candidate_parameters')
+            self.sm_yaml['pipeline'][0].update({'parameters' : self.candidate_params})
         elif "inference" in self.pipeline:
-            temp_dict = self.exp_yaml['user_parameters'][1]
-            rename_key(temp_dict, 'inference_pipeline', 'candidate_parameters')
-            self.sm_yaml['pipeline'][1].update({'parameters' : temp_dict})
+            self.candidate_params = self.exp_yaml['user_parameters'][1]
+            rename_key(self.candidate_params, 'inference_pipeline', 'candidate_parameters')
+            self.sm_yaml['pipeline'][1].update({'parameters' : self.candidate_params})
+        #print(self.sm_yaml['pipeline'][0]['parameters'])
+
+        return self.candidate_params['candidate_parameters']
     
+    def set_user_paramters(self):
+        ### user parameters setting 
         subkeys = {}
         user_parameters = []
-        for step in temp_dict['candidate_parameters']:
+        for step in self.candidate_params['candidate_parameters']:
             output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
             user_parameters.append(output_data)
         subkeys['user_parameters'] = user_parameters
-
+        
+        # TODO EdgeCondcutor 인터페이스 테스트 필요
+        # selected user parameters는 UI에서 선택시 채워질것 이므로 args를 빈 dict로 채워 보냄
+        # 사용자가 미선택시 default로 user paramters에서 복사될 것임    
+        ### selected user parameters setting 
         selected_user_parameters = []
-        for step in temp_dict['candidate_parameters']:
+        for step in self.candidate_dict['candidate_parameters']:
             output_data = {'step': step['step'], 'args': {}} # solution metadata v9 기준 args가 dict 
             selected_user_parameters.append(output_data)
         subkeys['selected_user_parameters'] = selected_user_parameters
@@ -388,6 +400,32 @@ class RegisterUtils:
             
         print_color("\n[{self.pipeline}] Success updating << candidate_parameters >> in the solution_metadata.yaml", color='green')
         self.save_yaml()
+        
+        
+    def set_user_parameters(self):
+        # user parameters setting 
+        # subkeys = {}
+        # user_parameters = []
+        # for step in self.candidate_dict['candidate_parameters']:
+        #     print(step)
+        #     print('----------')
+        #     output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
+        #     user_parameters.append(output_data)
+        # subkeys['user_parameters'] = user_parameters
+        # return subkeys 
+        print(self.candidate_dict['candidate_parameters'])
+        data = [] #["data1", "data2", "data3", "data4"]
+        for step_info in self.candidate_dict['candidate_parameters']:
+            for k in step_info['args'][0].keys(): 
+                data.append(step_info['step'] + ' / ' + k)
+        checkboxes = [widgets.Checkbox(value=False, description=label) for label in data]
+        output = widgets.VBox(children=checkboxes)
+        display(output)
+        selected_data = []
+        for i in range(0, len(checkboxes)):
+            if checkboxes[i].value == True:
+                selected_data = selected_data + [checkboxes[i].description]
+        print(selected_data)
         
 
     def set_resource(self, resource = 'standard'):
@@ -677,17 +715,17 @@ class RegisterUtils:
         else:
             run = 'buildah'
 
+        print_color(f"[INFO] target AWS ECR url: \n{self.ecr_url}", color='blue')
+
         p1 = subprocess.Popen(
             ['aws', 'ecr', 'get-login-password', '--region', f'{self.region}'], stdout=subprocess.PIPE
         )
-        print('p1: ', ['aws', 'ecr', 'get-login-password', '--region', f'{self.region}']) 
-        print_color(f"[INFO] target AWS ECR url: \n{self.ecr_url}", color='blue')
         p2 = subprocess.Popen(
-            ['sudo', f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
+            [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
         )
-        print('p2: ', ['sudo',f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'])
         p1.stdout.close()
         output = p2.communicate()[0]
+
         print_color(f"[INFO] AWS ECR | docker login result: \n {output.decode()}", color='cyan')
         print_color(f"[INFO] Target AWS ECR repository: \n{self.ecr_repo}", color='cyan')
 
@@ -743,7 +781,6 @@ class RegisterUtils:
         if self.docker:
             subprocess.run(['docker', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
         else:
-            print('debug: ', ['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
             subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
         if self.docker:
             subprocess.run(['docker', 'logout'])
