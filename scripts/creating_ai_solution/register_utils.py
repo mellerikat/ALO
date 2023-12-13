@@ -371,16 +371,17 @@ class RegisterUtils:
             rename_key(self.candidate_params, 'inference_pipeline', 'candidate_parameters')
             self.sm_yaml['pipeline'][1].update({'parameters' : self.candidate_params})
         #print(self.sm_yaml['pipeline'][0]['parameters'])
-
         return self.candidate_params['candidate_parameters']
     
-    def set_user_paramters(self):
+    
+    def set_user_parameters(self, user_parameters=[]):
         ### user parameters setting 
         subkeys = {}
-        user_parameters = []
-        for step in self.candidate_params['candidate_parameters']:
-            output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
-            user_parameters.append(output_data)
+        # 빈 user_parameters 생성 
+        # user_parameters = []
+        # for step in self.candidate_params['candidate_parameters']:
+        #     output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
+        #     user_parameters.append(output_data)
         subkeys['user_parameters'] = user_parameters
         
         # TODO EdgeCondcutor 인터페이스 테스트 필요
@@ -388,7 +389,7 @@ class RegisterUtils:
         # 사용자가 미선택시 default로 user paramters에서 복사될 것임    
         ### selected user parameters setting 
         selected_user_parameters = []
-        for step in self.candidate_dict['candidate_parameters']:
+        for step in self.candidate_params['candidate_parameters']:
             output_data = {'step': step['step'], 'args': {}} # solution metadata v9 기준 args가 dict 
             selected_user_parameters.append(output_data)
         subkeys['selected_user_parameters'] = selected_user_parameters
@@ -402,30 +403,30 @@ class RegisterUtils:
         self.save_yaml()
         
         
-    def set_user_parameters(self):
-        # user parameters setting 
-        # subkeys = {}
-        # user_parameters = []
-        # for step in self.candidate_dict['candidate_parameters']:
-        #     print(step)
-        #     print('----------')
-        #     output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
-        #     user_parameters.append(output_data)
-        # subkeys['user_parameters'] = user_parameters
-        # return subkeys 
-        print(self.candidate_dict['candidate_parameters'])
-        data = [] #["data1", "data2", "data3", "data4"]
-        for step_info in self.candidate_dict['candidate_parameters']:
-            for k in step_info['args'][0].keys(): 
-                data.append(step_info['step'] + ' / ' + k)
-        checkboxes = [widgets.Checkbox(value=False, description=label) for label in data]
-        output = widgets.VBox(children=checkboxes)
-        display(output)
-        selected_data = []
-        for i in range(0, len(checkboxes)):
-            if checkboxes[i].value == True:
-                selected_data = selected_data + [checkboxes[i].description]
-        print(selected_data)
+    # def set_user_parameters(self):
+    #     # user parameters setting 
+    #     # subkeys = {}
+    #     # user_parameters = []
+    #     # for step in self.candidate_dict['candidate_parameters']:
+    #     #     print(step)
+    #     #     print('----------')
+    #     #     output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
+    #     #     user_parameters.append(output_data)
+    #     # subkeys['user_parameters'] = user_parameters
+    #     # return subkeys 
+    #     print(self.candidate_dict['candidate_parameters'])
+    #     data = [] #["data1", "data2", "data3", "data4"]
+    #     for step_info in self.candidate_dict['candidate_parameters']:
+    #         for k in step_info['args'][0].keys(): 
+    #             data.append(step_info['step'] + ' / ' + k)
+    #     checkboxes = [widgets.Checkbox(value=False, description=label) for label in data]
+    #     output = widgets.VBox(children=checkboxes)
+    #     display(output)
+    #     selected_data = []
+    #     for i in range(0, len(checkboxes)):
+    #         if checkboxes[i].value == True:
+    #             selected_data = selected_data + [checkboxes[i].description]
+    #     print(selected_data)
         
 
     def set_resource(self, resource = 'standard'):
@@ -987,6 +988,109 @@ def _tar_dir(_path):
     
     return _save_path
 
+def is_float(string):
+    try:
+        float(string)
+        return True 
+    except ValueError:
+        return False 
+
+def is_int(string):
+    try:
+        int(string)
+        return True 
+    except ValueError:
+        return False 
+
+# FIXME bool check 어렵 (0이나 1로 입력하면?)
+def is_bool(string):
+    bool_list = ['True', 'False']
+    if string in bool_list: 
+        return True 
+    else: 
+        return False 
+    
+def is_str(string):
+    return isinstance(string, str)
+
+def split_comma(string):
+    return [i.strip() for i in string.split(',')]
+
+def convert_string(string_list: list): 
+    # string list 내 string들을 float 혹은 int 타입일 경우 해당 타입으로 바꿔줌 
+    output_list = [] 
+    for string in string_list: 
+        if is_int(string): 
+            output_list.append(int(string))
+        elif is_float(string):
+            output_list.append(float(string))
+        elif is_bool(string):
+            # FIXME 주의: bool(string)이 아니라 eval(string) 으로 해야 정상 작동 
+            output_list.append(eval(string)) 
+        else: # 무조건 string 
+            output_list.append(string)
+    return output_list 
+
+
+def convert_args_type(values: dict):
+    '''
+    << values smaple >> 
+    
+    {'name': 'num_hpo',
+    'description': 'test3',
+    'type': 'int',
+    'default': '2',
+    'range': '2,5'}
+    '''
+    from copy import deepcopy 
+    output = deepcopy(values) # dict 
+    
+    arg_type = values['type']
+    for k, v in values.items(): 
+        if k in ['name', 'description', 'type']: 
+            assert type(v) == str 
+        elif k == 'selectable': # 전제: selectable은 2개이상 (ex. "1, 2")
+            # single 이든 multi 이든 yaml 에 list 형태로 표현  
+            assert type(v) == str 
+            string_list = split_comma(v)
+            assert len(string_list) > 1
+            # FIXME 각각의 value들은 type이 제각기 다를 수 있으므로 완벽한 type check는 어려움 
+            output[k] = convert_string(string_list) 
+        elif k == 'default':
+            # 주의: default 는 None이 될수도 있음 (혹은 사용자가 그냥 ""로 입력할 수도 있을듯)
+            if (v == None) or (v==""): 
+                output[k] = []
+                ## FIXME string 일땐 [""] 로 해야하나? 
+                # if arg_type == 'string': 
+                #     output[k] = "" # 주의: EdgeCondcutor UI 에서 null 이 아닌 공백으로 표기 원하면 None 이 아닌 ""로 올려줘야함 
+                # elif arg_type in ['single_selection', 'multi_selection']:
+                #     output[k] = [] 
+                # else: 
+                #     # FIXME 일단 int, float 일땐 default value가 무조건 있어야 한다고 판단했음 
+                #     raise ValueError(f"Default value needed for arg. type: << {arg_type} >>")
+            else:  
+                string_list = split_comma(v)
+                if arg_type == 'single_selection': 
+                    assert len(string_list) == 1
+                elif arg_type == 'multi_selection':
+                    assert len(string_list) > 1
+                output[k] = convert_string(string_list) # list type     
+        elif k == 'range':
+            string_list = split_comma(v)
+            assert len(string_list) == 2 # range 이므로 [처음, 끝] 2개 
+            converted = convert_string(string_list)
+            if (arg_type == 'string') or (arg_type == 'int'):
+                for i in converted:
+                    if not is_int(i): # string type 일 땐 글자 수 range 의미 
+                        raise ValueError("<< range >> value must be int")
+            elif arg_type == 'float':
+                for i in converted:
+                    if not is_float(i): # string 글자 수 range 의미 
+                        raise ValueError("<< range >> value must be float")
+            output[k] = converted 
+            
+    return output
+        
 
 if __name__ == "__main__":
     user_input ={
