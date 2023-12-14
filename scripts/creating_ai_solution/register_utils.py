@@ -1061,13 +1061,11 @@ def convert_args_type(values: dict):
             if (v == None) or (v==""): 
                 output[k] = []
                 ## FIXME string 일땐 [""] 로 해야하나? 
-                # if arg_type == 'string': 
-                #     output[k] = "" # 주의: EdgeCondcutor UI 에서 null 이 아닌 공백으로 표기 원하면 None 이 아닌 ""로 올려줘야함 
-                # elif arg_type in ['single_selection', 'multi_selection']:
-                #     output[k] = [] 
-                # else: 
-                #     # FIXME 일단 int, float 일땐 default value가 무조건 있어야 한다고 판단했음 
-                #     raise ValueError(f"Default value needed for arg. type: << {arg_type} >>")
+                if arg_type == 'string': 
+                    output[k] = [""] # 주의: EdgeCondcutor UI 에서 null 이 아닌 공백으로 표기 원하면 None 이 아닌 ""로 올려줘야함 
+                else: 
+                    # FIXME 일단 single(multi)-selection, int, float 일땐 default value가 무조건 있어야 한다고 판단했음 
+                    raise ValueError(f"Default value needed for arg. type: << {arg_type} >>")
             else:  
                 string_list = split_comma(v)
                 if arg_type == 'single_selection': 

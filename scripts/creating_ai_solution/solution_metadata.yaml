@@ -98,7 +98,7 @@ pipeline:
         - true
         - false
         type: single_selection
-      - default: []
+      - default: ""
         description: test2
         name: x_columns
         range:

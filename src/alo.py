@@ -287,11 +287,12 @@ class ALO:
             # + traceback.format_exc() << 이 방법은 alolib logger에서 exc_info=True 안할 시에 사용가능
             try:  # 여기에 try, finally 구조로 안쓰면 main.py 로 raise 되버리면서 backup_artifacts가 안됨 
                 self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
+            finally:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
+                # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
                 # error 발생해도 external save artifacts 하도록                
                 ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
-            finally:
                 if self.is_operation_mode:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
                     if self.system_envs['runs_status'] == 'init':
