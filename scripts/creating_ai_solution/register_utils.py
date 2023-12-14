@@ -18,7 +18,7 @@ import requests
 import pandas as pd 
 import shutil
 import tarfile 
-
+from copy import deepcopy 
 # yaml = YAML()
 # yaml.preserve_quotes = True
 #----------------------------------------#
@@ -374,14 +374,15 @@ class RegisterUtils:
         return self.candidate_params['candidate_parameters']
     
     
-    def set_user_parameters(self, user_parameters=[]):
+    def set_user_parameters(self, _user_parameters=[]):
+        user_parameters = deepcopy(_user_parameters) # 안하면 jupyter의 user_parameters 리스트와 메모리 공유 돼서 꼬임 
         ### user parameters setting 
         subkeys = {}
         # 빈 user_parameters 생성 
-        # user_parameters = []
-        # for step in self.candidate_params['candidate_parameters']:
-        #     output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
-        #     user_parameters.append(output_data)
+        if len(user_parameters) == 0: 
+            for step in self.candidate_params['candidate_parameters']:
+                output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
+                user_parameters.append(output_data)
         subkeys['user_parameters'] = user_parameters
         
         # TODO EdgeCondcutor 인터페이스 테스트 필요
@@ -399,7 +400,7 @@ class RegisterUtils:
         elif self.pipeline == 'inference':
             self.sm_yaml['pipeline'][1]['parameters'].update(subkeys)
             
-        print_color("\n[{self.pipeline}] Success updating << candidate_parameters >> in the solution_metadata.yaml", color='green')
+        print_color("\n[{self.pipeline}] Success updating << user_parameters >> in the solution_metadata.yaml", color='green')
         self.save_yaml()
         
         
@@ -1042,7 +1043,6 @@ def convert_args_type(values: dict):
     'default': '2',
     'range': '2,5'}
     '''
-    from copy import deepcopy 
     output = deepcopy(values) # dict 
     
     arg_type = values['type']

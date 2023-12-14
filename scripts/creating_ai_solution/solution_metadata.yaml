@@ -1,7 +1,24 @@
-description: {}
-name: ''
+description:
+  algorithm: ALO
+  icon: s3://s3-an2-hyunsoo-dev-cism/icons/ws-test-1214-1106/icon.png
+  input_data: s3-an2-hyunsoo-dev-cismTest input s3 bucket
+  output_data: s3-an2-hyunsoo-dev-cismTest input s3 bucket
+  overview: AI Advisor Test
+  title: ws-test-1214-1106
+  user_parameters: Test params
+edgeapp_interface:
+  redis_server_uri: ''
+edgeconductor_interface:
+  inference_result_datatype: image
+  support_labeling: true
+  train_datatype: table
+name: ws-test-1214-1106
 pipeline:
-- parameters:
+- artifact_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-1214-1106/v1/train/artifacts/
+  container_uri: 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/ai-solutions/cism/ws-test-1214-1106/train/ws-test-1214-1106
+  dataset_uri:
+  - s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-1214-1106/v1/train/data/
+  parameters:
     candidate_parameters:
     - args:
       - concat_dataframes: true
@@ -89,32 +106,64 @@ pipeline:
     - args: {}
       step: train
     user_parameters:
+    - args: []
+      step: input
+    - args: []
+      step: preprocess
+    - args: []
+      step: sampling
+    - args: []
+      step: train
+  resource:
+    default: standard
+  type: train
+- artifact_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-1214-1106/v1/inference/artifacts/
+  container_uri: 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/ai-solutions/cism/ws-test-1214-1106/inference/ws-test-1214-1106
+  dataset_uri:
+  - s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-1214-1106/v1/inference/data/
+  model_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-1214-1106/v1/train/artifacts/
+  parameters:
+    candidate_parameters:
     - args:
-      - default:
-        - true
-        description: test1
-        name: concat_dataframes
-        selectable:
-        - true
-        - false
-        type: single_selection
-      - default: ""
-        description: test2
-        name: x_columns
-        range:
-        - 2
-        - 100
-        type: string
+      - concat_dataframes: true
+        drop_columns: null
+        encoding: null
+        groupkey_columns: null
+        input_path: default_inference
+        time_column: null
+        use_all_x: false
+        x_columns:
+        - input_x0
+        - input_x1
+        - input_x2
+        - input_x3
+        y_column: null
       step: input
     - args:
-      - default:
-        - 2
-        description: test3
-        name: num_hpo
-        range:
-        - 2
-        - 5
-        type: int
-      step: train
-  type: train
+      - custom: {}
+        mode: auto
+      step: preprocess
+    - args:
+      - model_type: classification
+        run_shapley: true
+      step: inference
+    selected_user_parameters:
+    - args: {}
+      step: input
+    - args: {}
+      step: preprocess
+    - args: {}
+      step: inference
+    user_parameters:
+    - args: []
+      step: input
+    - args: []
+      step: preprocess
+    - args: []
+      step: inference
+  resource:
+    default: standard
+  type: inference
 version: 1
+wrangler_code_uri: ''
+wrangler_dataset_uri: ''
