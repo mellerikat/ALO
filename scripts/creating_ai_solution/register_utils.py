@@ -1067,6 +1067,7 @@ def convert_args_type(values: dict):
                     # FIXME 일단 single(multi)-selection, int, float 일땐 default value가 무조건 있어야 한다고 판단했음 
                     raise ValueError(f"Default value needed for arg. type: << {arg_type} >>")
             else:  
+                # FIXME selection 일 때 float, str 같은거 섞여있으면..? 사용자가 1을 의도한건지 '1'을 의도한건지? 
                 string_list = split_comma(v)
                 if arg_type == 'single_selection': 
                     assert len(string_list) == 1

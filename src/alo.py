@@ -7,6 +7,7 @@ import traceback
 from datetime import datetime
 from collections import Counter
 from src.constants import *
+from copy import deepcopy 
 # local import
 #######################################################################################
 # alolib 설치 
@@ -387,7 +388,40 @@ class ALO:
                 self.system_envs['q_inference_artifacts'] = RedisQueue('inference_artifacts', host=self.system_envs['redis_host'], port=self.system_envs['redis_port'], db=0)
             except: 
                 self.proc_logger.process_error(f"Failed to parse << redis_server_uri >>") 
-                
+        
+        def _convert_sol_args(_args): # inner func.
+            # TODO user parameters 의 type check 해서 selected_user_paramters type 다 체크할 것인가? 
+            '''
+            # _args: dict 
+            # selected user parameters args 중 값이 비어있는 arg는 delete  
+            # string type의 comma split은 list로 변환 * 
+            '''
+            if type(_args) != dict: 
+                self.proc_logger.process_error(f"selected_user_parameters args. in solution_medata must have << dict >> type.") 
+            if _args == {}:
+                return _args
+            # multi selection은 비어서 올 때 key는 온다. 
+            # 가령, args : { "key" : [] }
+            _args_copy = deepcopy(_args)
+            for k, v in _args_copy.items():
+                # FIXME dict type은 없긴할테지만 혹시 모르니..? (아마 str로 dict 표현해야한다면 할 수 있지 않을까..?)
+                if (type(v) == list) or (type(v) == dict): # single(multi) selection 
+                     if len(v) == 0: 
+                        del _args[k]
+                elif isinstance(v, str):
+                    if (v == None) or (v == ""): 
+                        del _args[k]
+                    else:  
+                        converted_string = [i.strip() for i in v.split(',')] # 'a, b' --> ['a', 'b']
+                        if len(converted_string) == 1: 
+                            _args[k] = converted_string[0] # ['a'] --> 'a'
+                        elif len(converted_string) > 1:
+                            _args[k] = converted_string # ['a', 'b']
+                else: # int, float 
+                    if v == None: 
+                        del _args[k]
+            return _args
+                         
         # TODO: multi (list), single (str) 일때 모두 실험 필요 
         for sol_pipe in self.sol_meta['pipeline']: 
             pipe_type = sol_pipe['type'] # train, inference 
@@ -400,7 +434,6 @@ class ALO:
                 # pipeline key가 하나이고, 해당 pipeline에 대응되는 plan yaml pipe가 존재할 시 
                 if (len(plan_pipe.keys()) == 1) and (f'{pipe_type}_pipeline' in plan_pipe.keys()): 
                     cur_pipe_idx = idx 
-                
             # selected params를 exp plan으로 덮어 쓰기 
             init_exp_plan = self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'].copy()
             for sol_step_dict in selected_params: 
@@ -408,17 +441,18 @@ class ALO:
                 sol_args = sol_step_dict['args'] #[주의] solution meta v9 기준 elected user params의 args는 list아니고 dict
                 # sol_args None 이거나 []이면 패스 
                 # FIXME (231202 == [] 체크추가) 종원선임님처럼 마지막에 custom step 붙일 때 - args: null
-                # 라는 식으로 args 가 필요없는 step이면 업데이트를 시도하는거 자체가 잘못된거고 스킵되는게 맞다
-                if sol_step != 'input':
-                    if (sol_args is None) or (sol_args == {}) or (len(sol_args) == 0): 
-                        continue
+                # 라는 식으로 args가 필요없는 step이면 업데이트를 시도하는거 자체가 잘못된거고 스킵되는게 맞다 
+                sol_args = _convert_sol_args(sol_args) # 값이 비어있는 arg는 지우고 반환 
+                # 어짜피 sol_args가 비어있는 dict {} 라면 plan yaml args에 update 해도 그대로이므로 괜찮다. 하지만 시간 절약을 위해 그냥 continue
+                if sol_args == {}: 
+                    continue 
                 for idx, plan_step_dict in enumerate(init_exp_plan):  
                     if sol_step == plan_step_dict['step']:
                         self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args) #dict update
                         # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. (그냥 s3에서 다운받으면 그 밑에있는거 다사용하도록) 
                         if sol_step == 'input':
                             self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
-            
+              
             # external path 덮어 쓰기 
             if pipe_type == 'train': 
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
