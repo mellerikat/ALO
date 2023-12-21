@@ -161,7 +161,7 @@ class RegisterUtils:
             raise NotImplementedError("Failed to get workspaces info.")
         ## workspace_name 의 ECR, S3 주소를 확인 합니다. 
         try: 
-            print(self.workspaces.json())
+            #print(self.workspaces.json())
             for ws in self.workspaces.json():
                 if self.WORKSPACE_NAME in ws['name']:
                     S3_BUCKET_NAME = ws['s3_bucket_name']
