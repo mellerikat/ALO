@@ -1,10 +1,10 @@
 description:
   algorithm: ALO
-  icon: s3://s3-an2-hyunsoo-dev-cism/icons/ws-test-231221/icon.png
+  icon: s3://s3-an2-hyunsoo-dev-cism/icons/ws-test-231222-1415/icon.png
   input_data: s3-an2-hyunsoo-dev-cismTest input s3 bucket
   output_data: s3-an2-hyunsoo-dev-cismTest input s3 bucket
   overview: AI Advisor Test
-  title: ws-test-231221
+  title: ws-test-231222-1415
   user_parameters: Test params
 edgeapp_interface:
   redis_server_uri: ''
@@ -12,12 +12,12 @@ edgeconductor_interface:
   inference_result_datatype: table
   support_labeling: false
   train_datatype: table
-name: ws-test-231221
+name: ws-test-231222-1415
 pipeline:
-- artifact_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231221/v1/train/artifacts/
-  container_uri: 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/ai-solutions/cism/ws-test-231221/train/ws-test-231221
+- artifact_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231222-1415/v1/train/artifacts/
+  container_uri: 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/ai-solutions/cism/ws-test-231222-1415/train/ws-test-231222-1415
   dataset_uri:
-  - s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231221/v1/train/data/
+  - s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231222-1415/v1/train/data/
   parameters:
     candidate_parameters:
     - args:
@@ -106,46 +106,22 @@ pipeline:
     - args: {}
       step: train
     user_parameters:
-    - args:
-      - default:
-        - ''
-        description: test1
-        name: x_columns
-        range:
-        - 2
-        - 100
-        type: string
-      - default:
-        - ''
-        description: test2
-        name: y_column
-        range:
-        - 2
-        - 100
-        type: string
+    - args: []
       step: input
     - args: []
       step: preprocess
     - args: []
       step: sampling
-    - args:
-      - default:
-        - 3
-        description: test3
-        name: num_hpo
-        range:
-        - 2
-        - 5
-        type: int
+    - args: []
       step: train
   resource:
     default: standard
   type: train
-- artifact_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231221/v1/inference/artifacts/
-  container_uri: 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/ai-solutions/cism/ws-test-231221/inference/ws-test-231221
+- artifact_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231222-1415/v1/inference/artifacts/
+  container_uri: 086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/ai-solutions/cism/ws-test-231222-1415/inference/ws-test-231222-1415
   dataset_uri:
-  - s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231221/v1/inference/data/
-  model_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231221/v1/train/artifacts/
+  - s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231222-1415/v1/inference/data/
+  model_uri: s3://s3-an2-hyunsoo-dev-cism/ai-solutions/ws-test-231222-1415/v1/train/artifacts/
   parameters:
     candidate_parameters:
     - args:
@@ -179,23 +155,7 @@ pipeline:
     - args: {}
       step: inference
     user_parameters:
-    - args:
-      - default:
-        - ''
-        description: test1
-        name: x_columns
-        range:
-        - 2
-        - 100
-        type: string
-      - default:
-        - ''
-        description: test2
-        name: y_column
-        range:
-        - 2
-        - 50
-        type: string
+    - args: []
       step: input
     - args: []
       step: preprocess

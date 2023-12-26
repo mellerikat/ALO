@@ -250,7 +250,7 @@ class RegisterUtils:
     #def set_description(self, overview, input_data, output_data, user_parameters, algorithm):
     def set_description(self, desc):
         try: 
-            self.sm_yaml['description']['title'] = self._check_parammeter(self.solution_name)
+            self.sm_yaml['description']['title'] = self._check_parammeter(desc['title'])
             self.set_sm_name(self._check_parammeter(self.solution_name))
             self.sm_yaml['description']['overview'] = self._check_parammeter(desc['overview'])
             self.sm_yaml['description']['input_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
