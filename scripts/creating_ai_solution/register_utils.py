@@ -482,7 +482,7 @@ class RegisterUtils:
                     self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
                     print_color(f'[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
             s3.delete_object(Bucket=bucket_name, Key=s3_path)
-            s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
+            #s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
             try:    
                 response = s3.upload_file(data_path, bucket_name, s3_path)
             except NoCredentialsError as e:
