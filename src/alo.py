@@ -31,7 +31,12 @@ class ALO:
     def __init__(self, exp_plan_file = None, sol_meta_str = None, alo_mode = 'all', boot_on = False):
         
         # alolib을 설치
-        self.set_alolib()
+        alolib = self.set_alolib()
+
+        if alolib:
+            pass
+        else:
+            raise ValueError("ALOLIB이 설치 되지 않아 프로그램을 종료합니다.")
 
         # 필요한 전역변수 선언
         self.exp_plan = None

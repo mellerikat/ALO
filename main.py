@@ -1,51 +1,31 @@
-import argparse
+import json
 from src.alo import ALO
+from src.utils import set_args, init_redis
 
 # --------------------------------------------------------------------------------------------------------------------------
 #    MAIN
 # --------------------------------------------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # while(1):
-    parser = argparse.ArgumentParser(description="Enter the options: << config, system, mode, loop >>")
-    parser.add_argument("--config", type=str, default=None, help="config option: experimental_plan.yaml")
-    parser.add_argument("--system", type=str, default=None, help="system option: jsonized solution_metadata.yaml")
-    parser.add_argument("--mode", type=str, default="all", help="ALO mode: train, inference (inf), all")
-    parser.add_argument("--loop", type=bool, default=False, help="On/off infinite loop: True, False")
-    args = parser.parse_args()
     
+    # ALO 실행 전 필요한 args를 받아옴
+    args = set_args()
+
     if args.loop == False: 
         try:
-            if args.config != None: 
-                if args.config == "": # FIXME 임시 (AIC에서도 임시)
-                    alo = ALO(sol_meta_str = args.system, alo_mode = args.mode)
-                else: 
-                    alo = ALO(exp_plan_file = args.config, sol_meta_str = args.system, alo_mode = args.mode)  # exp plan path
-            else: 
-                alo = ALO(sol_meta_str = args.system, alo_mode = args.mode)
-        except:
-            raise ValueError("Inappropriate config yaml file.")
-        try:
+            # ALO instance를 입력받은 args를 기반으로 초기화
+            kwargs = {'sol_meta_str': args.system, 'alo_mode': args.mode, 'exp_plan_file': args.config, 'boot_on': args.loop}
+            alo = ALO(**kwargs)
+            # 초기화된 ALO를 실행
             alo.runs()
         except Exception as e: 
             #print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
             raise NotImplementedError(str(e))
         
     elif args.loop == True: 
-        ##### import RedisQueue ##### 
-        from src.redisqueue import RedisQueue
-        import json
         
-        ##### parse redis server port, ip #####
-        sol_meta_json = json.loads(args.system)
-        redis_host, redis_port = sol_meta_json['edgeapp_interface']['redis_server_uri'].split(':')
-        # FIXME 이런데서 죽으면 EdgeApp은 ALO가 죽었는 지 알 수 없다? >> 아마 alo 실행 실패 시 error catch하는 게 EdgeAPP 이든 host든 어디선가 필요하겠지? 
-        if (redis_host == None) or (redis_port == None): 
-            raise ValueError("Missing redis server uri in solution metadata.")
-        
-        ##### make RedisQueue instance #####
-        #q = RedisQueue('my-queue', host='172.17.0.2', port=6379, db=0)
-        q = RedisQueue('request_inference', host=redis_host, port=int(redis_port), db=0)
+        # redis를 초기화
+        q = init_redis()
         
         ##### Boot-on sequence #####
         # TODO http://clm.lge.com/issue/browse/DXADVTECH-520?attachmentSortBy=dateTime&attachmentOrder=asc 11.16 댓글 (boot-on 완료 메시지관련)
@@ -67,19 +47,13 @@ if __name__ == "__main__":
                     # http://clm.lge.com/issue/browse/AIADVISOR-705?attachmentSortBy=dateTime&attachmentOrder=asc
                     msg_dict = json.loads(start_msg.decode('utf-8')) # dict 
                     sol_meta_str = msg_dict['solution_metadata']
-                    try:
-                        if args.config != None: 
-                            if args.config == "": # FIXME 임시 (AIC에서도 임시)
-                                alo = ALO(sol_meta_str = sol_meta_str, alo_mode = args.mode)
-                            else: 
-                                alo = ALO(exp_plan_file = args.config, sol_meta_str = sol_meta_str, alo_mode = args.mode)  # exp plan path
-                        else: 
-                            alo = ALO(sol_meta_str = sol_meta_str, alo_mode = args.mode)
-                    except:
-                        raise ValueError("Inappropriate config yaml file.")
+                    kwargs = {'sol_meta_str': args.system, 'alo_mode': args.mode, 'exp_plan_file': args.config, 'boot_on': args.loop}
+                    alo = ALO(**kwargs)
                     alo.runs()
                 except Exception as e: 
                     print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
                     continue # loop는 죽이지 않는다. 
     else: 
         raise ValueError("Invalid << loop >> arguments. It must be True or False.")
+
+
