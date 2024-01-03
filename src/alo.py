@@ -9,42 +9,15 @@ from collections import Counter
 from src.constants import *
 from copy import deepcopy 
 # local import
-#######################################################################################
-# alolib 설치 
 
-def set_alolib():
-    if not os.path.exists(PROJECT_HOME + 'alolib'): 
-        repository_url = "http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git"
-        destination_directory = "./alolib"
-        result = subprocess.run(['git', 'clone', repository_url, destination_directory], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode == 0:
-            print("alolib git pull success.")
-        else:
-            raise NotImplementedError("alolib git pull failed.")
-    else: 
-        print("alolib already exists in local path.")
-        pass
-    alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
-    sys.path.append(alolib_path)
-    
-    req = os.path.join(alolib_path, "requirements.txt")
-    result = subprocess.run(['pip', 'install', '-r', req], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    if result.returncode == 0:
-        print("패키지 설치 성공")
-        print(result.stdout)
-    else:
-        print("패키지 설치 실패")
-        print(result.stderr)
-        
-set_alolib()
-
-#######################################################################################
 from src.install import *
 from src.utils import set_artifacts, setup_asset, match_steps, import_asset, release, backup_artifacts, move_output_files
 from src.compare_yamls import get_yaml, compare_yaml
 from src.external import external_load_data, external_load_model, external_save_artifacts
 from src.redisqueue import RedisQueue
-from alolib import logger  
+from src.logger import ProcessLogger  
+
+#######################################################################################
 
 
 class AssetStructure: 
@@ -54,38 +27,99 @@ class AssetStructure:
         self.data = {} 
         self.config = {}
 
-
 class ALO:
     def __init__(self, exp_plan_file = None, sol_meta_str = None, alo_mode = 'all', boot_on = False):
-        self.proc_start_time = datetime.now().strftime("%y%m%d_%H%M%S")
-        self.exp_plan_file = exp_plan_file
-        self.sol_meta = json.loads(sol_meta_str) if sol_meta_str != None else None # None or dict from json 
-        # solution metadata를 통해, 혹은 main.py 실행 시 인자로 받는 정보는 system_envs로 wrapping 
-        self.system_envs = {}
-        self.set_system_envs() 
-        self.system_envs['alo_mode'] = alo_mode 
-        self.system_envs['boot_on'] = boot_on 
         
+        # alolib을 설치
+        self.set_alolib()
+
+        # 필요한 전역변수 선언
         self.exp_plan = None
         self.artifacts = None 
         self.proc_logger = None
 
+        # logger 초기화
+        self.set_proc_logger()
+        
+        # init solution metadata
+        # solution metadata를 통해, 혹은 main.py 실행 시 인자로 받는 정보는 system_envs로 wrapping 
+        self.sol_meta = json.loads(sol_meta_str) if sol_meta_str != None else None # None or dict from json 
+
+        # init experiment metadata
+        self.read_yaml(exp_plan_file)
+        
+        # 시스템 전역 변수 초기화
+        self.system_envs = self.set_system_envs(alo_mode, boot_on) 
+
+        # 현재 ALO 버전
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
 
+        # 시동 log 
+        self._init_log()
 
-    def set_system_envs(self):
+        # asset home 초기화
+        self.set_asset_home()
+
+        # artifacts home 초기화
+        self.artifacts = set_artifacts()
+
+        # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭
+        match_steps(self.user_parameters, self.asset_source)
+        
+    def set_alolib(self):
+        if not os.path.exists(PROJECT_HOME + 'alolib'): 
+            repository_url = "http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git"
+            destination_directory = "./alolib"
+            result = subprocess.run(['git', 'clone', repository_url, destination_directory], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if result.returncode == 0:
+                print("alolib git pull success.")
+            else:
+                raise NotImplementedError("alolib git pull failed.")
+        else: 
+            print("alolib already exists in local path.")
+            pass
+        alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
+        sys.path.append(alolib_path)
+        
+        req = os.path.join(alolib_path, "requirements.txt")
+        result = subprocess.run(['pip', 'install', '-r', req], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            print("패키지 설치 성공")
+            print(result.stdout)
+            return True
+        else:
+            print("패키지 설치 실패")
+            print(result.stderr)
+            return False
+    
+    def _init_log(self):
+        if self.system_envs['boot_on'] == True: 
+            self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
+        else: 
+            self.proc_logger.process_meta(f"Loaded solution_metadata: \n{self.sol_meta}\n")
+        self.proc_logger.process_info(f"Process start-time: {self.system_envs['start_time']}")
+        self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
+        self.proc_logger.process_info("==================== Start ALO preset ==================== ")
+
+    def set_system_envs(self, alo_mode, boot_on):
+        system_envs = {}
         # solution meta 버전 
-        self.system_envs['solution_metadata_version'] = None 
+        system_envs['solution_metadata_version'] = None 
         # edgeapp interface 관련 
-        self.system_envs['q_inference_summary'] = None 
-        self.system_envs['q_inference_artifacts'] = None 
-        self.system_envs['redis_host'] = None
-        self.system_envs['redis_port'] = None
+        system_envs['q_inference_summary'] = None 
+        system_envs['q_inference_artifacts'] = None 
+        system_envs['redis_host'] = None
+        system_envs['redis_port'] = None
         # 'init': initial status / 'summary': success until 'q_inference_summary'/ 'artifacts': success until 'q_inference_artifacts'
-        self.system_envs['runs_status'] = 'init'
+        system_envs['runs_status'] = 'init'
         # edgeconductor interface 관련 
-        self.system_envs['inference_result_datatype'] = None 
-        self.system_envs['train_datatype'] = None 
+        system_envs['inference_result_datatype'] = None 
+        system_envs['train_datatype'] = None 
+
+        system_envs['alo_mode'] = alo_mode 
+        system_envs['boot_on'] = boot_on
+        system_envs['start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
+        return system_envs
 
 
     def set_proc_logger(self):
@@ -100,7 +134,7 @@ class ALO:
         except: 
             raise NotImplementedError("Failed to empty log directory.")
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
-        self.proc_logger = logger.ProcessLogger(PROJECT_HOME)  
+        self.proc_logger = ProcessLogger(PROJECT_HOME)  
 
 
     def load_experimental_plan(self, exp_plan_file_path): # called at preset func.
@@ -136,54 +170,24 @@ class ALO:
                 return  PROJECT_HOME + 'config/' + _file 
             except: 
                 self.proc_logger.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {exp_plan_file_path}")
-            
-            
-    def preset(self):
-        # exp_plan_file은 config 폴더로 복사해서 가져옴. 단, 외부 exp plan 파일 경로는 로컬 절대 경로만 지원 
-        self.exp_plan_file = self.load_experimental_plan(self.exp_plan_file) 
-        self.proc_logger.process_info(f"Successfully loaded << experimental_plan.yaml >> from: \n {self.exp_plan_file}") 
+    
+    def set_asset_home(self):
         if not os.path.exists(ASSET_HOME):
             try:
                 os.makedirs(ASSET_HOME)
             except: 
                 self.proc_logger.process_error(f"Failed to create directory: {ASSET_HOME}")
-        try:
-            self.read_yaml() # self.exp_plan default 셋팅 완료 
-        except: 
-            self.proc_logger.process_error("Failed to read experimental plan yaml.")
-        # artifacts 세팅
-        # FIXME train만 돌든 inference만 돌든 일단 artifacts 폴더는 둘다 만든다 
-        self.artifacts = set_artifacts()
-        # step들이 잘 match 되게 yaml에 기술 돼 있는지 체크
-        match_steps(self.user_parameters, self.asset_source)
-
-
+            
     def external_load_data(self, pipeline):
         external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
 
-
     def external_load_model(self):
         external_load_model(self.external_path, self.external_path_permission)
-
 
     def runs(self):
         try: 
             # preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
             # 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
-            self.set_proc_logger()
-            if self.system_envs['boot_on'] == True: 
-                self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
-            else: 
-                self.proc_logger.process_meta(f"Loaded solution_metadata: \n{self.sol_meta}\n")
-            self.proc_logger.process_info(f"Process start-time: {self.proc_start_time}")
-            self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
-            self.proc_logger.process_info("==================== Start ALO preset ==================== ")
-            try:
-                self.preset()
-            except:
-                self.proc_logger.process_error("Failed to preset ALO.")
-            self.proc_logger.process_info("==================== Finish ALO preset ==================== ")
-            
             for pipeline in self.asset_source:
                 # alo mode (운영 시에는 SOLUTION_PIPELINE_MODE와 동일)에 따른 pipeline run 분기 
                 if self.system_envs['alo_mode'] == 'train':
@@ -266,7 +270,7 @@ class ALO:
                 # artifacts backup --> .history 
                 if self.control['backup_artifacts'] == True:
                     try:
-                        backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, size=self.control['backup_size'])
+                        backup_artifacts(pipeline, self.exp_plan_file, self.system_envs['start_time'], size=self.control['backup_size'])
                     except: 
                         self.proc_logger.process_error("Failed to backup artifacts into << .history >>") 
                 # save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
@@ -290,7 +294,7 @@ class ALO:
                 self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
             finally:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
-                backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=True, size=self.control['backup_size'])
+                backup_artifacts(pipeline, self.exp_plan_file, self.system_envs['start_time'], error=True, size=self.control['backup_size'])
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
                 # error 발생해도 external save artifacts 하도록                
                 ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
@@ -321,25 +325,31 @@ class ALO:
             self.proc_logger.process_error(f"Failed to empty & re-make << .{pipe_prefix}_artifacts >>")
             
             
-    def read_yaml(self):
-        self.exp_plan = get_yaml(self.exp_plan_file)
-        self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드 
+    def read_yaml(self, exp_plan_file):
+        # exp_plan_file은 config 폴더로 복사해서 가져옴. 단, 외부 exp plan 파일 경로는 로컬 절대 경로만 지원 
+        try:
+            self.exp_plan_file = self.load_experimental_plan(exp_plan_file) 
+            self.proc_logger.process_info(f"Successfully loaded << experimental_plan.yaml >> from: \n {self.exp_plan_file}") 
+            
+            self.exp_plan = get_yaml(self.exp_plan_file)
+            self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드 
 
-        # solution metadata yaml --> exp plan yaml overwrite 
-        if self.sol_meta is not None:
-            self._update_yaml() 
-            self.proc_logger.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
-        
-        def get_yaml_data(key): # inner func.
-            data_dict = {}
-            for data in self.exp_plan[key]:
-                data_dict.update(data)
-            return data_dict
+            # solution metadata yaml --> exp plan yaml overwrite 
+            if self.sol_meta is not None:
+                self._update_yaml() 
+                self.proc_logger.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
+            
+            def get_yaml_data(key): # inner func.
+                data_dict = {}
+                for data in self.exp_plan[key]:
+                    data_dict.update(data)
+                return data_dict
 
-        # 각 key 별 value 클래스 self 변수화 
-        for key in self.exp_plan.keys():
-            setattr(self, key, get_yaml_data(key))
-
+            # 각 key 별 value 클래스 self 변수화 
+            for key in self.exp_plan.keys():
+                setattr(self, key, get_yaml_data(key))
+        except:
+            self.proc_logger.process_error("Failed to read experimental plan yaml.")
 
     def _update_yaml(self):  
         '''
@@ -498,7 +508,7 @@ class ALO:
         if self.control['interface_mode'] not in INTERFACE_TYPES:
             self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
         self.asset_structure.envs['interface_mode'] = self.control['interface_mode']
-        self.asset_structure.envs['proc_start_time'] = self.proc_start_time
+        self.asset_structure.envs['proc_start_time'] = self.system_envs['start_time']
         self.asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
         self.asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
 

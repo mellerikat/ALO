@@ -3,13 +3,13 @@ import os
 import subprocess
 import sys
 from collections import defaultdict
-from alolib import logger 
+from src.logger import ProcessLogger 
 from src.constants import *
 
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
-PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
+PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
 #--------------------------------------------------------------------------------------------------------------------------
 
