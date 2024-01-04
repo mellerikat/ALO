@@ -173,7 +173,7 @@ def delete_old_files(folder_path, days_old):
                     os.rmdir(folder)
                     print(folder)
 
-def backup_artifacts(pipelines, exp_plan_file, proc_start_time, error=False, size=1000):
+def backup_history(pipelines, exp_plan_file, proc_start_time, error=False, size=1000):
     """ Description
         -----------
             - 파이프라인 실행 종료 후 사용한 yaml과 결과 artifacts를 .history에 백업함 
@@ -356,7 +356,7 @@ def set_args():
     parser = argparse.ArgumentParser(description="Enter the options: << config, system, mode, loop >>")
     parser.add_argument("--config", type=str, default=None, help="config option: experimental_plan.yaml")
     parser.add_argument("--system", type=str, default=None, help="system option: jsonized solution_metadata.yaml")
-    parser.add_argument("--mode", type=str, default="all", help="ALO mode: train, inference (inf), all")
+    parser.add_argument("--mode", type=str, default="all", help="ALO mode: train, inference, all")
     parser.add_argument("--loop", type=bool, default=False, help="On/off infinite loop: True, False")
     args = parser.parse_args()
     
