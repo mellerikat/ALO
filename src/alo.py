@@ -455,15 +455,31 @@ class ALO:
                 self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
 
 
-    def send_summary(self, success_str, ext_saved_path):
-        """save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
-        solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-        외부 경로로 잘 artifacts 복사 됐나 체크 (edge app에선 고유한 경로로 항상 줄것임)
-
-        Args:
-          - success_str(str): 완료 메시지 
-          - ext_saved_path(str): 외부 경로 
-        """
+                    self.send_summary(success_str)
+                    
+                    self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
+                else:
+                    self.proc_logger.process_error("지원하지 않는 파이프라인 모드 입니다(train, infenrence, all), 현재 모드는 alo_")
+        except: 
+            # [ref] https://medium.com/@rahulkumar_33287/logger-error-versus-logger-exception-4113b39beb4b 
+            # [ref2] https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
+            # + traceback.format_exc() << 이 방법은 alolib logger에서 exc_info=True 안할 시에 사용가능
+            try:  # 여기에 try, finally 구조로 안쓰면 main.py 로 raise 되버리면서 backup_artifacts가 안됨 
+                self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
+            finally:
+                # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
+                backup_history(pipeline, self.exp_plan_file, self.system_envs['start_time'], error=True, size=self.control['backup_size'])
+                # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
+                # error 발생해도 external save artifacts 하도록                
+                ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+                if self.is_operation_mode:
+                    fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
+                    if self.system_envs['runs_status'] == 'init':
+                        self.system_envs['q_inference_summary'].rput(fail_str)
+                        self.system_envs['q_inference_artifacts'].rput(fail_str)
+                    elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
+                        self.system_envs['q_inference_artifacts'].rput(fail_str)
 
         if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
             self.system_envs['q_inference_artifacts'].rput(success_str) # summary yaml을 다시 한번 전송 
