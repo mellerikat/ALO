@@ -252,6 +252,8 @@ class ALO:
                     
                     self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
+                else:
+                    self.proc_logger.process_error("지원하지 않는 파이프라인 모드 입니다(train, infenrence, all), 현재 모드는 alo_")
         except: 
             # [ref] https://medium.com/@rahulkumar_33287/logger-error-versus-logger-exception-4113b39beb4b 
             # [ref2] https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
