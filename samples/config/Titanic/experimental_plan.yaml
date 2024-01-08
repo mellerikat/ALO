@@ -48,7 +48,7 @@ asset_source:
           source:  ## git / local 지원
             code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/input.git
             # code: local
-            branch: tabular
+            branch: tabular_2.0
             requirements:
               - pandas==1.5.3
 
@@ -66,7 +66,7 @@ asset_source:
         source:  ## git / local 지원
           code: http://mod.lge.com/hub/smartdata/ml-framework/alov2-module/input.git
           # code: local
-          branch: tabular
+          branch: tabular_2.0
           requirements:
             - pandas==1.5.3
 
