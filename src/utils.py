@@ -1,3 +1,4 @@
+import argparse
 import os
 import importlib
 import sys
@@ -9,11 +10,11 @@ import glob
 import git
 
 from src.constants import *
-from alolib import logger 
+from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
-PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
+PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 OUTPUT_IMAGE_EXTENSIONS = ["*.jpg", "*.jpeg", "*.png"]
 #--------------------------------------------------------------------------------------------------------------------------
 
@@ -110,14 +111,14 @@ def setup_asset(asset_config, check_asset_source='once'):
     step_name = asset_config['step']
     git_branch = asset_config['source']['branch']
     step_path = os.path.join(ASSET_HOME, asset_config['step'])
-    PROC_LOGGER.process_info(f"Start setting-up << {step_name} >> asset @ << assets >> directory.", "blue")
+    PROC_LOGGER.process_info(f"Start setting-up << {step_name} >> asset @ << assets >> directory.") 
     # 현재 yaml의 source_code가 git일 땐 control의 check_asset_source가 once이면 한번만 requirements 설치, every면 매번 설치하게 끔 돼 있음 
     ## FIXME ALOv2에서 기본으로 필요한 requirements.txt는 사용자가 알아서 설치 (git clone alov2 후 pip install로 직접) 
     ## asset 배치 (@ scripts 폴더)
     # local 일때는 check_asset_source 가 local인지 git url인지 상관 없음 
     if asset_source_code == "local":
         if step_name in os.listdir(ASSET_HOME): 
-            PROC_LOGGER.process_info(f"Now << local >> asset_source_code mode: <{step_name}> asset exists.", "green") 
+            PROC_LOGGER.process_info(f"Now << local >> asset_source_code mode: <{step_name}> asset exists.")
             pass 
         else: 
             PROC_LOGGER.process_error(f'Now << local >> asset_source_code mode: \n <{step_name}> asset folder does not exist in <assets> folder.')
@@ -126,7 +127,7 @@ def setup_asset(asset_config, check_asset_source='once'):
         if is_git_url(asset_source_code):
             # _renew_asset(): 다시 asset 당길지 말지 여부 (bool)
             if (check_asset_source == "every") or (check_asset_source == "once" and renew_asset(step_path)): 
-                PROC_LOGGER.process_info(f"Start renewing asset : {step_path}", "blue") 
+                PROC_LOGGER.process_info(f"Start renewing asset : {step_path}") 
                 # git으로 또 새로 받는다면 현재 존재 하는 폴더를 제거 한다
                 if os.path.exists(step_path):
                     shutil.rmtree(step_path)  # 폴더 제거
@@ -135,14 +136,14 @@ def setup_asset(asset_config, check_asset_source='once'):
                 repo = git.Repo.clone_from(asset_source_code, step_path)
                 try: 
                     repo.git.checkout(git_branch)
-                    PROC_LOGGER.process_info(f"{step_path} successfully pulled.", "green") 
+                    PROC_LOGGER.process_info(f"{step_path} successfully pulled.")
                 except: 
                     PROC_LOGGER.process_error(f"Your have written incorrect git branch: {git_branch}")
             # 이미 scripts내에 asset 폴더들 존재하고, requirements.txt도 설치된 상태 
             elif (check_asset_source == "once" and not renew_asset(step_path)):
                 modification_time = os.path.getmtime(step_path)
                 modification_time = datetime.fromtimestamp(modification_time) # 마지막 수정시간 
-                PROC_LOGGER.process_info(f"<< {step_name} >> asset had already been created at {modification_time}", "blue") 
+                PROC_LOGGER.process_info(f"<< {step_name} >> asset had already been created at {modification_time}")
                 pass  
             else: 
                 PROC_LOGGER.process_error(f'You have written wrong check_asset_source: {check_asset_source}')
@@ -172,7 +173,7 @@ def delete_old_files(folder_path, days_old):
                     os.rmdir(folder)
                     print(folder)
 
-def backup_artifacts(pipelines, exp_plan_file, proc_start_time, error=False, size=1000):
+def backup_history(pipelines, exp_plan_file, proc_start_time, error=False, size=1000):
     """ Description
         -----------
             - 파이프라인 실행 종료 후 사용한 yaml과 결과 artifacts를 .history에 백업함 
@@ -243,7 +244,7 @@ def backup_artifacts(pipelines, exp_plan_file, proc_start_time, error=False, siz
     # 잘 move 됐는 지 확인  
     if os.path.exists(PROJECT_HOME + ".history/" + backup_folder):
         if error == False: 
-            PROC_LOGGER.process_info("Successfully completes << .history >> backup (experimental_plan.yaml & artifacts)", "green")
+            PROC_LOGGER.process_info("Successfully completes << .history >> backup (experimental_plan.yaml & artifacts)")
         elif error == True: 
             PROC_LOGGER.process_warning("Error backup completes @ << .history >> (experimental_plan.yaml & artifacts)")
             
@@ -351,7 +352,33 @@ def move_output_files(pipeline, asset_source, inference_result_datatype, train_d
              PROC_LOGGER.process_error(f"Failed to move output files for edge conductor view. \n More than single file exist in the last step: {image_last_step}")
         shutil.move(img_list[0], output_path) 
 
-        
+def set_args():
+    parser = argparse.ArgumentParser(description="Enter the options: << config, system, mode, loop >>")
+    parser.add_argument("--config", type=str, default=None, help="config option: experimental_plan.yaml")
+    parser.add_argument("--system", type=str, default=None, help="system option: jsonized solution_metadata.yaml")
+    parser.add_argument("--mode", type=str, default="all", help="ALO mode: train, inference, all")
+    parser.add_argument("--loop", type=bool, default=False, help="On/off infinite loop: True, False")
+    args = parser.parse_args()
+    
+    return args
+
+def init_redis(args):
+    ##### import RedisQueue ##### 
+    from src.redisqueue import RedisQueue
+    import json
+    
+    ##### parse redis server port, ip #####
+    sol_meta_json = json.loads(args.system)
+    redis_host, redis_port = sol_meta_json['edgeapp_interface']['redis_server_uri'].split(':')
+    # FIXME 이런데서 죽으면 EdgeApp은 ALO가 죽었는 지 알 수 없다? >> 아마 alo 실행 실패 시 error catch하는 게 EdgeAPP 이든 host든 어디선가 필요하겠지? 
+    if (redis_host == None) or (redis_port == None): 
+        raise ValueError("Missing redis server uri in solution metadata.")
+    
+    ##### make RedisQueue instance #####
+    #q = RedisQueue('my-queue', host='172.17.0.2', port=6379, db=0)
+    q = RedisQueue('request_inference', host=redis_host, port=int(redis_port), db=0)
+
+    return q        
         
         
         

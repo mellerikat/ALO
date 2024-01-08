@@ -3,11 +3,11 @@ import yaml
 from collections import defaultdict
 from src.constants import *
 from src.yaml_upgrade import from_2_0_to_2_1
-from alolib import logger 
+from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
-PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
+PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 # TODO compare yaml 업그레이드 될 때마다 아래 전역 변수를 업데이트해야하고, src.yaml_upgrade 내에 함수 구현 필요 
 YAML_UPGRADE_FUNC = {'2.0': from_2_0_to_2_1} # key: current compare yaml version, value: yaml upgrade function 
 #--------------------------------------------------------------------------------------------------------------------------
@@ -128,7 +128,7 @@ Please edit your << experimental_plan.yaml >> by reffering to latest version of 
     if ver_diff != 0:
         for i in range(int(ver_diff // 0.1)): 
             exp_plan = YAML_UPGRADE_FUNC[cur_ver](exp_plan) # exp plan yaml을 compare yaml 기준 + 0.1 ver upgrade  
-            PROC_LOGGER.process_info(f"Success versioning up experimental_plan.yaml : {cur_ver} --> {str(float(cur_ver) + 0.1)} (version ref. : compare yaml version)", color='green')
+            PROC_LOGGER.process_info(f"Success versioning up experimental_plan.yaml : {cur_ver} --> {str(float(cur_ver) + 0.1)} (version ref. : compare yaml version)")
             cur_ver = str(float(cur_ver) + 0.1) # cur_ver += 0.1 
 
     return exp_plan 

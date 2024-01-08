@@ -3,13 +3,13 @@ import shutil
 from datetime import datetime
 from src.s3handler import *
 import tarfile 
-from alolib import logger 
+from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
-PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
-# artifacts.tar.gz (혹은 model.tar.gz) 압축 파일을 외부 업로드하기 전 로컬 임시 저장 경로 
-TEMP_TAR_DIR = PROJECT_HOME + '.temp_tar_dir/'
+PROC_LOGGER = ProcessLogger(PROJECT_HOME)
+# artifacts.tar.gz  압축 파일을 외부 업로드하기 전 로컬 임시 저장 경로 
+TEMP_ARTIFACTS_DIR = PROJECT_HOME + '.temp_artifacts_dir/'
 # 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
 TEMP_MODEL_DIR = PROJECT_HOME + '.temp_model_dir/'
 #--------------------------------------------------------------------------------------------------------------------------
@@ -36,7 +36,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
     # 미입력 시 every로 default 설정 
     if get_external_data is None:
         get_external_data = 'every'
-        PROC_LOGGER.process_warning('You did not entered << get_external_data >> control parameter in your experimental_plan.yaml \n << every >> is automatically set as default. \n', 'blue') 
+        PROC_LOGGER.process_warning('You did not entered << get_external_data >> control parameter in your experimental_plan.yaml \n << every >> is automatically set as default. \n')
     # once 나 every로 입력하지 않고 이상한 값 입력 시 혹은 비워놨을 시 에러 
     if get_external_data not in ['once', 'every']:
         PROC_LOGGER.process_error(f"Check your << get_external_data >> control parameter in experimental_plan.yaml. \n You entered: {get_external_data}. Only << once >> or << every >> is allowed.")
@@ -110,7 +110,7 @@ def external_load_data(pipe_mode, external_path, external_path_permission, get_e
         for ext_path in external_data_path:
             ext_type = _get_ext_path_type(ext_path) # absolute / relative / s3
             _load_data(pipe_mode, ext_type, ext_path, load_s3_key_path)
-            PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>", color='green') 
+            PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
         
         return
 
@@ -171,7 +171,7 @@ def _load_data(pipeline, ext_type, ext_path, load_s3_key_path):
         except:
             PROC_LOGGER.process_error(f'Failed to download s3 data folder from << {ext_path} >>')
 
-    PROC_LOGGER.process_info(f'==================== Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}', color='green')
+    PROC_LOGGER.process_info(f'==================== Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}') 
     
     return 
 
@@ -201,12 +201,12 @@ def external_load_model(external_path, external_path_permission):
     # get s3 key 
     try:
         load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
-        PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n', 'green')   
+        PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n')
     except:
-        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' , 'blue')
+        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
         load_s3_key_path = None
     
-    PROC_LOGGER.process_info(f"Start load model from external path: << {ext_path} >>. \n", "blue")
+    PROC_LOGGER.process_info(f"Start load model from external path: << {ext_path} >>. \n")
     
     ext_type = _get_ext_path_type(ext_path) # absolute / relative / s3
 
@@ -224,21 +224,16 @@ def external_load_model(external_path, external_path_permission):
                 shutil.copy(ext_path + 'model.tar.gz', TEMP_MODEL_DIR)  
                 tar = tarfile.open(TEMP_MODEL_DIR + 'model.tar.gz') # model.tar.gz은 models 폴더를 통째로 압축한것 
                 # FIXME [주의] 만약 models를 통째로 압축한 model.tar.gz 이 아니고 내부 구조가 다르면 이후 진행과정 에러날 것임 
-                #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 압축해지 필요  
-                tar.extractall(TEMP_MODEL_DIR) 
+                #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 압축해지 필요   
+                tar.extractall(models_path) # TEMP_MODEL_DIR) 본인경로에 풀면안되는듯 
                 tar.close() 
-                if 'models' in os.listdir(TEMP_MODEL_DIR):
-                    for i in os.listdir(TEMP_MODEL_DIR + 'models/'):
-                        shutil.move(TEMP_MODEL_DIR + 'models/' + i, models_path + i) 
-                else: 
-                    PROC_LOGGER.process_error(f'No << models >> directory exists in the model.tar.gz extracted path << {TEMP_MODEL_DIR} >>') 
-            else: 
+            else: # model.tar.gz 이 없을때 대응 코드  
                 base_norm_path = os.path.basename(os.path.normpath(ext_path)) + '/' # ex. 'aa/bb/' --> bb/
                 os.makedirs(TEMP_MODEL_DIR + base_norm_path)
                 shutil.copytree(ext_path, TEMP_MODEL_DIR + base_norm_path, dirs_exist_ok=True)
                 for i in os.listdir(TEMP_MODEL_DIR + base_norm_path):
                     shutil.move(TEMP_MODEL_DIR + base_norm_path + i, models_path + i) 
-            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
+            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>')
         except:
             PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
         finally:
@@ -252,23 +247,18 @@ def external_load_model(external_path, external_path_permission):
             if model_existence: # TEMP_MODEL_DIR로 model.tar.gz 이 다운로드 된 상태 
                 tar = tarfile.open(TEMP_MODEL_DIR + 'model.tar.gz')
                 #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 옮기기 필요  
-                tar.extractall(TEMP_MODEL_DIR)
+                tar.extractall(models_path)
                 tar.close()
-
-                if 'models' in os.listdir(TEMP_MODEL_DIR):
-                    for i in os.listdir(TEMP_MODEL_DIR + 'models/'):
-                        shutil.move(TEMP_MODEL_DIR + 'models/' + i, models_path + i) 
-                else: 
-                    PROC_LOGGER.process_error(f'No << models >> directory exists in the model.tar.gz extracted path << {TEMP_MODEL_DIR} >>') 
             else:
                 PROC_LOGGER.process_warning(f"No << model.tar.gz >> exists in the path << ext_path >>. \n Instead, try to download the all of << ext_path >> ")
                 s3_downloader.download_folder(models_path)  
-            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>', color='green')
+            PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>') 
         except:
             PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
         finally:
             # TEMP_MODEL_DIR는 삭제 
             shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+        
         
 def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     """ Description
@@ -290,7 +280,7 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     
     # external path가 train, inference 둘다 존재 안하는 경우 
     if (external_path['save_train_artifacts_path'] is None) and (external_path['save_inference_artifacts_path'] is None): 
-        PROC_LOGGER.process_info('None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n', 'blue')
+        PROC_LOGGER.process_info('None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n')
         return
     
     save_artifacts_path = None 
@@ -302,20 +292,20 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
         PROC_LOGGER.process_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
 
     if save_artifacts_path == None: 
-        PROC_LOGGER.process_info(f'[@{pipe_mode}] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n', 'blue')
+        PROC_LOGGER.process_info(f'[@{pipe_mode}] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n')
         return  
         
     # get s3 key 
     try:
         load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
-        PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n', 'green')   
+        PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n')
     except:
-        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' , 'blue')
+        PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' )
         load_s3_key_path = None
 
     # external path가 존재하는 경우 
     # save artifacts 
-    PROC_LOGGER.process_info(f" Start saving generated artifacts into external path << {save_artifacts_path} >>. \n", "blue")
+    PROC_LOGGER.process_info(f" Start saving generated artifacts into external path << {save_artifacts_path} >>. \n")
     ext_path = save_artifacts_path
     ext_type = _get_ext_path_type(ext_path) # absolute / s3
     artifacts_tar_path = None 
@@ -323,24 +313,28 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
     if pipe_mode == "train_pipeline":
         artifacts_tar_path = _tar_dir(".train_artifacts") 
         model_tar_path = _tar_dir(".train_artifacts/models") 
+    # FIXME train-inference 같이 돌릴 때 train, inf 같은 external save 경로로 plan yaml에 지정하면  models tar gz 덮어씌워질수있음 
     elif pipe_mode == "inference_pipeline": 
         artifacts_tar_path = _tar_dir(".inference_artifacts") 
-        model_tar_path = _tar_dir(".inference_artifacts/models") 
-
+        if "models" in os.listdir(PROJECT_HOME + ".inference_artifacts/"): # FIXME 이거 필요할지? 
+            model_tar_path = _tar_dir(".inference_artifacts/models") 
+        
     # FIXME external save path 를 지우고 다시 만드는게 맞는가 ? (로컬이든 s3든)
     if (ext_type  == 'absolute') or (ext_type  == 'relative'):
         ext_path = PROJECT_HOME + 'config/' + ext_path if ext_type == 'relative' else ext_path
         try: 
             os.makedirs(ext_path, exist_ok=True) 
             shutil.copy(artifacts_tar_path, ext_path)
-            shutil.copy(model_tar_path, ext_path)
+            if model_tar_path is not None: 
+                shutil.copy(model_tar_path, ext_path)
         except: 
             PROC_LOGGER.process_error(f'Failed to copy compressed artifacts from << {artifacts_tar_path} >> & << {model_tar_path} >> into << {ext_path} >>.')
         finally: 
             os.remove(artifacts_tar_path)
-            os.remove(model_tar_path)
-            # [중요] 압축 파일 업로드 끝나면 TEMP_TAR_DIR 삭제 
-            shutil.rmtree(TEMP_TAR_DIR, ignore_errors=True)
+            shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+            if model_tar_path is not None: 
+                os.remove(model_tar_path)
+                shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
             
     elif ext_type  == 's3':  
         try: 
@@ -348,20 +342,23 @@ def external_save_artifacts(pipe_mode, external_path, external_path_permission):
             # s3 접근권한 없으면 에러 발생 
             s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
             s3_uploader.upload_file(artifacts_tar_path)
-            s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
-            s3_uploader.upload_file(model_tar_path)
+            if model_tar_path is not None: 
+                s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
+                s3_uploader.upload_file(model_tar_path)
         except:
             PROC_LOGGER.process_error(f'Failed to upload << {artifacts_tar_path} >> & << {model_tar_path} >> onto << {ext_path} >>')
         finally: 
             os.remove(artifacts_tar_path)
-            os.remove(model_tar_path)
-            # [중요] 압축 파일 업로드 끝나면 TEMP_TAR_DIR 삭제 
-            shutil.rmtree(TEMP_TAR_DIR, ignore_errors=True)
+            # [중요] 압축 파일 업로드 끝나면 TEMP_ARTIFACTS_DIR 삭제 
+            shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+            if model_tar_path is not None: 
+                os.remove(model_tar_path)
+                shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
     else: 
         # 미지원 external data storage type
         PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
     
-    PROC_LOGGER.process_info(f" Successfully done saving << {artifacts_tar_path} >> & << {model_tar_path} >> \n onto << {save_artifacts_path} >> & removing local files.", "green")  
+    PROC_LOGGER.process_info(f" Successfully done saving << artifacts: {artifacts_tar_path} >> & << model: {model_tar_path} >> \n onto << {save_artifacts_path} >> & removing local files.")
     
     return ext_path 
 
@@ -379,24 +376,28 @@ def _get_ext_path_type(_ext_path: str): # inner function
         # 외부 데이터 폴더는 main.py랑 같은 경로에 두면 안된다. 물론 절대경로로도 alo/ 포함 시키는 등 뚫릴 수 있는 방법은 많지만, 사용자 가이드 목적의 에러이다. 
         if parent_dir == '../':
             PROC_LOGGER.process_error(f'Placing the external data in the same path as << {PROJECT_HOME} >> is not allowed.')
+        if parent_dir == '~/':
+            PROC_LOGGER.process_error(f'External path starting with << ~/ >> is not allowed.')
         return 'relative'
     else: 
         PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path. \n Do not enter the file path. (Finish the path with directory name)')
             
 def _tar_dir(_path): 
     ## _path: .train_artifacts / .inference_artifacts     
-    os.makedirs(TEMP_TAR_DIR, exist_ok=True)
+    os.makedirs(TEMP_ARTIFACTS_DIR , exist_ok=True)
+    os.makedirs(TEMP_MODEL_DIR, exist_ok=True)
     last_dir = None
     if 'models' in _path: 
-        _save_path = TEMP_TAR_DIR + 'model.tar.gz'
+        _save_path = TEMP_MODEL_DIR + 'model.tar.gz'
         last_dir = 'models/'
     else: 
         _save_file_name = _path.strip('.') 
-        _save_path = TEMP_TAR_DIR +  f'{_save_file_name}.tar.gz' 
+        _save_path = TEMP_ARTIFACTS_DIR +  f'{_save_file_name}.tar.gz' 
         last_dir = _path # ex. .train_artifacts/
     tar = tarfile.open(_save_path, 'w:gz')
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):
-        base_dir = last_dir + root.split(last_dir)[-1] + '/' # ex. /home/~~/models/ --> models/
+        #base_dir = last_dir + root.split(last_dir)[-1] + '/' # ex. /home/~~/models/ --> models/
+        base_dir = root.split(last_dir)[-1] + '/'
         for file_name in files:
             #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
             tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 .train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
