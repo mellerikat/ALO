@@ -710,7 +710,7 @@ class RegisterUtils:
         # http://collab.lge.com/main/pages/viewpage.action?pageId=2126915782
         # [중요] container uri 는 magna-ws 말고 magna 같은 식으로 쓴다 (231207 임현수C)
         ecr_scope = self.URI_SCOPE.split('-')[0] # magna-ws --> magna
-        self.ecr_repo = self.ecr.split("/")[1] + "/ai-solutions/" + ecr_scope + "/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
+        self.ecr_repo = self.ecr.split("/")[1] + '/' + ecr_scope + "/ai-solutions/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
         self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
         if self.docker == True:
             run = 'docker'
