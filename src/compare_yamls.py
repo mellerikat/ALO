@@ -3,11 +3,11 @@ import yaml
 from collections import defaultdict
 from src.constants import *
 from src.yaml_upgrade import from_2_0_to_2_1
-from alolib import logger 
+from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
-PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
+PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 # TODO compare yaml 업그레이드 될 때마다 아래 전역 변수를 업데이트해야하고, src.yaml_upgrade 내에 함수 구현 필요 
 YAML_UPGRADE_FUNC = {'2.0': from_2_0_to_2_1} # key: current compare yaml version, value: yaml upgrade function 
 #--------------------------------------------------------------------------------------------------------------------------

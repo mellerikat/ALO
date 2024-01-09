@@ -10,9 +10,12 @@ all :
 run : 
 	python $(PYTHON_FILE)
 
+del :
+	rm -rf ./alolib
+
 # "make clean" 명령을 실행할 때 실행되는 규칙
 clean : 
-	rm -rf $(FOLDER_PATH)* ./.history ./.asset_interface ./.inference_artifacts ./.train_artifacts ./input/ ./assets/
+	rm -rf $(FOLDER_PATH)* ./.history ./.asset_interface ./.inference_artifacts ./.train_artifacts ./input/ ./assets/ ./alolib
 
 clean-cache:
 	@find . -type d -name '__pycache__' -exec rm -r {} +

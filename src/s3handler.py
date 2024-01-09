@@ -7,11 +7,11 @@ from src.constants import *
 from boto3.s3.transfer import S3Transfer
 from urllib.parse import urlparse
 import csv 
-from alolib import logger 
+from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
-PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
+PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
 #--------------------------------------------------------------------------------------------------------------------------
 

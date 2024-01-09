@@ -3,11 +3,11 @@ import shutil
 from datetime import datetime
 from src.s3handler import *
 import tarfile 
-from alolib import logger 
+from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
-PROC_LOGGER = logger.ProcessLogger(PROJECT_HOME)
+PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 # artifacts.tar.gz  압축 파일을 외부 업로드하기 전 로컬 임시 저장 경로 
 TEMP_ARTIFACTS_DIR = PROJECT_HOME + '.temp_artifacts_dir/'
 # 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
