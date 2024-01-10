@@ -265,8 +265,12 @@ class RegisterUtils:
             raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{e}")
             
 
-    def set_wrangler(self):
-        self.sm_yaml['wrangler_code_uri'] = ''
+    def set_wrangler(self, wrangler_path = None):
+        
+        with open('example.py', 'r') as file:
+            python_content = file.read()
+        
+        self.sm_yaml['wrangler_code_uri'] = python_content
         self.sm_yaml['wrangler_dataset_uri'] = ''
         self.save_yaml()
 
