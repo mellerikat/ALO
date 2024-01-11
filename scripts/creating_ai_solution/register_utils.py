@@ -161,8 +161,8 @@ class RegisterUtils:
             raise NotImplementedError("Failed to get workspaces info.")
         ## workspace_name 의 ECR, S3 주소를 확인 합니다. 
         try: 
-            #print(self.workspaces.json())
-            for ws in self.workspaces.json():
+            print(self.workspaces.json())
+            for ws in self.workspaces.json()['workspaces']:
                 if self.WORKSPACE_NAME in ws['name']:
                     S3_BUCKET_NAME = ws['s3_bucket_name']
                     ECR_NAME = ws['ecr_base_path']       
@@ -267,7 +267,7 @@ class RegisterUtils:
 
     def set_wrangler(self, wrangler_path = None):
         
-        with open('example.py', 'r') as file:
+        with open(wrangler_path, 'r') as file:
             python_content = file.read()
         
         self.sm_yaml['wrangler_code_uri'] = python_content
