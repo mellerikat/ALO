@@ -661,7 +661,7 @@ class RegisterUtils:
 
     def set_alo(self):
         alo_path = ALODIR
-        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib']
+        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git']
         work_path = WORKINGDIR + "alo/"
 
         if os.path.isdir(work_path):
@@ -682,11 +682,12 @@ class RegisterUtils:
 
     def set_docker_contatiner(self):
         try: 
+            origin_dockerfile = "TrainDockerfile" if self.pipeline == 'train' else "InferenceDockerfile"
             dockerfile = "Dockerfile"
             spm = 'ENV SOLUTION_PIPELINE_MODE='
             if os.path.isfile(WORKINGDIR + dockerfile):
                 os.remove(WORKINGDIR + dockerfile)
-            shutil.copy(WORKINGDIR + "origin/" + dockerfile, WORKINGDIR)
+            shutil.copy(WORKINGDIR + "origin/" + origin_dockerfile, WORKINGDIR + dockerfile)
             file_path = WORKINGDIR + dockerfile
             d_file = []
             with open(file_path, 'r') as file:
