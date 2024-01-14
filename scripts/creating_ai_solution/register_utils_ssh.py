@@ -32,18 +32,6 @@ TEMP_MODEL_DIR = ALODIR + '.temp_model_dir/'
 #---------------------------------------------------------
 WORKINGDIR = os.path.abspath(os.path.dirname(__file__)) + '/'
 # REST API Endpoints
-BASE_URI = 'api/v1/'
-# 0. 로그인
-STATIC_LOGIN = BASE_URI + 'auth/static/login' # POST
-LDAP_LOGIN = BASE_URI + 'auth/ldap/login'
-# 1. 시스템 정보 획득
-SYSTEM_INFO = BASE_URI + 'workspaces' # GET
-# 2. AI Solution 이름 설정 / 3. AI Solution 등록
-AI_SOLUTION = BASE_URI + 'solutions' # 이름 설정 시 GET, 등록 시 POST
-# 4. AI Solution Instance 등록
-SOLUTION_INSTANCE = BASE_URI + 'instances' # POST
-# 5. Stream 등록
-STREAMS = BASE_URI + 'streams' # POST
 # 6. Train pipeline 요청
 # STREAMS + '/{stream_id}/start # POST
 # 7. Train pipeline 확인
@@ -58,36 +46,513 @@ STREAMS = BASE_URI + 'streams' # POST
 #----------------------------------------#
 #              URI SCOPE                 #
 #----------------------------------------#
-# 231207 임현수C: 사용자는 public 사용못하게 해달라 
-ONLY_PUBLIC = 0 #1 --> 1로 해야 public, private 다 받아옴 
 #----------------------------------------#
-class RegisterUtils:
+class SolutionRegister:
     #def __init__(self, workspaces, uri_scope, tag, name, pipeline):
-    def __init__(self, user_input):
-        self.user_input = user_input # dict 
-        self.set_user_input() # dict 
-        self.URI_SCOPE = self.WORKSPACE_NAME #'magna-ws' #'public'
-        print('URI_SCOPE: ', self.URI_SCOPE)
-        self.access_scope = 'private' # 'public'
+    def __init__(self, cloud_setup, api_uri):
         
-        self.sm_yaml = {}
-        self.exp_yaml = {}
-        self.pipeline = None 
-        self.solution_name = None
-        self.workspaces = None 
-
-        # FIXME sm.set_aws_ecr 할 때 boto3 session 생성 시 region 을 None으로 받아와서 에러나므로 일단 임시로 추가 
-        self.region = "ap-northeast-2"
-        self.ECR_TAG = 'latest' # 사용자 설정가능 
-        # FIXME aws login 방법 고민필요
-        self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"
+        self.cloud_setup = cloud_setup 
+        self.api_uri = api_uri
         
         # solution instance 등록을 위한 interface 폴더 
         self.interface_dir = './interface'
         self.sm_yaml_file_path = './solution_metadata.yaml'
         # FIXME 다른 이름으로 exp plan yaml 사용하면 ?
         self.exp_yaml_path = "../../config/experimental_plan.yaml"
+        # TODO aws login 방법 고민필요
+        self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"
+        self.icon_path = "./icons/"
+
+        self.sm_yaml = {}
+        self.exp_yaml = {}
+        self.pipeline = None 
+        self.workspaces = None
+
+        ## internal variables
+        self.aic_cookie = None
+        self.solution_name = None
+
+        ## debugging 용 변수
+        self.debugging = False 
         
+    
+    ################################################
+    ################################################
+    def print_step(self, step_name):
+        print_color("\n#########################################", color='blue')
+        print_color(f'#######    {step_name}', color='blue')
+        print_color("#########################################\n", color='blue')
+
+
+    def login(self, id, pw): 
+        # 로그인 (관련 self 변수들은 set_user_input 에서 setting 됨)
+
+        self.print_step("Login to AI Conductor")
+
+        login_data = json.dumps({
+            "login_id": id,
+            "login_pw": pw
+        })
+        try:
+            if self.cloud_setup["LOGIN_MODE"] == 'ldap':
+                login_response = requests.post(self.cloud_setup["AIC_URI"] + self.api_uri["LDAP_LOGIN"], data = login_data)
+            else:
+                login_response = requests.post(self.cloud_setup["AIC_URI"] + self.api_uri["STATIC_LOGIN"], data = login_data)
+        except Exception as e:
+            print(e)
+
+        login_response_json = login_response.json()
+
+        cookies = login_response.cookies.get_dict()
+        access_token = cookies.get('access-token', None)
+        self.aic_cookie = {
+        'access-token' : access_token 
+        }
+
+        response_workspaces = []
+        for ws in login_response_json["workspace"]:
+            response_workspaces.append(ws["name"])
+        print(f"해당 계정으로 접근 가능한 workspace list: {response_workspaces}")
+
+        ## 로그인 접속은  계정 존재 / 권한 존재 의 경우로 나뉨
+        ##   - case1: 계정 O / 권한 X 
+        ##   - case2: 계정 O / 권한 single (ex cism-ws) 
+        ##   - case3: 계정 O / 권한 multi (ex cism-ws, magna-ws) -- 권한은 workspace 단위로 부여 
+        ##   - case4: 계정 X  ()
+        if login_response_json['account_id']:
+            if self.debugging:
+                print_color(f'[SYSTEM] Success getting cookie from AI Conductor:\n {self.aic_cookie}', color='green')
+                print_color(f'[SYSTEM] Success Login: {login_response_json}', color='green')
+            if self.cloud_setup["WORKSPACE_NAME"] in response_workspaces:
+                msg = f'[SYSTEM] 접근 요청하신 workspace ({self.cloud_setup["WORKSPACE_NAME"]}) 은 해당 계정으로 접근 가능합니다.'
+                print_color(msg, color='green')
+            else:
+                msg = f'[SYSTEM] 접근 요청하신 workspace ({self.cloud_setup["WORKSPACE_NAME"]}) 은 해당 계정으로 접근 불가능 합니다.'
+                raise ValueError()
+        else: 
+            print_color(f'\n>> Failed Login: {login_response_json}', color='red')   
+
+
+    def check_solution_name(self, name): 
+        """사용자가 등록할 솔루션 이름이 사용가능한지를 체크 한다. 
+
+        중복된 이름이 존재 하지 않으면, 신규 솔루션으로 인식한다. 
+        만약, 동일 이름 존재하면 업데이트 모드로 전환하여 솔루션 업데이트를 실행한다. (TBD) 
+
+        Attributes:
+            - name (str): solution name
+
+        Return:
+            - solution_name (str): 내부 처리로 변경된 이름 
+        """
+        ## TODO : public, private 의 솔루션 이름은 별도로 관리 하는가? 
+        self.print_step("Solution Name Creation")
+
+
+        # 231207 임현수C: 사용자는 public 사용못하게 해달라 
+        ONLY_PUBLIC = 0 #1 --> 1로 해야 public, private 다 받아옴 
+
+        solution_data = {
+            "workspace_name": self.cloud_setup["WORKSPACE_NAME"], 
+            "only_public": ONLY_PUBLIC 
+        }
+        aic = self.cloud_setup["AIC_URI"]
+        api = self.api_uri["AI_SOLUTION"]
+
+        solution_name = requests.get(aic+api, params=solution_data, cookies=self.aic_cookie)
+        solution_name_json = solution_name.json()
+
+        if 'solutions' in solution_name_json.keys(): 
+            solution_list = [sol['name'] for sol in solution_name_json['solutions']]
+            # 기존 solution 존재하면 에러 나게 하기 
+            ## TODO: 업데이트가 되도록 하기 
+            ## TODO: 특수기호가 사용되면 에러나게 하기
+            if name in solution_list: 
+                txt = f"[SYSTEM] The name ({name}) already exists in the AI solution list. Please enter another name !!"
+                print_color(txt, color='red')
+                raise ValueError("Not allowed solution name.")
+            else:  ## NEW solutions
+                txt = f"[SYSTEM] 입력하신 Solution Name ({name})은 사용 가능합니다. (Success)" 
+                self.solution_name = name
+                print_color(txt, color='green')
+
+        else: 
+            msg = f" 'solutions' key not found in AI Solution data. API_URI={aic+api}"
+            raise ValueError(msg)
+
+        msg = f"[SYSTEM] Solution Name List (in-use):"
+        print_color(msg, color='green')
+        # 이미 존재하는 solutino list 리스트업 
+        pre_existences = pd.DataFrame(solution_list, columns=["AI solutions"])
+        print_color(pre_existences.to_markdown(tablefmt='fancy_grid'), color='cyan')
+
+        return self.solution_name
+
+
+    def load_system_resource(self): 
+        """ 사용가능한 ECR, S3 주소를 반환한다. 
+        """
+        self.print_step("Check ECR & S3 Resource")
+
+        aic = self.cloud_setup["AIC_URI"]
+        api = self.api_uri["SYSTEM_INFO"]
+        try: 
+            self.workspaces = requests.get(aic+api, cookies=self.aic_cookie)
+        except: 
+            raise NotImplementedError("Failed to get workspaces info.")
+
+        ## workspace_name 의 ECR, S3 주소를 확인 합니다. 
+        try: 
+            # print(self.workspaces.json())
+            for ws in self.workspaces.json()['workspaces']:
+                # print(ws)
+                if self.cloud_setup["WORKSPACE_NAME"] in ws['name']:
+                    S3_BUCKET_NAME = ws['s3_bucket_name']
+                    ECR_NAME = ws['ecr_base_path']       
+        except: 
+            raise ValueError("Got wrong workspace info.")
+        
+        if self.debugging:
+            print_color(f"\n[INFO] S3_BUCUKET_URI:", color='green') 
+            print_color(f"- public: {S3_BUCKET_NAME['public']}", color='cyan') 
+            print_color(f"- private: {S3_BUCKET_NAME['private']}", color='cyan') 
+
+            print_color(f"\n[INFO] ECR_URI:", color='green') 
+            print_color(f"- public: {ECR_NAME['public']}", color='cyan') 
+            print_color(f"- private: {ECR_NAME['private']}", color='cyan') 
+
+        # workspace로부터 받아온 ecr, s3 정보를 내부 변수화 
+        try:
+            self.bucket_name = S3_BUCKET_NAME[self.cloud_setup["SOLUTION_TYPE"]] # bucket_scope: private, public
+            self.ecr = ECR_NAME[self.cloud_setup["SOLUTION_TYPE"]]
+        except Exception as e:
+            raise ValueError(f"Wrong format of << workspaces >> received from REST API:\n {e}")
+            
+        print_color(f"[SYSTEM] AWS ECR:  ", color='green') 
+        print_color(f"{self.ecr}", color='yellow') 
+        print_color(f"[SYSTEM] AWS S3 buckeet:  ", color='green') 
+        print_color(f"{self.bucket_name}", color='yellow') 
+
+    ################################
+    ######    STEP2. S3 Control
+    ################################
+
+    def s3_access_check(self, contents: str):
+        """ S3 에 접속 가능한지를 확인합니다. 
+
+        1) s3_access_key_path 가 존재하면, 파일에서 key 를 확인하고,
+          - TODO file format 공유하기 (프로세스화)
+        2) TODO aws configure가 설정되어 있으면 이를 자동으로 해석한다. 
+        3) key 없이 권한 설정으로 접속 가능한지도 확인한다. 
+
+        """
+        self.print_step("Check to access S3")
+
+        # contents: 'data' or 'artifacts'
+        self.s3_path = f'ai-solutions/{self.solution_name}/v{VERSION}/{self.pipeline}/{contents}'
+        try:
+            f = open(self.s3_access_key_path, "r")
+            keys = []
+            values = []
+            for line in f:
+                key = line.split(":")[0]
+                value = line.split(":")[1].rstrip()
+                keys.append(key)
+                values.append(value)
+            ACCESS_KEY = values[0]
+            SECRET_KEY = values[1]
+            self.s3 = boto3.client('s3',
+                                aws_access_key_id=ACCESS_KEY,
+                                aws_secret_access_key=SECRET_KEY)
+        except:
+            print_color(f"[INFO] Start s3 access check without key file.", color="blue")
+            self.s3 = boto3.client('s3')
+
+        # # FIXME 아래 region이 none으로 나옴 
+        # my_session = boto3.session.Session()
+        # self.region = my_session.region_name
+        print(f"[INFO] AWS region: {self.cloud_setup['REGION']}")
+        if isinstance(boto3.client('s3'), botocore.client.BaseClient) == True:       
+            print_color(f"[INFO] AWS S3 access check: OK", color="green")
+        else: 
+            raise ValueError(f"[ERROR] AWS S3 access check: Fail")
+
+        return isinstance(boto3.client('s3'), botocore.client.BaseClient)
+    
+            
+    def s3_upload_icon(self):
+        """ icon 업로드는 추후 제공 
+        현재는 icon name 을 solution_metadata 에 업데이트 하는 것으로 마무리 
+        """
+
+        self.print_step("Upload icon")
+
+        # s3_path = f'icons/'
+        # s3 = self.s3
+        # files = s3.list_objects_v2(Bucket=self.bucket_name, Prefix=s3_path)['Contents']
+        # for file in files:
+        #     file_name = file['Key'].split('/')[-1]
+        #     if file_name:
+        #         print(file_name)
+        #     #     s3.download_file(self.bucket_name, file['Key'], file_name)
+        #     #     print(f"Downloaded {file_name}")
+
+
+        # 폴더 내의 모든 SVG 파일을 리스트로 가져오기
+        svg_files = [os.path.join(self.icon_path, file) for file in os.listdir(self.icon_path) if file.endswith('.svg')]
+
+        # HTML과 CSS를 사용하여 SVG 파일과 파일명을 그리드 형태로 표시
+        html_content = '<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px;">'
+        icon_filenames = []
+        for file in svg_files:
+            file_name = os.path.basename(file)  # 파일 이름만 추출
+            file_name = file_name.replace(f"{self.icon_path}/", "")
+            icon_filenames.append(file_name)
+            file_name = file_name.replace(f".svg", "")
+            html_content += f'''<div>
+                                    <img src="{file}" style="width: 100px; height: 100px;">
+                                    <div style="word-wrap: break-word; word-break: break-all; width: 100px;">{file_name}</div>
+                                </div>'''
+        html_content += '</div>'
+
+        print(icon_filenames)
+
+        return html_content
+        # inner func.
+        # def s3_process(s3, bucket_name, data_path, s3_path):
+        #     objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
+        #     print(objects_to_delete)
+        #     if 'Contents' in objects_to_delete:
+        #         for obj in objects_to_delete['Contents']:
+        #             self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
+        #             print_color(f'[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
+        #     s3.delete_object(Bucket=bucket_name, Key=s3_path)
+        #     #s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
+        #     try:    
+        #         response = s3.upload_file(data_path, bucket_name, s3_path)
+        #     except NoCredentialsError as e:
+        #         raise NoCredentialsError(f"NoCredentialsError: \n{e}")
+        #     except ClientError as e:
+        #         print(f"ClientError: ", e)
+        #         return False
+        #     print_color(f"Success uploading into S3 path: {bucket_name + '/' + s3_path}", color='green')
+        #     return True
+
+        # # FIXME hardcoding icon.png 솔루션 이름등으로 변경 필요 
+        # data_path = f'./image/{self.ICON_FILE}'
+        # s3_process(self.s3, self.bucket_name, data_path, s3_file_path)
+        # self.icon_s3_uri = "s3://" + self.bucket_name + '/' + s3_file_path   # 값을 리스트로 감싸줍니다
+        # self.sm_yaml['description']['icon'] = self.icon_s3_uri
+        # self._save_yaml()
+        
+
+    def s3_upload_data(self):
+        """input 폴더에 존재하는 데이터를 s3 에 업로드 합니다. 
+        """
+        self.print_step(f"Upload {self.pipeline} data into S3")
+
+
+        # inner func.
+        def s3_process(s3, bucket_name, data_path, local_folder, s3_path, delete=True):
+            if delete == True: 
+                objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
+                if 'Contents' in objects_to_delete:
+                    for obj in objects_to_delete['Contents']:
+                        self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                        print_color(f'[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
+                s3.delete_object(Bucket=bucket_name, Key=s3_path)
+            s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
+            try:    
+                response = s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
+            except NoCredentialsError as e:
+                raise NoCredentialsError("NoCredentialsError: \n{e}")
+            except ClientError as e:
+                print(f"ClientError: ", e)
+                return False
+            # temp = s3_path + "/" + data_path[len(local_folder):]
+            uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
+            print_color(f"\nSuccess uploading into S3: \n{uploaded_path }", color='green')
+            return True
+ 
+        if "train" in self.pipeline:
+            local_folder = ALODIR + "input/train/"
+            print_color(f'[INFO] Start uploading data into S3 from local folder:', color='cyan')
+            print(f'{local_folder}')
+            try: 
+                for root, dirs, files in os.walk(local_folder):
+                    for idx, file in enumerate(files):
+                        data_path = os.path.join(root, file)
+                        if idx == 0: #최초 1회만 delete s3
+                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, True) # self.s3_path 는 s3_access_check 할때 셋팅
+                        else: 
+                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, False)
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
+            try:    
+                value = "s3://" + self.bucket_name + "/" + self.s3_path + "/"
+                data = {'dataset_uri': [value]}  # 값을 리스트로 감싸줍니다
+                self.sm_yaml['pipeline'][0].update(data)
+                self._save_yaml()
+                print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
+                print(f'pipeline: {self.pipeline} -dataset_uri: {value} ')
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml \n{e}')
+        elif "inf" in self.pipeline:
+            local_folder = ALODIR + "input/inference/"
+            print_color(f'[INFO] Start uploading data into S3 from local folder:', color='cyan')
+            print(f'{local_folder}')
+            try: 
+                for root, dirs, files in os.walk(local_folder):
+                    for idx, file in enumerate(files):
+                        data_path = os.path.join(root, file)
+                        if idx == 0: #최초 1회만 delete s3
+                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, True) # self.s3_path 는 s3_access_check 할때 셋팅
+                        else: 
+                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, False)
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
+            try:
+                value = "s3://" + self.bucket_name + "/" + self.s3_path + "/"
+                data = {'dataset_uri': [value]}  # 값을 리스트로 감싸줍니다
+                self.sm_yaml['pipeline'][1].update(data)
+                self._save_yaml()
+                print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
+                print(f'pipeline: {self.pipeline} -dataset_uri: {value} ')
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline} \n{e}')
+        else:
+            raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
+
+
+    def s3_upload_artifacts(self):
+        """ 최종 실험결과물 (train & inference) 를 s3 에 업로드 한다. 
+        테스트 용으로 활용한다. 
+
+
+        """
+
+        self.print_step(f"Upload {self.pipeline} artifacts into S3")
+
+
+        # inner func.
+        def s3_process(s3, bucket_name, data_path, local_folder, s3_path, delete=True):
+            if delete == True: 
+                objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
+                if 'Contents' in objects_to_delete:
+                    for obj in objects_to_delete['Contents']:
+                        self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                        print_color(f'[INFO] Deleted pre-existing S3 object:', color = 'yellow')
+                        print(f'{obj["Key"]}')
+                s3.delete_object(Bucket=bucket_name, Key=s3_path)
+            s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
+            try:    
+                response = s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
+            except NoCredentialsError as e:
+                raise NoCredentialsError("NoCredentialsError: \n{e}")
+            except ClientError as e:
+                print(f"ClientError: ", e)
+                return False
+            # temp = s3_path + "/" + data_path[len(local_folder):]
+            uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
+            print_color(f"Success uploading into S3: ", color='green')
+            print(f"{uploaded_path }")
+            return True
+
+        
+        if "train" in self.pipeline:
+            artifacts_path = _tar_dir(".train_artifacts")  # artifacts tar.gz이 저장된 local 경로 return
+            local_folder = os.path.split(artifacts_path)[0] + '/'
+            print_color(f'[INFO] Start uploading train artifacts into S3 from local folder:', color='cyan')
+            print(f'{local_folder}')
+            s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path) # self.s3_path 는 s3_access_check 할때 셋팅
+            try: 
+                value = "s3://" + self.bucket_name + "/" + self.s3_path + "/"
+                artifact_uri = {'artifact_uri': [value]}  # 값을 리스트로 감싸줍니다
+                self.sm_yaml['pipeline'][0].update(artifact_uri)
+                self._save_yaml()
+                print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
+                print(f'pipeline: {self.pipeline} -artifact_uri: {value} ')
+            except Exception as e: 
+                raise NotImplementedError(f'Failed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
+            finally:
+                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+        elif "inf" in self.pipeline:
+            ## inference artifacts tar gz 업로드 
+            artifacts_path = _tar_dir(".inference_artifacts")  # artifacts tar.gz이 저장된 local 경로 
+            local_folder = os.path.split(artifacts_path)[0] + '/'
+            print_color(f'[INFO] Start uploading inference artifacts into S3 from local folder:', color='cyan')
+            print(f'{local_folder}')
+            s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path)
+            try: 
+                value = "s3://" + self.bucket_name + "/" + self.s3_path + "/"
+                artifact_uri = {'artifact_uri': [value]}  # 값을 리스트로 감싸줍니다
+                self.sm_yaml['pipeline'][1].update(artifact_uri)
+                self._save_yaml()
+                print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
+                print(f'pipeline: {self.pipeline} -artifact_uri: {value} ')
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
+            finally:
+                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+
+
+            ## model tar gz 업로드 
+            # [중요] model_uri는 inference type 밑에 넣어야되는데, 경로는 inference 대신 train이라고 pipeline 들어가야함 (train artifacts 경로에 저장)
+            train_artifacts_s3_path = self.s3_path.replace(f'v{VERSION}/inference', f'v{VERSION}/train')
+            model_path = _tar_dir(".train_artifacts/models")  # model tar.gz이 저장된 local 경로 return 
+            local_folder = os.path.split(model_path)[0] + '/'
+            print_color(f'\n[INFO] Start uploading << model >> into S3 from local folder:\n {local_folder}', color='cyan')
+            # 주의! 이미 train artifacts도 같은 경로에 업로드 했으므로 model.tar.gz올릴 땐 delete object하지 않는다. 
+            s3_process(self.s3, self.bucket_name, model_path, local_folder, train_artifacts_s3_path, delete=False) 
+            try: 
+                model_uri = {'model_uri': ["s3://" + self.bucket_name + "/" + train_artifacts_s3_path + "/"]}  # 값을 리스트로 감싸줍니다
+                self.sm_yaml['pipeline'][1].update(model_uri)
+                self._save_yaml()
+                print_color(f'\nSuccess updating solution_metadata.yaml - << model_uri >> info. / pipeline: {self.pipeline}', color='green')
+            except Exception as e: 
+                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << model_uri >> info / pipeline: {self.pipeline} \n{e}')
+            finally:
+                shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+        else:
+            raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
+
+    #####################################
+    ######    Internal Functions
+    #####################################
+
+    def _set_yaml(self, pipeline, version=VERSION):
+        """ Solution Metadata 를 생성합니다. 
+
+        """
+        self.pipeline = pipeline
+        self.sm_yaml['version'] = version
+        self.sm_yaml['name'] = ''
+        self.sm_yaml['description'] = {}
+        self.sm_yaml['pipeline'] = []
+        self.sm_yaml['pipeline'].append({'type': pipeline})
+        # self.sm_yaml['pipeline'].append({'type': 'inference'})
+        try: 
+            self._save_yaml()
+            if self.debugging:
+                print_color(f"\n << solution_metadata.yaml >> generated. - current version: v{version}", color='green')
+        except: 
+            raise NotImplementedError("Failed to generate << solution_metadata.yaml >>")
+    
+    def _save_yaml(self):
+        # YAML 파일로 데이터 저장
+        class NoAliasDumper(Dumper):
+            def ignore_aliases(self, data):
+                return True
+        with open('solution_metadata.yaml', 'w', encoding='utf-8') as yaml_file:
+            yaml.dump(self.sm_yaml, yaml_file, allow_unicode=True, default_flow_style=False, Dumper=NoAliasDumper)
+
+
+
+
+
+
+    ################################################
+    ################################################
 
         
     def set_user_input(self): 
@@ -98,124 +563,19 @@ class RegisterUtils:
         
 
     
-    def login(self, login_way = 'ldap'): 
-        # 로그인 (관련 self 변수들은 set_user_input 에서 setting 됨)
-        login_data = json.dumps({
-        "login_id": self.LOGIN_ID,
-        "login_pw": self.LOGIN_PW
-        })
-        if login_way == 'ldap':
-            LOGIN = LDAP_LOGIN 
-        elif login_way == 'static':
-            LOGIN = STATIC_LOGIN
-        else: 
-            raise ValueError(f'Unsupported login way: {login_way}')
-        login_response = requests.post(self.URI + LOGIN, data = login_data)
-        login_response_json = login_response.json()
-
-        cookies = login_response.cookies.get_dict()
-        access_token = cookies.get('access-token', None)
-        self.aic_cookie = {
-        'access-token' : access_token 
-        }
-        if login_response_json['result'] == 'OK':
-            print_color(f'\n>> Success getting cookie from AI Conductor:\n {self.aic_cookie}', color='green')
-            print_color(f'\n>> Success Login: {login_response_json}', color='green')
-        else: 
-            print_color(f'\n>> Failed Login: {login_response_json}', color='red')   
     
-    
-    def check_solution_name(self, user_solution_name): 
-        solution_data = {
-            "workspace_name": self.WORKSPACE_NAME, 
-            "only_public": ONLY_PUBLIC 
-        }
-        solution_name = requests.get(self.URI + AI_SOLUTION, params=solution_data, cookies=self.aic_cookie)
-        solution_name_json = solution_name.json()
-        # FIXME AIC 초기화시 solution_name이 존재 안할 수 있음 
-        if 'solutions' not in solution_name_json.keys(): 
-            print_color("<< solutions >> key not found in AI Solution data.", color='yellow')
-            pass
-        else: 
-            solution_list = [sol['name'] for sol in solution_name_json['solutions']]
-            # 기존 solution 존재하면 에러 나게 하기 
-            if user_solution_name in solution_list: 
-                txt = f"\n[Error] Not allowed name: {user_solution_name} - The name already exists in the AI solution list. \n Please enter another name."
-                print_color(txt, color='red')
-                # 이미 존재하는 solutino list 리스트업 
-                pre_existences = pd.DataFrame(solution_list, columns=["Pre-existing AI solutions"])
-                print_color("\n\n < Reference: Pre-existing AI solutions list > \n", color='cyan')
-                print_color(pre_existences.to_markdown(tablefmt='fancy_grid'), color='cyan')
-                raise ValueError("Not allowed solution name.")
-        txt = f"[Success] Allowed name: << {user_solution_name} >>" 
-        self.solution_name = user_solution_name
-        print_color(txt, color='green')
-
 
     
-    def check_workspace(self): 
-        ## workspaces list 확인 
-        try: 
-            self.workspaces = requests.get(self.URI + SYSTEM_INFO, cookies=self.aic_cookie)
-        except: 
-            raise NotImplementedError("Failed to get workspaces info.")
-        ## workspace_name 의 ECR, S3 주소를 확인 합니다. 
-        try: 
-            #print(self.workspaces.json())
-            for ws in self.workspaces.json():
-                if self.WORKSPACE_NAME in ws['name']:
-                    S3_BUCKET_NAME = ws['s3_bucket_name']
-                    ECR_NAME = ws['ecr_base_path']       
-        except: 
-            raise ValueError("Got wrong workspace info.")
-        
-        print_color(f"\n[INFO] S3_BUCUKET_URI:", color='green') 
-        print_color(f"- public: {S3_BUCKET_NAME['public']}", color='cyan') 
-        print_color(f"- private: {S3_BUCKET_NAME['private']}", color='cyan') 
-
-        print_color(f"\n[INFO] ECR_URI:", color='green') 
-        print_color(f"- public: {ECR_NAME['public']}", color='cyan') 
-        print_color(f"- private: {ECR_NAME['private']}", color='cyan') 
-
-        # workspace로부터 받아온 ecr, s3 정보를 내부 변수화 
-        try:
-            self.bucket_name = S3_BUCKET_NAME[self.access_scope] # bucket_scope: private, public
-            self.ecr = ECR_NAME[self.access_scope]
-        except Exception as e:
-            raise ValueError(f"Wrong format of << workspaces >> received from REST API:\n {e}")
-            
-        print_color(f"\n[INFO] AWS ECR URI received: \n {self.ecr}", color='green') 
-        print_color(f"\n[INFO] AWS S3 BUCKET NAME received: \n {self.bucket_name}", color='green') 
         
         
-    def save_yaml(self):
-        # YAML 파일로 데이터 저장
-        class NoAliasDumper(Dumper):
-            def ignore_aliases(self, data):
-                return True
-        with open('solution_metadata.yaml', 'w', encoding='utf-8') as yaml_file:
-            yaml.dump(self.sm_yaml, yaml_file, allow_unicode=True, default_flow_style=False, Dumper=NoAliasDumper)
             
 
-    def set_yaml(self, pipeline, version=VERSION):
-        self.pipeline = pipeline
-        self.sm_yaml['version'] = version
-        self.sm_yaml['name'] = ''
-        self.sm_yaml['description'] = {}
-        self.sm_yaml['pipeline'] = []
-        self.sm_yaml['pipeline'].append({'type': pipeline})
-        # self.sm_yaml['pipeline'].append({'type': 'inference'})
-        try: 
-            self.save_yaml()
-            print_color(f"\n << solution_metadata.yaml >> generated. - current version: v{version}", color='green')
-        except: 
-            raise NotImplementedError("Failed to generate << solution_metadata.yaml >>")
         
     def append_pipeline(self, pipeline): 
         self.sm_yaml['pipeline'].append({'type': 'inference'})
         self.pipeline = pipeline # 가령 inference 파이프라인 추가 시 인스턴스의 pipeline을 inference 로 변경 
         try: 
-            self.save_yaml()
+            self._save_yaml()
             print_color(f"\n<< solution_metadata.yaml >> updated. - appended pipeline: {pipeline}", color='green')
         except: 
             raise NotImplementedError("Failed to update << solution_metadata.yaml >>")
@@ -259,7 +619,7 @@ class RegisterUtils:
             self.sm_yaml['description']['algorithm'] = self._check_parammeter(desc['algorithm'])
             # FIXME icon 관련 하드코딩 변경필요 
             self.sm_yaml['description']['icon'] = self.icon_s3_uri  
-            self.save_yaml()
+            self._save_yaml()
             print_color(f"\n<< solution_metadata.yaml >> updated. \n- solution metadata description:\n {self.sm_yaml['description']}", color='green')
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{e}")
@@ -272,7 +632,7 @@ class RegisterUtils:
         
         self.sm_yaml['wrangler_code_uri'] = python_content
         self.sm_yaml['wrangler_dataset_uri'] = ''
-        self.save_yaml()
+        self._save_yaml()
 
 
     def set_container_uri(self):
@@ -286,7 +646,7 @@ class RegisterUtils:
                 data = {'container_uri': self.ecr_full_url}
                 self.sm_yaml['pipeline'][1].update(data)
                 print_color(f"[INFO] Completes setting << container_uri >> in solution_metadata.yaml: \n{data['container_uri']}", color='green')
-            self.save_yaml()
+            self._save_yaml()
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << container_uri >> in the solution_metadata.yaml \n{e}")
 
@@ -299,7 +659,7 @@ class RegisterUtils:
                 self.sm_yaml['pipeline'][0].update(data)
             elif self.pipeline =='inference':
                 self.sm_yaml['pipeline'][1].update(data)
-            self.save_yaml()
+            self._save_yaml()
             print_color(f"[INFO] Completes setting << artifact_uri >> in solution_metadata.yaml: \n{data['artifact_uri']}", color='green')
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{e}")
@@ -313,7 +673,7 @@ class RegisterUtils:
                 raise ValueError("Setting << model_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
             elif self.pipeline == 'inference':
                 self.sm_yaml['pipeline'][1].update(data)
-            self.save_yaml()
+            self._save_yaml()
             print_color(f"[INFO] Completes setting << model_uri >> in solution_metadata.yaml: \n{data['model_uri']}", color='green')
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << model_uri >> in the solution_metadata.yaml \n{e}")
@@ -347,7 +707,7 @@ class RegisterUtils:
         
         # FIXME edgeapp interface는 우리가 값 채울 필요 X? 
         self.sm_yaml['edgeapp_interface'] = {'redis_server_uri': ""}
-        self.save_yaml()
+        self._save_yaml()
 
 
     # def set_train_dataset_uri(self):
@@ -405,7 +765,7 @@ class RegisterUtils:
             self.sm_yaml['pipeline'][1]['parameters'].update(subkeys)
             
         print_color("\n[{self.pipeline}] Success updating << user_parameters >> in the solution_metadata.yaml", color='green')
-        self.save_yaml()
+        self._save_yaml()
         
         
     # def set_user_parameters(self):
@@ -440,211 +800,9 @@ class RegisterUtils:
         elif "inference" in self.pipeline:
             self.sm_yaml['pipeline'][1]["resource"] = {"default": resource}
         print_color(f"\n[{self.pipeline}] Success updating << resource >> in the solution_metadata.yaml", color='green')
-        self.save_yaml()
+        self._save_yaml()
 
 
-    # FIXME access key file 기반으로 하는거 꼭 필요할지? 
-    def s3_access_check(self, contents: str):
-        # contents: 'data' or 'artifacts'
-        self.s3_path = f'ai-solutions/{self.solution_name}/v{VERSION}/{self.pipeline}/{contents}'
-        try:
-            f = open(self.s3_access_key_path, "r")
-            keys = []
-            values = []
-            for line in f:
-                key = line.split(":")[0]
-                value = line.split(":")[1].rstrip()
-                keys.append(key)
-                values.append(value)
-            ACCESS_KEY = values[0]
-            SECRET_KEY = values[1]
-            self.s3 = boto3.client('s3',
-                                aws_access_key_id=ACCESS_KEY,
-                                aws_secret_access_key=SECRET_KEY)
-        except:
-            print_color(f"\n[INFO] Start s3 access check without key file.", color="blue")
-            self.s3 = boto3.client('s3')
-
-        # # FIXME 아래 region이 none으로 나옴 
-        # my_session = boto3.session.Session()
-        # self.region = my_session.region_name
-        print_color(f"\n[INFO] AWS region: {self.region}", color="cyan")
-        if isinstance(boto3.client('s3'), botocore.client.BaseClient) == True:       
-            print_color(f"\n[INFO] AWS S3 access check: OK", color="green")
-        else: 
-            raise ValueError(f"\n[ERROR] AWS S3 access check: Fail")
-          
-        return isinstance(boto3.client('s3'), botocore.client.BaseClient)
-    
-            
-    def s3_upload_icon(self):
-        # inner func.
-        def s3_process(s3, bucket_name, data_path, s3_path):
-            objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
-            if 'Contents' in objects_to_delete:
-                for obj in objects_to_delete['Contents']:
-                    self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                    print_color(f'[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
-            s3.delete_object(Bucket=bucket_name, Key=s3_path)
-            #s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
-            try:    
-                response = s3.upload_file(data_path, bucket_name, s3_path)
-            except NoCredentialsError as e:
-                raise NoCredentialsError(f"NoCredentialsError: \n{e}")
-            except ClientError as e:
-                print(f"ClientError: ", e)
-                return False
-            print_color(f"Success uploading into S3 path: {bucket_name + '/' + s3_path}", color='green')
-            return True
-
-        # FIXME hardcoding icon.png 솔루션 이름등으로 변경 필요 
-        data_path = f'./image/{self.ICON_FILE}'
-        s3_file_path = f'icons/{self.solution_name}/{self.ICON_FILE}'
-        s3_process(self.s3, self.bucket_name, data_path, s3_file_path)
-        self.icon_s3_uri = "s3://" + self.bucket_name + '/' + s3_file_path   # 값을 리스트로 감싸줍니다
-        self.sm_yaml['description']['icon'] = self.icon_s3_uri
-        self.save_yaml()
-        
-
-    def s3_upload_data(self):
-        # inner func.
-        def s3_process(s3, bucket_name, data_path, local_folder, s3_path, delete=True):
-            if delete == True: 
-                objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
-                if 'Contents' in objects_to_delete:
-                    for obj in objects_to_delete['Contents']:
-                        self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                        print_color(f'\n[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
-                s3.delete_object(Bucket=bucket_name, Key=s3_path)
-            s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
-            try:    
-                response = s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
-            except NoCredentialsError as e:
-                raise NoCredentialsError("NoCredentialsError: \n{e}")
-            except ClientError as e:
-                print(f"ClientError: ", e)
-                return False
-            # temp = s3_path + "/" + data_path[len(local_folder):]
-            uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
-            print_color(f"\nSuccess uploading into S3: \n{uploaded_path }", color='green')
-            return True
- 
-        if "train" in self.pipeline:
-            local_folder = ALODIR + "input/train/"
-            print_color(f'\n[INFO] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
-            try: 
-                for root, dirs, files in os.walk(local_folder):
-                    for idx, file in enumerate(files):
-                        data_path = os.path.join(root, file)
-                        if idx == 0: #최초 1회만 delete s3
-                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, True) # self.s3_path 는 s3_access_check 할때 셋팅
-                        else: 
-                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, False)
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
-            try:    
-                data = {'dataset_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][0].update(data)
-                self.save_yaml()
-                print_color(f'\nSuccess updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline}', color='green')
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline} \n{e}')
-        elif "inf" in self.pipeline:
-            local_folder = ALODIR + "input/inference/"
-            print_color(f'\n[INFO] Start uploading << data >> into S3 from local folder:\n {local_folder}', color='cyan')
-            try: 
-                for root, dirs, files in os.walk(local_folder):
-                    for idx, file in enumerate(files):
-                        data_path = os.path.join(root, file)
-                        if idx == 0: #최초 1회만 delete s3
-                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, True) # self.s3_path 는 s3_access_check 할때 셋팅
-                        else: 
-                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, False)
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
-            try:
-                data = {'dataset_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][1].update(data)
-                self.save_yaml()
-                print_color(f'\nSuccess updating solution_metadata.yaml - << dataset_uri >> info. / pipeline: {self.pipeline}', color='green')
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline} \n{e}')
-        else:
-            raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
-
-
-    def s3_upload_artifacts(self):
-        # inner func.
-        def s3_process(s3, bucket_name, data_path, local_folder, s3_path, delete=True):
-            if delete == True: 
-                objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
-                if 'Contents' in objects_to_delete:
-                    for obj in objects_to_delete['Contents']:
-                        self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                        print_color(f'\n[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
-                s3.delete_object(Bucket=bucket_name, Key=s3_path)
-            s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
-            try:    
-                response = s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
-            except NoCredentialsError as e:
-                raise NoCredentialsError("NoCredentialsError: \n{e}")
-            except ClientError as e:
-                print(f"ClientError: ", e)
-                return False
-            # temp = s3_path + "/" + data_path[len(local_folder):]
-            uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
-            print_color(f"\nSuccess uploading into S3: \n{uploaded_path }", color='green')
-            return True
-
-        
-        if "train" in self.pipeline:
-            artifacts_path = _tar_dir(".train_artifacts")  # artifacts tar.gz이 저장된 local 경로 return
-            local_folder = os.path.split(artifacts_path)[0] + '/'
-            print_color(f'\n[INFO] Start uploading << train artifacts >> into S3 from local folder:\n {local_folder}', color='cyan')
-            s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path) # self.s3_path 는 s3_access_check 할때 셋팅
-            try: 
-                artifact_uri = {'artifact_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][0].update(artifact_uri)
-                self.save_yaml()
-                print_color(f'\nSuccess updating solution_metadata.yaml - << artifact_uri >> info. / pipeline: {self.pipeline}', color='green')
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
-            finally:
-                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
-        elif "inf" in self.pipeline:
-            ## inference artifacts tar gz 업로드 
-            artifacts_path = _tar_dir(".inference_artifacts")  # artifacts tar.gz이 저장된 local 경로 
-            local_folder = os.path.split(artifacts_path)[0] + '/'
-            print_color(f'\n[INFO] Start uploading << inference artifacts >> into S3 from local folder:\n {local_folder}', color='cyan')
-            s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path)
-            try: 
-                artifact_uri = {'artifact_uri': ["s3://" + self.bucket_name + "/" + self.s3_path + "/"]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][1].update(artifact_uri)
-                self.save_yaml()
-                print_color(f'\nSuccess updating solution_metadata.yaml - << artifact_uri >> info. / pipeline: {self.pipeline}', color='green')
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
-            finally:
-                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
-            ## model tar gz 업로드 
-            # [중요] model_uri는 inference type 밑에 넣어야되는데, 경로는 inference 대신 train이라고 pipeline 들어가야함 (train artifacts 경로에 저장)
-            train_artifacts_s3_path = self.s3_path.replace(f'v{VERSION}/inference', f'v{VERSION}/train')
-            model_path = _tar_dir(".train_artifacts/models")  # model tar.gz이 저장된 local 경로 return 
-            local_folder = os.path.split(model_path)[0] + '/'
-            print_color(f'\n[INFO] Start uploading << model >> into S3 from local folder:\n {local_folder}', color='cyan')
-            # 주의! 이미 train artifacts도 같은 경로에 업로드 했으므로 model.tar.gz올릴 땐 delete object하지 않는다. 
-            s3_process(self.s3, self.bucket_name, model_path, local_folder, train_artifacts_s3_path, delete=False) 
-            try: 
-                model_uri = {'model_uri': ["s3://" + self.bucket_name + "/" + train_artifacts_s3_path + "/"]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][1].update(model_uri)
-                self.save_yaml()
-                print_color(f'\nSuccess updating solution_metadata.yaml - << model_uri >> info. / pipeline: {self.pipeline}', color='green')
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << model_uri >> info / pipeline: {self.pipeline} \n{e}')
-            finally:
-                shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
-        else:
-            raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
         
         
     def get_contents(self, url):
