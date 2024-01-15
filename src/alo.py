@@ -129,7 +129,7 @@ class ALO:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
                 self.artifact.backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
-                # error 발생해도 external save artifacts 하도록                
+                # error 발생해도 external save artifacts 하도록        
                 ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
                 if self.is_always_on:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
@@ -146,126 +146,109 @@ class ALO:
         ##        sagemaker는 alolib requirements에 명시 
         ##        sagemaker_training은 SagemakerDockerfile에 명시 
         ###################################
-        from sagemaker.estimator import Estimator
+        try:
+            from sagemaker.estimator import Estimator
+            ###################################
+            ## Step1: .sagemaker 임시 폴더 생성 후 
+            ##        ['main.py', 'src', 'config', 'assets', 'alolib', '.git'] 를 .sagemaker로 복사 
+            ###################################
+            self.sagemaker_dir = PROJECT_HOME + '.sagemaker/'
+            # 폴더가 이미 존재하는 경우 삭제합니다.
+            if os.path.exists(self.sagemaker_dir):
+                shutil.rmtree(self.sagemaker_dir)
+            
+            # FIXME 로컬에서 안돌리면 input 폴더 없으므로 데이터 가져오는 것 여기에 별도 추가 
+            self._external_load_data('train_pipeline')
+            
+            # load sagemaker_config.yaml 
+            sagemaker_config = self.experimental_plan.get_yaml(PROJECT_HOME + 'config/sagemaker_config.yaml') # dict key ; account_id, role, region 
+            account_id = str(sagemaker_config['account_id'])
+            role = sagemaker_config['role']
+            region = sagemaker_config['region']
+            ecr_repository = sagemaker_config['ecr_repository']
+            # FIXME ecr tag ??
+            ecr_tag = [] 
+            docker_tag = 'latest'
+            ecr_uri = f'{account_id}.dkr.ecr.{region}.amazonaws.com'
+            ecr_full_uri = ecr_uri + f'/{ecr_repository}:{docker_tag}'
+            s3_bucket_uri = sagemaker_config['s3_bucket_uri']
+            # FIXME 일단 이건 sagemaker_config 로는 안뺌 
+            train_instance_count = 1 
+            train_instance_type = sagemaker_config['train_instance_type']
+
+            # 새로운 폴더를 생성합니다.
+            os.mkdir(self.sagemaker_dir)
+            # 컨테이너 빌드에 필요한 파일들을 sagemaker dir로 복사 
+            # FIXME alolib requirements.txt는 master requirements.txt 분리될 때까지 임시로 copy
+            alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'input', 'alolib/requirements.txt']
+            for item in alo_src:
+                src_path = PROJECT_HOME + item
+                if os.path.isfile(src_path):
+                    shutil.copy2(src_path, self.sagemaker_dir)
+                    self.proc_logger.process_info(f'copy from << {src_path} >>  -->  << {self.sagemaker_dir} >> ')
+                elif os.path.isdir(src_path):
+                    dst_path =  self.sagemaker_dir + os.path.basename(src_path)
+                    shutil.copytree(src_path, dst_path)
+                    self.proc_logger.process_info(f'copy from << {src_path} >>  -->  << {self.sagemaker_dir} >> ')
+        except Exception as e: 
+            self.proc_logger.process_error(f"Failed to set sagemaker configure: \n" + str(e)) 
         ###################################
-        ## Step1: .sagemaker 임시 폴더 생성 후 
-        ##        ['main.py', 'src', 'config', 'assets', 'alolib', '.git'] 를 .sagemaker로 복사 
+        ## Step2: src/Dockerfiles 내의 SagemakerDockerfile을 
+        ##        Dockerfile이라는 이름으로 현재 경로로 복사 후 Sagemaker 학습 Docker 빌드 
         ###################################
-        # FIXME 로컬에서 안돌리면 input 폴더 없으므로 데이터 가져오는 것 여기에 별도 추가 
-        self._external_load_data('train_pipeline')
-        
-        self.sagemaker_dir = PROJECT_HOME + '.sagemaker/'
-        # load sagemaker_config.yaml 
-        sagemaker_config = self.experimental_plan.get_yaml(PROJECT_HOME + 'config/sagemaker_config.yaml') # dict key ; account_id, role, region 
-        account_id = str(sagemaker_config['account_id'])
-        role = sagemaker_config['role']
-        region = sagemaker_config['region']
-        ecr_repository = sagemaker_config['ecr_repository']
-        # FIXME ecr tag ??
-        ecr_tag = [] 
-        docker_tag = 'latest'
-        ecr_uri = f'{account_id}.dkr.ecr.{region}.amazonaws.com'
-        ecr_full_uri = ecr_uri + f'/{ecr_repository}:{docker_tag}'
-        s3_bucket_uri = sagemaker_config['s3_bucket_uri']
-        # FIXME 일단 이건 sagemaker_config 로는 안뺌 
-        train_instance_count = 1 
-        train_instance_type = sagemaker_config['train_instance_type']
         try: 
-            try:
-                # 폴더가 이미 존재하는 경우 삭제합니다.
-                if os.path.exists(self.sagemaker_dir):
-                    shutil.rmtree(self.sagemaker_dir)
-                # 새로운 폴더를 생성합니다.
-                os.mkdir(self.sagemaker_dir)
-                # 컨테이너 빌드에 필요한 파일들을 sagemaker dir로 복사 
-                # FIXME alolib requirements.txt는 master requirements.txt 분리될 때까지 임시로 copy
-                alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'input', 'alolib/requirements.txt']
-                for item in alo_src:
-                    src_path = PROJECT_HOME + item
-                    if os.path.isfile(src_path):
-                        shutil.copy2(src_path, self.sagemaker_dir)
-                        self.proc_logger.process_info(f'copy from << {src_path} >>  -->  << {self.sagemaker_dir} >> ')
-                    elif os.path.isdir(src_path):
-                        dst_path =  self.sagemaker_dir + os.path.basename(src_path)
-                        shutil.copytree(src_path, dst_path)
-                        self.proc_logger.process_info(f'copy from << {src_path} >>  -->  << {self.sagemaker_dir} >> ')
-            except:
-                self.proc_logger.process_error(f"~~~1")
-            ###################################
-            ## Step2: src/Dockerfiles 내의 SagemakerDockerfile을 
-            ##        Dockerfile이라는 이름으로 현재 경로로 복사 후 Sagemaker 학습 Docker 빌드 
-            ###################################
-            try: 
-                # Dockefile setting
-                sagemaker_dockerfile = PROJECT_HOME + 'src/Dockerfiles/SagemakerDockerfile'
-                # Dockerfile이 이미 존재하는 경우 삭제합니다. 
-                if os.path.isfile(PROJECT_HOME + 'Dockerfile'):
-                    os.remove(PROJECT_HOME + 'Dockerfile')
-                shutil.copy(sagemaker_dockerfile, PROJECT_HOME + 'Dockerfile')
-                # aws ecr login 
-                p1 = subprocess.Popen(
-                    ['aws', 'ecr', 'get-login-password', '--region', region], stdout=subprocess.PIPE
-                )
-                # 주의: 여기선 ecr_full_uri 가 아닌 ecr_uri 
-                p2 = subprocess.Popen( 
-                    [f'docker', 'login', '--username', 'AWS','--password-stdin', ecr_uri], stdin=p1.stdout, stdout=subprocess.PIPE
-                )
-                p1.stdout.close()
-                output = p2.communicate()[0]
-                self.proc_logger.process_info(f"AWS ECR | docker login result: \n {output.decode()}")
-                # aws ecr repo create 
-                # ECR 클라이언트 생성
-                
-                aws_handler = AWSHandler(s3_uri=s3_bucket_uri, region=region)
-                aws_handler.create_ecr_repository(ecr_repository=ecr_repository)
-                # if len(ecr_tag) > 0:
-                #     create_repo_command = [
-                #     "aws",
-                #     "ecr",
-                #     "create-repository",
-                #     "--region", region,
-                #     "--repository-name", ecr_repository,
-                #     "--image-scanning-configuration", "scanOnPush=true",
-                #     "--tags"
-                #     ] + [ecr_tag]  # 전달된 태그들을 명령어에 추가합니다.
-                # else:
-                #     create_repo_command = [
-                #     "aws",
-                #     "ecr",
-                #     "create-repository",
-                #     "--region", region,
-                #     "--repository-name", ecr_repository,
-                #     "--image-scanning-configuration", "scanOnPush=true",
-                #     ]
-                # try:
-                #     result = subprocess.run(create_repo_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                # except subprocess.CalledProcessError as e:
-                #     self.proc_logger.process_error(str(e))
-                # self.proc_logger.process_info(f"AWS ECR create-repository response: \n{result.stdout}")
-                # docker build 
-                
-                subprocess.run(['docker', 'build', '.', '-t', f'{ecr_full_uri}'])
-                # docker push to ecr 
-                subprocess.run(['docker', 'push', f'{ecr_full_uri}'])
-            except: 
-                self.proc_logger.process_error(f"~~~2")
+            # Dockefile setting
+            sagemaker_dockerfile = PROJECT_HOME + 'src/Dockerfiles/SagemakerDockerfile'
+            # Dockerfile이 이미 존재하는 경우 삭제합니다. 
+            if os.path.isfile(PROJECT_HOME + 'Dockerfile'):
+                os.remove(PROJECT_HOME + 'Dockerfile')
+            shutil.copy(sagemaker_dockerfile, PROJECT_HOME + 'Dockerfile')
+            # aws ecr login 
+            p1 = subprocess.Popen(
+                ['aws', 'ecr', 'get-login-password', '--region', region], stdout=subprocess.PIPE
+            )
+            # 주의: 여기선 ecr_full_uri 가 아닌 ecr_uri 
+            p2 = subprocess.Popen( 
+                [f'docker', 'login', '--username', 'AWS','--password-stdin', ecr_uri], stdin=p1.stdout, stdout=subprocess.PIPE
+            )
+            p1.stdout.close()
+            output = p2.communicate()[0]
+            self.proc_logger.process_info(f"AWS ECR | docker login result: \n {output.decode()}")
+            # aws ecr repo create 
+            # ECR 클라이언트 생성
+            aws_handler = AWSHandler(s3_uri=s3_bucket_uri, region=region)
+            aws_handler.create_ecr_repository(ecr_repository=ecr_repository)
+
+            # docker build 
+            subprocess.run(['docker', 'build', '.', '-t', f'{ecr_full_uri}'])
+            # docker push to ecr 
+            subprocess.run(['docker', 'push', f'{ecr_full_uri}'])
             ###################################
             ## Step3: 사용자가 작성한 s3 bucket이 존재하지 않으면 생성하기 
             ###################################     
             aws_handler.create_bucket()
+        except Exception as e: 
+            self.proc_logger.process_error(f"Failed to push sagemaker docker into ECR and creating S3 bucket: \n" + str(e)) 
+        try: 
             ###################################
             ## Step4: sagemaker estimator fit (학습 시작) 후 
             ##        사용자가 지정한 s3로 압축된 .train_artifacts 저장된 걸 로컬로 다운로드 후 압축 해제 
             ###################################
             ## train by cloud resource
             training_estimator = Estimator(image_uri=ecr_full_uri,
-                                  role=role,
-                                  train_instance_count=train_instance_count,
-                                  train_instance_type=train_instance_type,
-                                  output_path=s3_bucket_uri)
+                                    role=role,
+                                    train_instance_count=train_instance_count,
+                                    train_instance_type=train_instance_type,
+                                    output_path=s3_bucket_uri)
+            ## FIXME [임시] local mode sagemaker train 
+            # training_estimator = Estimator(image_uri=ecr_full_uri,
+            #           role=role,
+            #           train_instance_count=1,
+            #           train_instance_type='local')
+
             training_estimator.fit() 
-        except: 
-            self.proc_logger.process_error(f"~~~3")
+        except Exception as e: 
+            self.proc_logger.process_error(f"Failed to sagemaker estimator fit: \n" + str(e)) 
 
         
     ############################
@@ -284,7 +267,12 @@ class ALO:
         self._set_attr()
 
         self.system_envs['pipeline_start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
-
+        # FIXME os env['COMPUTING']은 SagemakerDockerfile에서 설정. sagemaker 일 때만 environment import 
+        if os.getenv('COMPUTING') == 'sagemaker':
+            from sagemaker_training import environment
+            # [중요] sagemaker 사용 시엔 self.external_path['save_train_artifacts_path']를 sagemaker에서 제공하는 model_dir로 변경
+            # [참고] https://github.com/aws/sagemaker-training-toolkit        
+            self.external_path['save_train_artifacts_path'] = os.path.join(environment.Environment().model_dir, "saved_model")
         self.is_always_on = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
             and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
 

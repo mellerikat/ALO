@@ -30,6 +30,10 @@ if __name__ == "__main__":
             kwargs = {'sol_meta_str': args.system, 'alo_mode': args.mode, 'exp_plan_file': args.config, 'boot_on': args.loop, 'computing': args.computing}
             alo = ALO(**kwargs)
             if args.computing == 'sagemaker':
+                # sagemaker boot-on >> assets, alolib 등 설치하기 위해 필요 (실제 asset run함수 실행은 X)
+                ALO(alo_mode = 'train', boot_on = True).runs() 
+                print('\033[92m==================== Finish ALO boot-on ====================\033[0m \n')
+                # sagemaker 자원으로 학습 
                 alo.sagemaker_runs()
             else: 
                 alo.runs()
