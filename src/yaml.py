@@ -3,7 +3,7 @@ import shutil
 import yaml
 from src.constants import *
 from src.logger import ProcessLogger
-from src.compare_yamls import get_yaml, compare_yaml
+# from src.compare_yamls import compare_yaml
 
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
@@ -31,8 +31,8 @@ class ExperimentalPlan:
             exp_plan_file = self.load_experimental_plan(self.exp_plan_file) 
             PROC_LOGGER.process_info(f"Successfully loaded << experimental_plan.yaml >> from: \n {exp_plan_file}") 
             
-            self.exp_plan = get_yaml(exp_plan_file)  ## from compare_yamls.py
-            self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드  ## from compare_yamls.py
+            self.exp_plan = self.get_yaml(exp_plan_file)  ## from compare_yamls.py
+            # self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드  ## from compare_yamls.py
 
             # solution metadata yaml --> exp plan yaml overwrite 
             if self.sol_meta is not None:

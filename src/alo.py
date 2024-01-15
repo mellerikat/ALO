@@ -8,11 +8,10 @@ from datetime import datetime
 from collections import Counter
 from copy import deepcopy 
 # local import
+from src.install import Packages
 from src.constants import *
 from src.utils import set_artifacts, setup_asset, match_steps, backup_history, move_output_files
-
 from src.assets import Assets
-from src.install import Packages
 from src.external import ExteranlHandler #external_load_data, external_load_model, external_save_artifacts
 from src.redisqueue import RedisQueue
 from src.logger import ProcessLogger  
@@ -99,7 +98,7 @@ class ALO:
     #############################
     ####    Main Function    ####
     #############################
-    def runs(self):
+    def runs(self, mode = None):
         """ 파이프라인 실행에 필요한 데이터, 패키지, Asset 코드를 작업환경으로 setup 하고 & 순차적으로 실행합니다. 
 
         학습/추론 파이프라인을 순차적으로 실행합니다. (각 한개씩만 지원 multi-pipeline 는 미지원) 
@@ -113,14 +112,16 @@ class ALO:
         # summary yaml를 redis q로 put. redis q는 _update_yaml 에서 이미 set 완료  
         # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
         # Edgeapp과 interface 중인지 (운영 모드인지 체크)
-        
 
         try: 
             # CHECKLIST preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
             # NOTE 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
-            for pipeline in self.system_envs["pipeline_list"]:
-                # 입력된 pipeline list 확인
-                self.run(pipeline)
+            if mode != None:
+                self.run(mode)
+            else:
+                for pipeline in self.system_envs["pipeline_list"]:
+                    # 입력된 pipeline list 확인
+                    self.run(pipeline)
         except: 
             # NOTE [ref] https://medium.com/@rahulkumar_33287/logger-error-versus-logger-exception-4113b39beb4b 
             # NOTE [ref2] https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
@@ -306,8 +307,11 @@ class ALO:
         # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
         # FIXME boot on 때도 모델은 일단 있으면 가져온다 ? 
         if pipeline == 'inference_pipeline':
-            if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
-                self._external_load_model()
+            try:
+                if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
+                    self._external_load_model()
+            except:
+                pass
 
         # 각 asset import 및 실행 
         try:
