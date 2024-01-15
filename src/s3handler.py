@@ -152,5 +152,3 @@ class S3Handler:
                 bucket.put_object(Key=bucket_upload_path, Body=tar_file, ContentType='artifacts/gzip')
         except: 
             PROC_LOGGER.process_error(f"Failed to upload << {file_path} >> onto << {self.s3_uri} >>.")
-        
-        

@@ -17,7 +17,7 @@ if __name__ == "__main__":
     2) --system, 
         type=str, default=None, help="system option: jsonized solution_metadata.yaml"
     3) --mode, 
-        type=str, default="all", help="ALO mode: train, inference, all"
+        type=str, default="all", help="ALO mode: train, inference, all, sagemaker_train"
     4) --loop, 
         type=bool, default=False, help="On/off infinite loop: True, False"
     """
@@ -26,9 +26,12 @@ if __name__ == "__main__":
     args = set_args()
     if args.loop == False:  ## batch mode 
         try:
-            kwargs = {'sol_meta_str': args.system, 'alo_mode': args.mode, 'exp_plan_file': args.config, 'boot_on': args.loop}
+            kwargs = {'sol_meta_str': args.system, 'alo_mode': args.mode, 'exp_plan_file': args.config, 'boot_on': args.loop, 'computing': args.computing}
             alo = ALO(**kwargs)
-            alo.runs()
+            if args.computing == 'sagemaker':
+                alo.sagemaker_runs()
+            else: 
+                alo.runs()
         except Exception as e: 
             raise NotImplementedError(str(e))
         

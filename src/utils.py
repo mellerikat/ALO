@@ -358,6 +358,7 @@ def set_args():
     parser.add_argument("--system", type=str, default=None, help="system option: jsonized solution_metadata.yaml")
     parser.add_argument("--mode", type=str, default="all", help="ALO mode: train, inference, all")
     parser.add_argument("--loop", type=bool, default=False, help="On/off infinite loop: True, False")
+    parser.add_argument("--computing", type=str, default="local", help="training resource: local, sagemaker, ..") # local = on-premise
     args = parser.parse_args()
     
     return args
