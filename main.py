@@ -20,6 +20,7 @@ if __name__ == "__main__":
         type=str, default="all", help="ALO mode: train, inference, all, sagemaker_train"
     4) --loop, 
         type=bool, default=False, help="On/off infinite loop: True, False"
+    5) --computing
     """
     
     # ALO 실행 전 필요한 args를 받아옴

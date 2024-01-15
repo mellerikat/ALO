@@ -8,13 +8,17 @@ from datetime import datetime
 from collections import Counter
 from copy import deepcopy 
 # local import
-from src.install import Packages
 from src.constants import *
-from src.utils import set_artifacts, match_steps, backup_history, move_output_files
+from src.artifacts import Aritifacts
+from src.install import Packages
+
+# 이름을 한번 다시 생각
 from src.assets import Assets
+
 from src.external import ExteranlHandler #external_load_data, external_load_model, external_save_artifacts
 from src.redisqueue import RedisQueue
 from src.logger import ProcessLogger  
+# s3를 옮김
 from src.aws_handler import AWSHandler 
 from src.yaml import ExperimentalPlan
 #######################################################################################
@@ -50,7 +54,8 @@ class ALO:
         # 필요 class init
         self.ext_data = ExteranlHandler()
         self.install = Packages()
-        self.asset = Assets()
+        self.asset = Assets(ASSET_HOME)
+        self.artifact = Aritifacts()
         # alolib을 설치
         alolib = self.install.set_alolib()
         if not alolib:
@@ -58,7 +63,6 @@ class ALO:
 
         # 필요한 전역변수 선언
         self.exp_plan = None
-        self.artifacts = None 
         self.proc_logger = None
 
         # logger 초기화
@@ -70,7 +74,6 @@ class ALO:
         # init experimental_plan 
         self.experimental_plan = ExperimentalPlan(exp_plan_file, self.sol_meta)
         self.exp_plan_file = self.experimental_plan.read_yaml()
-        # self.read_yaml(exp_plan_file)
 
         self._set_attr()
         
@@ -80,17 +83,11 @@ class ALO:
         # 현재 ALO 버전
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
 
-        # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭 (from src.utils)
-        match_steps(self.user_parameters, self.asset_source)
-
-        # ALO 설정 완료를 로깅
-        self._init_logging()
-
-        # asset home 초기화
-        self._set_asset_home()
+        # ALO 설정 완료 info 와 로깅
+        self._alo_info()
 
         # artifacts home 초기화 (from src.utils)
-        self.artifacts = set_artifacts()
+        self.artifacts = self.artifact.set_artifacts()
 
     def init(self):
         pass
@@ -130,8 +127,8 @@ class ALO:
                 self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
             finally:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
-                backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
+                self.artifact.backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록                
                 ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
                 if self.is_always_on:
@@ -346,7 +343,7 @@ class ALO:
         ###################################
         if self.control['backup_artifacts'] == True:
             try:
-                backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
+                self.artifact.backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
             except: 
                 self.proc_logger.process_error("Failed to backup artifacts into << .history >>")
 
@@ -415,16 +412,7 @@ class ALO:
             pass
         return system_envs
 
-
-    def _set_asset_home(self):
-        if not os.path.exists(ASSET_HOME):
-            try:
-                os.makedirs(ASSET_HOME)
-            except: 
-                self.proc_logger.process_error(f"Failed to create directory: {ASSET_HOME}")
-            
-    
-    def _init_logging(self):
+    def _alo_info(self):
         if self.system_envs['boot_on'] == True: 
             self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
         else: 
@@ -533,7 +521,7 @@ class ALO:
         if self.is_always_on:
             summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
             if 'inference_summary.yaml' in os.listdir(summary_dir):
-                summary_dict = get_yaml(summary_dir + 'inference_summary.yaml')
+                summary_dict = self.experimental_plan.get_yaml(summary_dir + 'inference_summary.yaml')
                 success_str = json.dumps({'status':'success', 'message': summary_dict})
                 self.system_envs['q_inference_summary'].rput(success_str)
                 self.proc_logger.process_info("Successfully completes putting inference summary into redis queue.")
@@ -790,12 +778,12 @@ class ALO:
         # FIXME memory release : on/off 필요 
         try:
             if self.control['reset_assets']:
-                self.asset.release(_path)
+                self.asset.memory_release(_path)
                 sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
             else:
                 pass
         except:
-            self.asset.release(_path)
+            self.asset.memory_release(_path)
             sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
         
         self.proc_logger.process_info(f"==================== Finish pipeline: {pipeline} / step: {asset_config['step']}")

@@ -17,8 +17,12 @@ PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
 class Assets:
     
-    def __init__(self):
-        pass
+    def __init__(self, ASSET_HOME):
+        if not os.path.exists(ASSET_HOME):
+            try:
+                os.makedirs(ASSET_HOME)
+            except: 
+                self.proc_logger.process_error(f"Failed to create directory: {ASSET_HOME}")
 
     def import_asset(self, _path, _file):
         _user_asset = 'none'
@@ -36,7 +40,7 @@ class Assets:
 
         return _user_asset
 
-    def release(self, _path):
+    def memory_release(self, _path):
         all_files = os.listdir(_path)
         # .py 확장자를 가진 파일만 필터링하여 리스트에 추가하고 확장자를 제거
         python_files = [file[:-3] for file in all_files if file.endswith(".py")]

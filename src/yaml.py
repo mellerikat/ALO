@@ -51,6 +51,10 @@ class ExperimentalPlan:
                 setattr(self, key, get_yaml_data(key))
         except:
             PROC_LOGGER.process_error("Failed to read experimental plan yaml.")
+
+        # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭 (from src.utils)
+        self._match_steps()
+
         return exp_plan_file
 
     def load_experimental_plan(self, exp_plan_file_path): # called at preset func.
@@ -86,3 +90,28 @@ class ExperimentalPlan:
                 return  PROJECT_HOME + 'config/' + _file 
             except: 
                 PROC_LOGGER.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {exp_plan_file_path}")
+
+
+    # FIXME pipeline name 추가 시 추가 고려 필요 
+    def _match_steps(self):
+        """ Description
+            -----------
+                - experimental_plan.yaml에 적힌 user_parameters와 asset_source 내의 steps들이 일치하는 지 확인 
+            Parameters
+            -----------
+                - user_parameters: (dict)
+                - asset_source: (dict)
+            Return
+            -----------
+
+            Example
+            -----------
+                - match_steps(user_parameters, asset_source)
+        """
+        for pipe, steps_dict in self.asset_source.items(): 
+            param_steps = sorted([i['step'] for i in self.user_parameters[pipe]])
+            source_steps = sorted([i['step'] for i in self.asset_source[pipe]])
+            if param_steps != source_steps:
+                PROC_LOGGER.process_error(f"@ << {pipe} >> - You have entered unmatching steps between << user_parameters >> and << asset_source >> in your experimental_plan.yaml. \n - steps in user_parameters: {param_steps} \n - steps in asset_source: {source_steps}")
+        
+        return True
