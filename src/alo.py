@@ -9,18 +9,16 @@ from collections import Counter
 from copy import deepcopy 
 # local import
 from src.constants import *
-from src.install import *
-from src.utils import set_artifacts, setup_asset, match_steps, import_asset, release, backup_history, move_output_files
 from src.compare_yamls import get_yaml, compare_yaml
-from src.external import external_load_data, external_load_model, external_save_artifacts
+from src.utils import set_artifacts, setup_asset, match_steps, backup_history, move_output_files
+
+from src.assets import Assets
+from src.install import Packages
+from src.external import ExteranlHandler #external_load_data, external_load_model, external_save_artifacts
 from src.redisqueue import RedisQueue
-<<<<<<< HEAD
 from src.logger import ProcessLogger  
 from src.aws_handler import AWSHandler 
-=======
-from src.logger import ProcessLogger
-
->>>>>>> 8c0b2c34f36a344b64ebebc6f5840c3be335aad5
+from src.yaml import ExperimentalPlan
 #######################################################################################
 
 class AssetStructure: 
@@ -51,9 +49,12 @@ class ALO:
             computing: 학습하는 컴퓨팅 자원 (local, sagemaker)
         Returns:
         """
-
+        # 필요 class init
+        self.ext_data = ExteranlHandler()
+        self.install = Packages()
+        self.asset = Assets()
         # alolib을 설치
-        alolib = set_alolib()
+        alolib = self.install.set_alolib()
         if not alolib:
             raise ValueError("ALOLIB이 설치 되지 않아 프로그램을 종료합니다.")
 
@@ -69,7 +70,11 @@ class ALO:
         self.sol_meta = json.loads(sol_meta_str) if sol_meta_str != None else None # None or dict from json 
 
         # init experimental_plan 
-        self.read_yaml(exp_plan_file)
+        self.experimental_plan = ExperimentalPlan(exp_plan_file, self.sol_meta)
+        self.exp_plan_file = self.experimental_plan.read_yaml()
+        # self.read_yaml(exp_plan_file)
+
+        self._set_attr()
         
         # 시스템 전역 변수 초기화
         self.system_envs = self._set_system_envs(alo_mode, boot_on) 
@@ -77,18 +82,21 @@ class ALO:
         # 현재 ALO 버전
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
 
-        # asset home 초기화
-        self._set_asset_home()
-
-        # artifacts home 초기화 (from src.utils)
-        self.artifacts = set_artifacts()
-
         # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭 (from src.utils)
         match_steps(self.user_parameters, self.asset_source)
 
         # ALO 설정 완료를 로깅
         self._init_logging()
 
+        # asset home 초기화
+        self._set_asset_home()
+
+        # artifacts home 초기화 (from src.utils)
+        self.artifacts = set_artifacts()
+
+    def init(self):
+        pass
+        
     #############################
     ####    Main Function    ####
     #############################
@@ -106,8 +114,7 @@ class ALO:
         # summary yaml를 redis q로 put. redis q는 _update_yaml 에서 이미 set 완료  
         # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
         # Edgeapp과 interface 중인지 (운영 모드인지 체크)
-        self.is_always_on = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
-            and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
+        
 
         try: 
             # CHECKLIST preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
@@ -123,10 +130,10 @@ class ALO:
                 self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
             finally:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
-                backup_history(pipeline, self.exp_plan_file, self.system_envs['start_time'], error=True, size=self.control['backup_size'])
+                backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
                 # error 발생해도 external save artifacts 하도록                
-                ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+                ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
                 if self.is_always_on:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
                     if self.system_envs['runs_status'] == 'init':
@@ -263,8 +270,22 @@ class ALO:
     ############################
     ####    Sub Function    ####
     ############################
+            
+    def _set_attr(self):
+        self.user_parameters = self.experimental_plan.user_parameters
+        self.asset_source = self.experimental_plan.asset_source
+        self.external_path = self.experimental_plan.external_path
+        self.external_path_permission = self.experimental_plan.external_path_permission
+        self.control = self.experimental_plan.control
                         
     def run(self, pipeline):
+
+        self._set_attr()
+
+        self.system_envs['pipeline_start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
+
+        self.is_always_on = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
+            and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
 
         if pipeline not in ['train_pipeline', 'inference_pipeline']:
             self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
@@ -281,13 +302,13 @@ class ALO:
             # NOTE [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
             # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
             self._external_load_data(pipeline)
-
+        
         # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
         # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
         # FIXME boot on 때도 모델은 일단 있으면 가져온다 ? 
         if pipeline == 'inference_pipeline':
             if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
-                self.external_load_model()
+                self._external_load_model()
 
         # 각 asset import 및 실행 
         try:
@@ -318,7 +339,7 @@ class ALO:
         ###################################
         if self.control['backup_artifacts'] == True:
             try:
-                backup_history(pipeline, self.exp_plan_file, self.system_envs['start_time'], size=self.control['backup_size'])
+                backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
             except: 
                 self.proc_logger.process_error("Failed to backup artifacts into << .history >>")
 
@@ -351,67 +372,6 @@ class ALO:
             raise NotImplementedError("Failed to empty log directory.")
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
         self.proc_logger = ProcessLogger(PROJECT_HOME)  
-
-    def read_yaml(self, exp_plan_file):
-        # exp_plan_file은 config 폴더로 복사해서 가져옴. 단, 외부 exp plan 파일 경로는 로컬 절대 경로만 지원 
-        try:
-            self.exp_plan_file = self.load_experimental_plan(exp_plan_file) 
-            self.proc_logger.process_info(f"Successfully loaded << experimental_plan.yaml >> from: \n {self.exp_plan_file}") 
-            
-            self.exp_plan = get_yaml(self.exp_plan_file)  ## from compare_yamls.py
-            self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드  ## from compare_yamls.py
-
-            # solution metadata yaml --> exp plan yaml overwrite 
-            if self.sol_meta is not None:
-                self._update_yaml() 
-                self.proc_logger.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
-            
-            def get_yaml_data(key): # inner func.
-                data_dict = {}
-                for data in self.exp_plan[key]:
-                    data_dict.update(data)
-                return data_dict
-
-            # 각 key 별 value 클래스 self 변수화 
-            for key in self.exp_plan.keys():
-                setattr(self, key, get_yaml_data(key))
-        except:
-            self.proc_logger.process_error("Failed to read experimental plan yaml.")
-
-
-    def load_experimental_plan(self, exp_plan_file_path): # called at preset func.
-        if exp_plan_file_path == None: 
-            if os.path.exists(EXP_PLAN):
-                return EXP_PLAN
-            else: 
-                self.proc_logger.process_error(f"<< {EXP_PLAN} >> not found.")
-        else: 
-            try: 
-                # 입력한 경로가 상대 경로이면 config 기준으로 경로 변환  
-                _path, _file = os.path.split(exp_plan_file_path) 
-                if os.path.isabs(_path) == True:
-                    pass
-                else: 
-                    exp_plan_file_path = PROJECT_HOME + 'config/' + exp_plan_file_path  
-                    _path, _file = os.path.split(exp_plan_file_path) 
-                # 경로가 config랑 동일하면 (samefile은 dir, file 다 비교가능) 그냥 바로 return 
-                if os.path.samefile(_path, PROJECT_HOME + 'config/'): 
-                    self.proc_logger.process_info(f"Successfully loaded experimental plan yaml: \n {PROJECT_HOME + 'config/' + _file}")
-                    return  PROJECT_HOME + 'config/' + _file 
-                
-                # 경로가 config랑 동일하지 않으면 
-                # 외부 exp plan yaml을 config/ 밑으로 복사 
-                if _file in os.listdir(PROJECT_HOME + 'config/'):
-                    self.proc_logger.process_warning(f"<< {_file} >> already exists in config directory. The file is overwritten.")
-                try: 
-                    shutil.copy(exp_plan_file_path, PROJECT_HOME + 'config/')
-                except: 
-                    self.proc_logger.process_error(f"Failed to copy << {exp_plan_file_path} >> into << {PROJECT_HOME + 'config/'} >>")
-                # self.exp_plan_file 변수에 config/ 경로로 대입하여 return 
-                self.proc_logger.process_info(f"Successfully loaded experimental plan yaml: \n {PROJECT_HOME + 'config/' + _file}")
-                return  PROJECT_HOME + 'config/' + _file 
-            except: 
-                self.proc_logger.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {exp_plan_file_path}")
 
     def _set_system_envs(self, alo_mode, boot_on):
         system_envs = {}
@@ -455,33 +415,11 @@ class ALO:
         self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
         self.proc_logger.process_info("==================== Start ALO preset ==================== ")
 
-
-
     ###################################
     ####    Part2. Runs fuction    ####
     ###################################
     
     
-    
-    def _external_load_data(self, pipeline):
-        """외부 데이터를 가져 옴 (local storage, S3)
-
-        Args:
-          - pipelne (str): train / inference 인지를 구분함
-        """
-
-        ## from external.py
-        external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
-
-    def external_load_model(self):
-        """외부에서 모델파일을 가져옴 (model.tar.gz)
-
-        S3 일 경우 permission 체크를 하고 가져온다.
-
-        """
-
-        ## from external.py
-        external_load_model(self.external_path, self.external_path_permission)
 
     def set_asset_structure(self):
         """Asset 의 In/Out 을 data structure 로 전달한다.
@@ -595,7 +533,7 @@ class ALO:
             
         # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)
         try:      
-            ext_saved_path = external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+            ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
         except:
             self.proc_logger.process_error("Failed to save artifacts into external path.") 
 
@@ -672,8 +610,6 @@ class ALO:
             except: 
                 self.proc_logger.process_error(f"Failed to parse << redis_server_uri >>") 
 
-            
-        
         def _convert_sol_args(_args): # inner func.
             # TODO user parameters 의 type check 해서 selected_user_paramters type 다 체크할 것인가? 
             '''
@@ -768,6 +704,27 @@ class ALO:
     ########################################
     ####    Part4. Internal fuctions    ####
     ########################################
+        
+    def _external_load_data(self, pipeline):
+        """외부 데이터를 가져 옴 (local storage, S3)
+
+        Args:
+          - pipelne (str): train / inference 인지를 구분함
+        """
+
+        ## from external.py
+        self.ext_data.external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
+
+    def _external_load_model(self):
+        """외부에서 모델파일을 가져옴 (model.tar.gz)
+
+        S3 일 경우 permission 체크를 하고 가져온다.
+
+        """
+
+        ## from external.py
+        self.ext_data.external_load_model(self.external_path, self.external_path_permission)
+        
     def _install_steps(self, pipeline, get_asset_source):
         requirements_dict = dict() 
         for step, asset_config in enumerate(self.asset_source[pipeline]):
@@ -776,7 +733,7 @@ class ALO:
             setup_asset(asset_config, get_asset_source)
             requirements_dict[asset_config['step']] = asset_config['source']['requirements']
         
-        check_install_requirements(requirements_dict)
+        self.install.check_install_requirements(requirements_dict)
 
     def get_args(self, pipeline, step):
         if type(self.user_parameters[pipeline][step]['args']) == type(None):
@@ -792,7 +749,7 @@ class ALO:
         _file = "asset_" + asset_config['step']
         # asset2등을 asset으로 수정하는 코드
         _file = ''.join(filter(lambda x: x.isalpha() or x == '_', _file))
-        user_asset = import_asset(_path, _file)
+        user_asset = self.asset.import_asset(_path, _file)
         if self.system_envs['boot_on'] == True: 
             self.proc_logger.process_info(f"===== Booting... completes importing << {_file} >>")
             return asset_structure
@@ -816,12 +773,12 @@ class ALO:
         # FIXME memory release : on/off 필요 
         try:
             if self.control['reset_assets']:
-                release(_path)
+                self.asset.release(_path)
                 sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
             else:
                 pass
         except:
-            release(_path)
+            self.asset.release(_path)
             sys.path = [item for item in sys.path if asset_structure.envs['step'] not in item]
         
         self.proc_logger.process_info(f"==================== Finish pipeline: {pipeline} / step: {asset_config['step']}")
@@ -831,34 +788,34 @@ class ALO:
     ##########################################
     ####    Part5. Use external method    ####
     ##########################################
-    def run_import(self, pipeline):
-        # setup asset (asset을 git clone (or local) 및 requirements 설치)
-        get_asset_source = self.control["get_asset_source"]  # once, every
+    # def run_import(self, pipeline):
+    #     # setup asset (asset을 git clone (or local) 및 requirements 설치)
+    #     get_asset_source = self.control["get_asset_source"]  # once, every
 
-        # TODO 현재 pipeline에서 중복된 step 이 있는지 확인
-        step_values = [item['step'] for item in self.asset_source[pipeline]]
-        step_counts = Counter(step_values)
-        for value, count in step_counts.items():
-            if count > 1:
-                self.proc_logger.process_error(f"Duplicate step exists: {value}")
+    #     # TODO 현재 pipeline에서 중복된 step 이 있는지 확인
+    #     step_values = [item['step'] for item in self.asset_source[pipeline]]
+    #     step_counts = Counter(step_values)
+    #     for value, count in step_counts.items():
+    #         if count > 1:
+    #             self.proc_logger.process_error(f"Duplicate step exists: {value}")
 
-        # 운영 무한 루프 구조일 땐 boot_on 시 에만 install 하고 이후에는 skip 
-        if (self.system_envs['boot_on'] == False) and (self.system_envs['redis_host'] is not None):
-            pass 
-        else: 
-            self._install_steps(pipeline, get_asset_source)
+    #     # 운영 무한 루프 구조일 땐 boot_on 시 에만 install 하고 이후에는 skip 
+    #     if (self.system_envs['boot_on'] == False) and (self.system_envs['redis_host'] is not None):
+    #         pass 
+    #     else: 
+    #         self._install_steps(pipeline, get_asset_source)
         
-        # AssetStructure instance 생성 
-        self.set_asset_structure()
+    #     # AssetStructure instance 생성 
+    #     self.set_asset_structure()
 
-        for step, asset_config in enumerate(self.asset_source[pipeline]):    
-            self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
-            # 외부에서 arg를 가져와서 수정이 가능한 구조를 위한 구조
-            self.asset_structure.args = self.get_args(pipeline, step)
-            try: 
-                self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
-            except: 
-                self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
+    #     for step, asset_config in enumerate(self.asset_source[pipeline]):    
+    #         self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
+    #         # 외부에서 arg를 가져와서 수정이 가능한 구조를 위한 구조
+    #         self.asset_structure.args = self.get_args(pipeline, step)
+    #         try: 
+    #             self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
+    #         except: 
+    #             self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
                 
     
                 
