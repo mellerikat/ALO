@@ -15,11 +15,9 @@ from src.utils import set_artifacts, setup_asset, match_steps, import_asset, rel
 from src.compare_yamls import get_yaml, compare_yaml
 from src.external import external_load_data, external_load_model, external_save_artifacts
 from src.redisqueue import RedisQueue
-from src.logger import ProcessLogger  
+from src.logger import ProcessLogger
 
 #######################################################################################
-
-
 
 class AssetStructure: 
     """Asset 의 In/Out 정보를 저장하는 Data Structure 입니다.
@@ -36,7 +34,6 @@ class AssetStructure:
         self.args = {}
         self.data = {} 
         self.config = {}
-
 class ALO:
     def __init__(self, exp_plan_file = None, sol_meta_str = None, alo_mode = 'all', boot_on = False):
         """실험 계획 (experimental_plan.yaml), 운영 계획(solution_metadata), 
@@ -49,7 +46,7 @@ class ALO:
             boot_on: always-on 시, boot 과정 인지 아닌지를  구분 (True, False)
         Returns:
         """
-        
+
         # alolib을 설치
         alolib = set_alolib()
         if not alolib:
@@ -387,7 +384,7 @@ class ALO:
         system_envs['start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
 
         if alo_mode == 'all':
-            system_envs['pipeline_list'] = ['train_pipeline', 'inference_pipeline']
+            system_envs['pipeline_list'] = [*self.user_parameters]
         else:
             system_envs['pipeline_list'] = [f"{alo_mode}_pipeline"]
         return system_envs
