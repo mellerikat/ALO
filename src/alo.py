@@ -14,8 +14,13 @@ from src.utils import set_artifacts, setup_asset, match_steps, import_asset, rel
 from src.compare_yamls import get_yaml, compare_yaml
 from src.external import external_load_data, external_load_model, external_save_artifacts
 from src.redisqueue import RedisQueue
+<<<<<<< HEAD
 from src.logger import ProcessLogger  
 from src.aws_handler import AWSHandler 
+=======
+from src.logger import ProcessLogger
+
+>>>>>>> 8c0b2c34f36a344b64ebebc6f5840c3be335aad5
 #######################################################################################
 
 class AssetStructure: 
@@ -33,7 +38,6 @@ class AssetStructure:
         self.args = {}
         self.data = {} 
         self.config = {}
-
 class ALO:
     def __init__(self, exp_plan_file = None, sol_meta_str = None, alo_mode = 'all', boot_on = False, computing = 'local'):
         """실험 계획 (experimental_plan.yaml), 운영 계획(solution_metadata), 
@@ -47,7 +51,7 @@ class ALO:
             computing: 학습하는 컴퓨팅 자원 (local, sagemaker)
         Returns:
         """
-        
+
         # alolib을 설치
         alolib = set_alolib()
         if not alolib:
@@ -429,7 +433,7 @@ class ALO:
         system_envs['start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
 
         if alo_mode == 'all':
-            system_envs['pipeline_list'] = ['train_pipeline', 'inference_pipeline']
+            system_envs['pipeline_list'] = [*self.user_parameters]
         else:
             system_envs['pipeline_list'] = [f"{alo_mode}_pipeline"]
         return system_envs
