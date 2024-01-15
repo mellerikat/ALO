@@ -20,10 +20,9 @@ ENV LC_ALL=C.UTF-8
 ENV PYTHONUNBUFFERED=TRUE
 ENV PYTHONDONTWRITEBYTECODE=TRUE
 ENV SOLUTION_PIPELINE_MODE='train'
-ENV PATH="/framework:${PATH}"
  
 #alo v 2.1.3
 COPY /.sagemaker /opt/ml/code/
- 
+RUN pip install -r /opt/ml/code/requirements.txt
 # Defines train.py as script entry point
-ENV SAGEMAKER_PROGRAM ["main.py", "--mode train"]
+ENV SAGEMAKER_PROGRAM main.py

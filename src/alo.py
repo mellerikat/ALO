@@ -154,6 +154,9 @@ class ALO:
         ## Step1: .sagemaker 임시 폴더 생성 후 
         ##        ['main.py', 'src', 'config', 'assets', 'alolib', '.git'] 를 .sagemaker로 복사 
         ###################################
+        # FIXME 로컬에서 안돌리면 input 폴더 없으므로 데이터 가져오는 것 여기에 별도 추가 
+        self._external_load_data('train_pipeline')
+        
         self.sagemaker_dir = PROJECT_HOME + '.sagemaker/'
         # load sagemaker_config.yaml 
         sagemaker_config = self.experimental_plan.get_yaml(PROJECT_HOME + 'config/sagemaker_config.yaml') # dict key ; account_id, role, region 
@@ -178,7 +181,8 @@ class ALO:
                 # 새로운 폴더를 생성합니다.
                 os.mkdir(self.sagemaker_dir)
                 # 컨테이너 빌드에 필요한 파일들을 sagemaker dir로 복사 
-                alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'input']
+                # FIXME alolib requirements.txt는 master requirements.txt 분리될 때까지 임시로 copy
+                alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'input', 'alolib/requirements.txt']
                 for item in alo_src:
                     src_path = PROJECT_HOME + item
                     if os.path.isfile(src_path):
@@ -399,7 +403,15 @@ class ALO:
             system_envs['pipeline_list'] = [*self.user_parameters]
         else:
             system_envs['pipeline_list'] = [f"{alo_mode}_pipeline"]
+        # FIXME sagemaker train 을 위해 덮어쓰기 추가 
+        sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
+        if sol_pipe_mode is not None: 
+            system_envs['alo_mode'] = sol_pipe_mode
+            system_envs['pipeline_list'] = ["train_pipeline"]
+        else:   
+            raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
         return system_envs
+
 
     def _set_asset_home(self):
         if not os.path.exists(ASSET_HOME):
