@@ -10,7 +10,7 @@ from copy import deepcopy
 # local import
 from src.install import Packages
 from src.constants import *
-from src.utils import set_artifacts, setup_asset, match_steps, backup_history, move_output_files
+from src.utils import set_artifacts, match_steps, backup_history, move_output_files
 from src.assets import Assets
 from src.external import ExteranlHandler #external_load_data, external_load_model, external_save_artifacts
 from src.redisqueue import RedisQueue
@@ -404,12 +404,15 @@ class ALO:
         else:
             system_envs['pipeline_list'] = [f"{alo_mode}_pipeline"]
         # FIXME sagemaker train 을 위해 덮어쓰기 추가 
-        sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
-        if sol_pipe_mode is not None: 
-            system_envs['alo_mode'] = sol_pipe_mode
-            system_envs['pipeline_list'] = ["train_pipeline"]
-        else:   
-            raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
+        try:
+            sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
+            if sol_pipe_mode is not None: 
+                system_envs['alo_mode'] = sol_pipe_mode
+                system_envs['pipeline_list'] = ["train_pipeline"]
+            else:   
+                raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
+        except:
+            pass
         return system_envs
 
 
@@ -715,7 +718,6 @@ class ALO:
         self.exp_plan['control'][0]['get_external_data'] = 'every'
 
 
-        
     ########################################
     ####    Part4. Internal fuctions    ####
     ########################################
@@ -745,7 +747,7 @@ class ALO:
         for step, asset_config in enumerate(self.asset_source[pipeline]):
             # self.asset.setup_asset 기능 :
             # local or git pull 결정 및 scripts 폴더 내에 위치시킴 
-            setup_asset(asset_config, get_asset_source)
+            self.asset.setup_asset(asset_config, get_asset_source)
             requirements_dict[asset_config['step']] = asset_config['source']['requirements']
         
         self.install.check_install_requirements(requirements_dict)
