@@ -533,7 +533,7 @@ class ALO:
             # solution_metadata yaml의 edgeconductor_interface를 참고하여 csv 생성 마지막 step의 csv, jpg 생성 마지막 step의 jpg (혹은 png, jpeg)를 
             # .inference_artifacts/output/ 바로 하단 (step명 없이)으로 move한다 (copy (x) : cost down 목적)
             try:
-                move_output_files(pipeline, self.asset_source, self.system_envs['inference_result_datatype'], self.system_envs['train_datatype'])
+                self.artifact.move_output_files(pipeline, self.asset_source, self.system_envs['inference_result_datatype'], self.system_envs['train_datatype'])
             except: 
                 self.proc_logger.process_error("Failed to move output files for edge conductor view.")
             
