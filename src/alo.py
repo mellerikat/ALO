@@ -9,7 +9,6 @@ from collections import Counter
 from copy import deepcopy 
 # local import
 from src.constants import *
-from src.compare_yamls import get_yaml, compare_yaml
 from src.utils import set_artifacts, setup_asset, match_steps, backup_history, move_output_files
 
 from src.assets import Assets
@@ -156,7 +155,7 @@ class ALO:
         ###################################
         self.sagemaker_dir = PROJECT_HOME + '.sagemaker/'
         # load sagemaker_config.yaml 
-        sagemaker_config = get_yaml(PROJECT_HOME + 'config/sagemaker_config.yaml') # dict key ; account_id, role, region 
+        sagemaker_config = self.experimental_plan.get_yaml(PROJECT_HOME + 'config/sagemaker_config.yaml') # dict key ; account_id, role, region 
         account_id = str(sagemaker_config['account_id'])
         role = sagemaker_config['role']
         region = sagemaker_config['region']

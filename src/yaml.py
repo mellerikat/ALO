@@ -1,5 +1,6 @@
 import os
 import shutil
+import yaml
 from src.constants import *
 from src.logger import ProcessLogger
 from src.compare_yamls import get_yaml, compare_yaml
@@ -10,6 +11,19 @@ class ExperimentalPlan:
     def __init__(self, exp_plan_file, sol_meta):
         self.exp_plan_file = exp_plan_file
         self.sol_meta = sol_meta
+
+    def get_yaml(self, _yaml_file):
+        yaml_dict = dict()
+        try:
+            with open(_yaml_file, encoding='UTF-8') as f:
+                yaml_dict  = yaml.load(f, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            PROC_LOGGER.process_error(f"Not Found : {_yaml_file}")
+        except:
+            PROC_LOGGER.process_error(f"Check yaml format : {_yaml_file}")
+
+        return yaml_dict 
+
 
     def read_yaml(self):
         # exp_plan_file은 config 폴더로 복사해서 가져옴. 단, 외부 exp plan 파일 경로는 로컬 절대 경로만 지원 
