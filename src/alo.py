@@ -412,9 +412,21 @@ class ALO:
     ###################################
     ####    Part2. Runs fuction    ####
     ###################################
+        
     
-    
+    def read_structure(self, pipeline, step):
+        import pickle 
+        
+        a = self.asset_structure.config['meta']['artifacts']['.asset_interface'] + pipeline + "/" + self.user_parameters[pipeline][step]['step'] + "_config.pkl"
+        b = self.asset_structure.config['meta']['artifacts']['.asset_interface'] + pipeline + "/" + self.user_parameters[pipeline][step]['step'] + "_data.pkl"
 
+        with open(a, 'rb') as f:
+            _config = pickle.load(f)
+        
+        with open(b, 'rb') as f:
+            _data = pickle.load(f)
+        return _config, _data
+    
     def set_asset_structure(self):
         """Asset 의 In/Out 을 data structure 로 전달한다.
         파이프라인 실행에 필요한 환경 정보를 envs 에 setup 한다.
@@ -479,6 +491,8 @@ class ALO:
                 self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
             except: 
                 self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
+
+            self.read_structure(pipeline, step)
 
 
     def send_summary(self, success_str, ext_saved_path):
