@@ -60,10 +60,13 @@ class SolutionRegister:
         # FIXME 다른 이름으로 exp plan yaml 사용하면 ?
         self.exp_yaml_path = "../../config/experimental_plan.yaml"
         # TODO aws login 방법 고민필요
-        self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"
+        if self.cloud_setup["AIC_URI"] == "https://web.aic-dev.lgebigdata.com/": ## 실계정
+            self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"  ##  
+        else:  ## 현수 kube
+            self.s3_access_key_path = "/nas001/users/sehyun.song/aws.key"    ##
+        print_color(f"[SYSTEM] S3 key 파일을 로드 합니다. (file: {self.s3_access_key_path})", color="green")
         self.icon_path = "./icons/"
 
-        self.sm_yaml = {}
         self.exp_yaml = {}
         self.pipeline = None 
         self.workspaces = None
@@ -71,6 +74,9 @@ class SolutionRegister:
         ## internal variables
         self.aic_cookie = None
         self.solution_name = None
+        self.icon_filenames = []
+        self.sm_yaml = {}
+        self.sm_pipeline_pointer = -1  ## 0 부터 시작
 
         ## debugging 용 변수
         self.debugging = False 
@@ -96,6 +102,7 @@ class SolutionRegister:
         try:
             if self.cloud_setup["LOGIN_MODE"] == 'ldap':
                 login_response = requests.post(self.cloud_setup["AIC_URI"] + self.api_uri["LDAP_LOGIN"], data = login_data)
+                print(login_response)
             else:
                 login_response = requests.post(self.cloud_setup["AIC_URI"] + self.api_uri["STATIC_LOGIN"], data = login_data)
         except Exception as e:
@@ -154,12 +161,16 @@ class SolutionRegister:
 
         solution_data = {
             "workspace_name": self.cloud_setup["WORKSPACE_NAME"], 
-            "only_public": ONLY_PUBLIC 
+            "only_public": ONLY_PUBLIC,
+            "page_size": 100
         }
         aic = self.cloud_setup["AIC_URI"]
         api = self.api_uri["AI_SOLUTION"]
 
+        print(aic+api)
+        print(self.aic_cookie)
         solution_name = requests.get(aic+api, params=solution_data, cookies=self.aic_cookie)
+        print(solution_name)
         solution_name_json = solution_name.json()
 
         if 'solutions' in solution_name_json.keys(): 
@@ -233,6 +244,131 @@ class SolutionRegister:
         print_color(f"[SYSTEM] AWS S3 buckeet:  ", color='green') 
         print_color(f"{self.bucket_name}", color='yellow') 
 
+    def set_wrangler(self, wrangler_path = None):
+        
+        with open('example.py', 'r') as file:
+            python_content = file.read()
+        
+        self.sm_yaml['wrangler_code_uri'] = python_content
+        self.sm_yaml['wrangler_dataset_uri'] = ''
+        self._save_yaml()
+
+    #def set_description(self, overview, input_data, output_data, user_parameters, algorithm):
+    def set_description(self, desc):
+
+        def set_sm_name(self, name):
+            self.name = name.replace(" ", "-")
+            self.sm_yaml['name'] = self.name
+        try: 
+            self.sm_yaml['description']['title'] = self._check_parammeter(desc['title'])
+            set_sm_name(self._check_parammeter(self.solution_name))
+            self.sm_yaml['description']['overview'] = self._check_parammeter(desc['overview'])
+            self.sm_yaml['description']['input_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
+            self.sm_yaml['description']['output_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
+            self.sm_yaml['description']['user_parameters'] = self._check_parammeter(desc['user_parameters'])
+            self.sm_yaml['description']['algorithm'] = self._check_parammeter(desc['algorithm'])
+            # FIXME icon 관련 하드코딩 변경필요 
+            self.sm_yaml['description']['icon'] = self.icon_s3_uri  
+            self._save_yaml()
+            print_color(f"\n<< solution_metadata.yaml >> updated. \n- solution metadata description:\n {self.sm_yaml['description']}", color='green')
+        except Exception as e: 
+            raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{e}")
+
+    #s3://s3-an2-cism-dev-aic/artifacts/bolt_fastening_table_classification/train/artifacts/2023/11/06/162000/
+    def set_pipeline_uri(self, mode):
+        """ dataset, artifacts, model 중에 하나를 선택하면 이에 맞느 s3 uri 를 생성하고, 이를 solution_metadata 에 반영한다.
+
+        Attributes:
+          - mode (str): dataset, artifacts, model 중에 하나 선택
+
+        Returns:
+          - uri (str): s3 uri 를 string 타입으로 반환 함 
+        """
+        if mode == "artifact":
+            uri = {'artifact_uri': "s3://" + self.bucket_name + "/ai-solutions/" + self.solution_name + f"/v{VERSION}/" + self.pipeline  + "/artifacts/"}
+        elif mode == "data":
+            uri = {'dataset_uri': ["s3://" + self.bucket_name + "/ai-solutions/" + self.solution_name + f"/v{VERSION}/" + self.pipeline  + "/data/"]}
+        elif mode == "model":  ## model
+            uri = {'model_uri': "s3://" + self.bucket_name + "/ai-solutions/" + self.solution_name + f"/v{VERSION}/" + 'train'  + "/artifacts/"}
+        else:
+            raise ValueError("mode must be one of [dataset, artifacts, model]")
+
+        try: 
+            if self.pipeline == 'train':
+                if not self.sm_yaml['pipeline'][self.sm_pipeline_pointer]['type'] == 'train':
+                    raise ValueError("Setting << artifact_uri >> in the solution_metadata.yaml is only allowed for << train >> pipeline. \n - current pipeline: {self.pipeline}")
+                ## train pipelne 시에는 model uri 미지원
+                if mode == "model":
+                    raise ValueError("Setting << model_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
+            else: ## inference
+                if not self.sm_yaml['pipeline'][self.sm_pipeline_pointer]['type'] == 'inference':
+                    raise ValueError("Setting << artifact_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
+
+            self.sm_yaml['pipeline'][self.sm_pipeline_pointer].update(uri)
+            self._save_yaml()
+        except Exception as e: 
+            raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{e}")
+        
+        print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
+        if mode == "artifacts":
+            print(f'pipeline: {self.pipeline} -artifact_uri: {uri} ')
+        elif mode == "data":
+            print(f'pipeline: {self.pipeline} -dataset_uri: {uri} ')
+        else: ## model
+            print(f'pipeline: {self.pipeline} -model_uri: {uri} ')
+            
+
+        return uri
+
+    def set_edge(self, edgeconductor_interface: dict):
+
+        def _check_edgeconductor_interface(user_dict):
+            check_keys = ['support_labeling', 'inference_result_datatype', 'train_datatype']
+            allowed_datatypes = ['table', 'image']
+            for k in user_dict.keys(): 
+                self._check_parammeter(k)
+                if k not in check_keys: 
+                    raise ValueError(f"<< {k} >> is not allowed for edgeconductor_interface key.")
+            for k in check_keys: 
+                if k not in user_dict.keys(): 
+                    raise ValueError(f"<< {k} >> must be in the edgeconductor_interface key list.")
+
+            if isinstance(user_dict['support_labeling'], bool):
+                pass
+            else: 
+                raise ValueError("<< support_labeling >> parameter must have boolean type.")
+            if user_dict['inference_result_datatype'] not in allowed_datatypes:
+                raise ValueError(f"<< inference_result_datatype >> parameter must have the value among these: \n{allowed_datatypes}")
+            if user_dict['train_datatype'] not in allowed_datatypes:
+                raise ValueError(f"<< train_datatype >> parameter must have the value among these: \n{allowed_datatypes}")                  
+
+        # edgeconductor interface 
+        _check_edgeconductor_interface(edgeconductor_interface)
+
+        self.sm_yaml['edgeconductor_interface'] = edgeconductor_interface
+        
+        # FIXME edgeapp interface는 우리가 값 채울 필요 X? 
+        self.sm_yaml['edgeapp_interface'] = {'redis_server_uri': ""}
+        self._save_yaml()
+
+    def register_solution(self): 
+        try: 
+            # 등록을 위한 형태 변경
+            data = {
+            "scope_ws": self.URI_SCOPE,
+            "metadata_json": self.sm_yaml
+            }
+            data =json.dumps(data)
+            solution_params = {
+                "workspace_name": self.WORKSPACE_NAME
+            }
+            # AI 솔루션 등록
+            post_response = requests.post(self.URI + AI_SOLUTION, params=solution_params, data=data, cookies=self.aic_cookie)
+            self.register_solution_response = post_response.json()
+            print_color(f"[INFO] AI solution register response: \n {self.register_solution_response}", color='cyan')
+        except Exception as e: 
+            raise NotImplementedError(f"Failed to register AI solution: \n {e}")
+
     ################################
     ######    STEP2. S3 Control
     ################################
@@ -280,23 +416,10 @@ class SolutionRegister:
         return isinstance(boto3.client('s3'), botocore.client.BaseClient)
     
             
-    def s3_upload_icon(self):
-        """ icon 업로드는 추후 제공 
-        현재는 icon name 을 solution_metadata 에 업데이트 하는 것으로 마무리 
+    def s3_upload_icon_display(self):
+        """ 가지고 있는 icon 들을 디스플레이하고 파일명을 선택하게 한다. 
         """
-
-        self.print_step("Upload icon")
-
-        # s3_path = f'icons/'
-        # s3 = self.s3
-        # files = s3.list_objects_v2(Bucket=self.bucket_name, Prefix=s3_path)['Contents']
-        # for file in files:
-        #     file_name = file['Key'].split('/')[-1]
-        #     if file_name:
-        #         print(file_name)
-        #     #     s3.download_file(self.bucket_name, file['Key'], file_name)
-        #     #     print(f"Downloaded {file_name}")
-
+        self.print_step("Display icon list")
 
         # 폴더 내의 모든 SVG 파일을 리스트로 가져오기
         svg_files = [os.path.join(self.icon_path, file) for file in os.listdir(self.icon_path) if file.endswith('.svg')]
@@ -315,10 +438,17 @@ class SolutionRegister:
                                 </div>'''
         html_content += '</div>'
 
-        print(icon_filenames)
+        self.icon_filenames = icon_filenames
 
         return html_content
-        # inner func.
+
+    def s3_upload_icon(self, name):
+        """ icon 업로드는 추후 제공 
+        현재는 icon name 을 solution_metadata 에 업데이트 하는 것으로 마무리 
+        """
+        self.print_step("Upload icon")
+
+        # 신규 icon 파일을 업로드 하는 경우 (추후 지원)
         # def s3_process(s3, bucket_name, data_path, s3_path):
         #     objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
         #     print(objects_to_delete)
@@ -337,13 +467,23 @@ class SolutionRegister:
         #         return False
         #     print_color(f"Success uploading into S3 path: {bucket_name + '/' + s3_path}", color='green')
         #     return True
-
         # # FIXME hardcoding icon.png 솔루션 이름등으로 변경 필요 
         # data_path = f'./image/{self.ICON_FILE}'
         # s3_process(self.s3, self.bucket_name, data_path, s3_file_path)
-        # self.icon_s3_uri = "s3://" + self.bucket_name + '/' + s3_file_path   # 값을 리스트로 감싸줍니다
-        # self.sm_yaml['description']['icon'] = self.icon_s3_uri
-        # self._save_yaml()
+
+        if not ".svg" in name:
+            name = name+".svg"
+        if name in self.icon_filenames:
+            print_color(f"[SUCCESS] Update icon name: {name}", color='green')
+
+            self.icon_s3_uri = "s3://" + self.bucket_name + '/icons/' + name   # 값을 리스트로 감싸줍니다
+            self.sm_yaml['description']['icon'] = self.icon_s3_uri
+            self._save_yaml()
+
+            print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
+            print(f'description: -icon: {self.icon_s3_uri} ')
+        else:
+            raise ValueError(f"[ERROR] Wrong icon name: {name}. \n(icon_list={self.icon_filenames}) ")
         
 
     def s3_upload_data(self):
@@ -388,16 +528,13 @@ class SolutionRegister:
                             s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, False)
             except Exception as e: 
                 raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
+
+
             try:    
-                value = "s3://" + self.bucket_name + "/" + self.s3_path + "/"
-                data = {'dataset_uri': [value]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][0].update(data)
-                self._save_yaml()
-                print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
-                print(f'pipeline: {self.pipeline} -dataset_uri: {value} ')
+                self.set_pipeline_uri(mode="data")
             except Exception as e: 
                 raise NotImplementedError(f'\nFailed updating solution_metadata.yaml \n{e}')
-        elif "inf" in self.pipeline:
+        elif "inference" in self.pipeline:
             local_folder = ALODIR + "input/inference/"
             print_color(f'[INFO] Start uploading data into S3 from local folder:', color='cyan')
             print(f'{local_folder}')
@@ -412,12 +549,7 @@ class SolutionRegister:
             except Exception as e: 
                 raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
             try:
-                value = "s3://" + self.bucket_name + "/" + self.s3_path + "/"
-                data = {'dataset_uri': [value]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][1].update(data)
-                self._save_yaml()
-                print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
-                print(f'pipeline: {self.pipeline} -dataset_uri: {value} ')
+                self.set_pipeline_uri(mode="data")
             except Exception as e: 
                 raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline} \n{e}')
         else:
@@ -466,17 +598,12 @@ class SolutionRegister:
             print(f'{local_folder}')
             s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path) # self.s3_path 는 s3_access_check 할때 셋팅
             try: 
-                value = "s3://" + self.bucket_name + "/" + self.s3_path + "/"
-                artifact_uri = {'artifact_uri': [value]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][0].update(artifact_uri)
-                self._save_yaml()
-                print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
-                print(f'pipeline: {self.pipeline} -artifact_uri: {value} ')
+                self.set_pipeline_uri(mode="artifact")
             except Exception as e: 
                 raise NotImplementedError(f'Failed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
             finally:
                 shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
-        elif "inf" in self.pipeline:
+        elif "inference" in self.pipeline:
             ## inference artifacts tar gz 업로드 
             artifacts_path = _tar_dir(".inference_artifacts")  # artifacts tar.gz이 저장된 local 경로 
             local_folder = os.path.split(artifacts_path)[0] + '/'
@@ -484,12 +611,7 @@ class SolutionRegister:
             print(f'{local_folder}')
             s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path)
             try: 
-                value = "s3://" + self.bucket_name + "/" + self.s3_path + "/"
-                artifact_uri = {'artifact_uri': [value]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][1].update(artifact_uri)
-                self._save_yaml()
-                print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
-                print(f'pipeline: {self.pipeline} -artifact_uri: {value} ')
+                self.set_pipeline_uri(mode="artifact")
             except Exception as e: 
                 raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
             finally:
@@ -505,10 +627,7 @@ class SolutionRegister:
             # 주의! 이미 train artifacts도 같은 경로에 업로드 했으므로 model.tar.gz올릴 땐 delete object하지 않는다. 
             s3_process(self.s3, self.bucket_name, model_path, local_folder, train_artifacts_s3_path, delete=False) 
             try: 
-                model_uri = {'model_uri': ["s3://" + self.bucket_name + "/" + train_artifacts_s3_path + "/"]}  # 값을 리스트로 감싸줍니다
-                self.sm_yaml['pipeline'][1].update(model_uri)
-                self._save_yaml()
-                print_color(f'\nSuccess updating solution_metadata.yaml - << model_uri >> info. / pipeline: {self.pipeline}', color='green')
+                self.set_pipeline_uri(mode="model")
             except Exception as e: 
                 raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << model_uri >> info / pipeline: {self.pipeline} \n{e}')
             finally:
@@ -516,210 +635,176 @@ class SolutionRegister:
         else:
             raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
 
-    #####################################
-    ######    Internal Functions
-    #####################################
+    ################################
+    ######    STEP3. Dcoker Container Control
+    ################################
 
-    def _set_yaml(self, pipeline, version=VERSION):
-        """ Solution Metadata 를 생성합니다. 
-
+    def make_docker_container(self):
+        """ECR 에 업로드 할 docker 를 제작 한다. 
+        1) experimental_plan 에 사용된 source code 를 임시 폴더로 copy 한다. 
+        2) Dockerfile 을 작성 한다. 
+        3) Dockerfile 을 컴파일 한다. 
+        4) 컴파일 된 도커 파일을 ECR 에 업로드 한다. 
+        5) 컨테이너 uri 를 solution_metadata.yaml 에 저장 한다. 
+        
         """
-        self.pipeline = pipeline
-        self.sm_yaml['version'] = version
-        self.sm_yaml['name'] = ''
-        self.sm_yaml['description'] = {}
-        self.sm_yaml['pipeline'] = []
-        self.sm_yaml['pipeline'].append({'type': pipeline})
-        # self.sm_yaml['pipeline'].append({'type': 'inference'})
-        try: 
-            self._save_yaml()
-            if self.debugging:
-                print_color(f"\n << solution_metadata.yaml >> generated. - current version: v{version}", color='green')
-        except: 
-            raise NotImplementedError("Failed to generate << solution_metadata.yaml >>")
-    
-    def _save_yaml(self):
-        # YAML 파일로 데이터 저장
-        class NoAliasDumper(Dumper):
-            def ignore_aliases(self, data):
-                return True
-        with open('solution_metadata.yaml', 'w', encoding='utf-8') as yaml_file:
-            yaml.dump(self.sm_yaml, yaml_file, allow_unicode=True, default_flow_style=False, Dumper=NoAliasDumper)
+
+        self.print_step("Set AWS ECR")
+        self._set_alo()  # copy alo folders
+        ##TODO : ARM/AMD 에 따라 다른 dockerfile 설정
+        self._set_docker_contatiner()  ## set docerfile
+
+        if self.cloud_setup["BUILD_METHOD"] == 'docker':
+            ## docker login 실행 
+            self._set_aws_ecr(docker=True)
+        else:  ##buildah
+            self._set_aws_ecr(docker=False, tags=self.cloud_setup["BUILDAH_TAGS"]) 
+
+        self.print_step("Upload Docker Container")
+
+        self._build_docker()
+        self._docker_push()
+        self._set_container_uri()
 
 
+    def _set_aws_ecr(self, docker = True, tags = []):
 
 
+        self.docker = docker
+        self.ecr_url = self.ecr.split("/")[0]
+        # FIXME 마지막에 붙는 container 이름은 solution_name 과 같게 
+        # http://collab.lge.com/main/pages/viewpage.action?pageId=2126915782
+        # [중요] container uri 는 magna-ws 말고 magna 같은 식으로 쓴다 (231207 임현수C)
+        ecr_scope = self.cloud_setup["WORKSPACE_NAME"].split('-')[0] # magna-ws --> magna
+        self.ecr_repo = self.ecr.split("/")[1] + '/' + ecr_scope + "/ai-solutions/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
+        self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
 
-
-    ################################################
-    ################################################
-
-        
-    def set_user_input(self): 
-        # TODO user input 다 잘 작성했나 체크필요 
-        # 각 key 별 value 클래스 self 변수화 
-        for key, value in self.user_input.items():
-            setattr(self, key, value)
-        
-
-    
-    
-
-    
-        
-        
-            
-
-        
-    def append_pipeline(self, pipeline): 
-        self.sm_yaml['pipeline'].append({'type': 'inference'})
-        self.pipeline = pipeline # 가령 inference 파이프라인 추가 시 인스턴스의 pipeline을 inference 로 변경 
-        try: 
-            self._save_yaml()
-            print_color(f"\n<< solution_metadata.yaml >> updated. - appended pipeline: {pipeline}", color='green')
-        except: 
-            raise NotImplementedError("Failed to update << solution_metadata.yaml >>")
-        
-        
-    def read_yaml(self, yaml_file_path):
+        ## 동일 이름의 ECR 존재 시, 삭제하고 다시 생성한다. 
         try:
-        # YAML 파일을 읽어옵니다.
-            with open(yaml_file_path, 'r') as yaml_file:
-                data = yaml.safe_load(yaml_file)
+            f = open(self.s3_access_key_path, "r")
+            keys = []
+            values = []
+            for line in f:
+                key = line.split(":")[0]
+                value = line.split(":")[1].rstrip()
+                keys.append(key)
+                values.append(value)
+            ACCESS_KEY = values[0]
+            SECRET_KEY = values[1]
+            ecr_client = boto3.client('ecr',
+                                aws_access_key_id=ACCESS_KEY,
+                                aws_secret_access_key=SECRET_KEY,
+                                region_name=self.cloud_setup['REGION'])
+        except:
+            print_color(f"[INFO] Start s3 access check without key file.", color="blue")
+            ecr_client = boto3.client('ecr')
 
-        # 파싱된 YAML 데이터를 사용합니다.
-        except FileNotFoundError:
-            print(f'File {yaml_file_path} not found.')
-        
-        if  'solution' in yaml_file_path:
-            self.sm_yaml = data
-        elif 'experimental' in yaml_file_path:
-            self.exp_yaml = data
-            if self.exp_yaml['control'][0]['get_asset_source'] == 'every':
-                self.exp_yaml['control'][0]['get_asset_source'] = 'once'
-            with open(yaml_file_path, 'w') as file:
-                yaml.safe_dump(self.exp_yaml, file)
+        ### TEST 
+        # resp = ecr_client.describe_repositories(repositoryNames=['086558720570'])
+        # print("SSH!!!!:   ", resp['repositories'])
+
+        repos = ecr_client.describe_repositories(
+            maxResults=600  ## 갯수가 작아서 찾지 못하는 Issue 있었음 (24.01)
+            )
+        for repo in repos['repositories']:
+            # print(repo['repositoryName'])
+            if repo['repositoryName'] == self.ecr_repo:
+                print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
+                ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
+
+        # print(f"Creating new repository {repository_name}") 
+        # ecr_client.create_repository(repositoryName=repository_name)
+
+
+        if self.docker == True:
+            run = 'docker'
         else:
-            pass
+            run = 'buildah'
 
-    def set_sm_name(self, name):
-        self.name = name.replace(" ", "-")
-        self.sm_yaml['name'] = self.name
+        print_color(f"[SYSTEM] target AWS ECR url: ", color='blue')
+        print(f"{self.ecr_url}",)
+
+        p1 = subprocess.Popen(
+            ['aws', 'ecr', 'get-login-password', '--region', f'{self.cloud_setup["REGION"]}'], stdout=subprocess.PIPE
+        )
+        p2 = subprocess.Popen(
+            [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
+        )
+        p1.stdout.close()
+        output = p2.communicate()[0]
+
+        print_color(f"[SYSTEM] AWS ECR | docker login result:", color='cyan')
+        print(f"{output.decode()}")
+
+        print_color(f"[SYSTEM] Target AWS ECR repository:", color='cyan')
+        print(f"{self.ecr_repo}")
+
+        # print(tags)
+
+        if len(tags) > 0:
+            command = [
+            "aws",
+            "ecr",
+            "create-repository",
+            "--region", self.cloud_setup["REGION"],
+            "--repository-name", self.ecr_repo,
+            "--image-scanning-configuration", "scanOnPush=true",
+            "--tags"
+            ] + tags  # 전달된 태그들을 명령어에 추가합니다.
+        else:
+            command = [
+            "aws",
+            "ecr",
+            "create-repository",
+            "--region", self.cloud_setup["REGION"],
+            "--repository-name", self.ecr_repo,
+            "--image-scanning-configuration", "scanOnPush=true",
+            ]
+        # subprocess.run() 함수를 사용하여 명령을 실행합니다.
+        try:
+            # result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            # print_color(f"[INFO] AWS ECR create-repository response: \n{result.stdout}", color='cyan')
+            resp = ecr_client.create_repository(repositoryName=self.ecr_repo, tags=tags)
+            print_color(f"[SYSTEM] AWS ECR create-repository response: ", color='cyan')
+            print(f"{resp}")
+        except subprocess.CalledProcessError as e:
+            raise NotImplementedError(f"Failed to AWS ECR create-repository:\n + {e}")
+
+    # FIXME 그냥 무조건 latest로 박히나? 
+    def _build_docker(self):
+        if self.docker:
+            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:{self.cloud_setup["ECR_TAG"]}'])
+        else:
+            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:{self.cloud_setup["ECR_TAG"]}'])
 
 
-    #def set_description(self, overview, input_data, output_data, user_parameters, algorithm):
-    def set_description(self, desc):
-        try: 
-            self.sm_yaml['description']['title'] = self._check_parammeter(desc['title'])
-            self.set_sm_name(self._check_parammeter(self.solution_name))
-            self.sm_yaml['description']['overview'] = self._check_parammeter(desc['overview'])
-            self.sm_yaml['description']['input_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
-            self.sm_yaml['description']['output_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
-            self.sm_yaml['description']['user_parameters'] = self._check_parammeter(desc['user_parameters'])
-            self.sm_yaml['description']['algorithm'] = self._check_parammeter(desc['algorithm'])
-            # FIXME icon 관련 하드코딩 변경필요 
-            self.sm_yaml['description']['icon'] = self.icon_s3_uri  
-            self._save_yaml()
-            print_color(f"\n<< solution_metadata.yaml >> updated. \n- solution metadata description:\n {self.sm_yaml['description']}", color='green')
-        except Exception as e: 
-            raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{e}")
-            
+    def _docker_push(self):
+        if self.docker:
+            subprocess.run(['docker', 'push', f'{self.ecr_full_url}:{self.cloud_setup["ECR_TAG"]}'])
+        else:
+            subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{self.cloud_setup["ECR_TAG"]}'])
+        if self.docker:
+            subprocess.run(['docker', 'logout'])
+        else:
+            subprocess.run(['sudo', 'buildah', 'logout', '-a'])
 
-    def set_wrangler(self, wrangler_path = None):
-        
-        with open('example.py', 'r') as file:
-            python_content = file.read()
-        
-        self.sm_yaml['wrangler_code_uri'] = python_content
-        self.sm_yaml['wrangler_dataset_uri'] = ''
-        self._save_yaml()
-
-
-    def set_container_uri(self):
+    def _set_container_uri(self):
         try: 
             data = {'container_uri': self.ecr_full_url} # full url 는 tag 정보까지 포함 
-            if self.pipeline == 'train':
-                data = {'container_uri': self.ecr_full_url}
-                self.sm_yaml['pipeline'][0].update(data)
-                print_color(f"[INFO] Completes setting << container_uri >> in solution_metadata.yaml: \n{data['container_uri']}", color='green')
-            elif self.pipeline == 'inference':
-                data = {'container_uri': self.ecr_full_url}
-                self.sm_yaml['pipeline'][1].update(data)
-                print_color(f"[INFO] Completes setting << container_uri >> in solution_metadata.yaml: \n{data['container_uri']}", color='green')
+            data = {'container_uri': self.ecr_full_url}
+            self.sm_yaml['pipeline'][self.sm_pipeline_pointer].update(data)
+            print_color(f"[SYSTEM] Completes setting << container_uri >> in solution_metadata.yaml:", color='green')
+            print(f"pipeline: -container_uri: {data['container_uri']}")
             self._save_yaml()
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << container_uri >> in the solution_metadata.yaml \n{e}")
 
-
-    #s3://s3-an2-cism-dev-aic/artifacts/bolt_fastening_table_classification/train/artifacts/2023/11/06/162000/
-    def set_artifacts_uri(self):
-        try: 
-            data = {'artifact_uri': "s3://" + self.bucket_name + "/ai-solutions/" + self.solution_name + f"/v{VERSION}/" + self.pipeline  + "/artifacts/"}
-            if self.pipeline == 'train':
-                self.sm_yaml['pipeline'][0].update(data)
-            elif self.pipeline =='inference':
-                self.sm_yaml['pipeline'][1].update(data)
-            self._save_yaml()
-            print_color(f"[INFO] Completes setting << artifact_uri >> in solution_metadata.yaml: \n{data['artifact_uri']}", color='green')
-        except Exception as e: 
-            raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{e}")
-        
-        
-    def set_model_uri(self):
-        try: 
-            # FIXME 주의: set model uri는 추론시에만 call 하지만, artifacts 경로는 train 으로 고정 
-            data = {'model_uri': "s3://" + self.bucket_name + "/ai-solutions/" + self.solution_name + f"/v{VERSION}/" + 'train' + "/artifacts/"}
-            if self.pipeline == 'train':
-                raise ValueError("Setting << model_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
-            elif self.pipeline == 'inference':
-                self.sm_yaml['pipeline'][1].update(data)
-            self._save_yaml()
-            print_color(f"[INFO] Completes setting << model_uri >> in solution_metadata.yaml: \n{data['model_uri']}", color='green')
-        except Exception as e: 
-            raise NotImplementedError(f"Failed to set << model_uri >> in the solution_metadata.yaml \n{e}")
-
-
-    def _check_edgeconductor_interface(self, user_dict):
-        check_keys = ['support_labeling', 'inference_result_datatype', 'train_datatype']
-        allowed_datatypes = ['table', 'image']
-        for k in user_dict.keys(): 
-            self._check_parammeter(k)
-            if k not in check_keys: 
-                raise ValueError(f"<< {k} >> is not allowed for edgeconductor_interface key.")
-        for k in check_keys: 
-            if k not in user_dict.keys(): 
-                raise ValueError(f"<< {k} >> must be in the edgeconductor_interface key list.")
-
-        if isinstance(user_dict['support_labeling'], bool):
-            pass
-        else: 
-            raise ValueError("<< support_labeling >> parameter must have boolean type.")
-        if user_dict['inference_result_datatype'] not in allowed_datatypes:
-            raise ValueError(f"<< inference_result_datatype >> parameter must have the value among these: \n{allowed_datatypes}")
-        if user_dict['train_datatype'] not in allowed_datatypes:
-            raise ValueError(f"<< train_datatype >> parameter must have the value among these: \n{allowed_datatypes}")                  
-        
-        
-    def set_edge(self, edgeconductor_interface: dict):
-        # edgeconductor interface 
-        self._check_edgeconductor_interface(edgeconductor_interface)
-        self.sm_yaml['edgeconductor_interface'] = edgeconductor_interface
-        
-        # FIXME edgeapp interface는 우리가 값 채울 필요 X? 
-        self.sm_yaml['edgeapp_interface'] = {'redis_server_uri': ""}
-        self._save_yaml()
-
-
-    # def set_train_dataset_uri(self):
-    #     pass
-
-
-    # def set_train_artifact_uri(self):
-    #     pass
-
+    ################################
+    ######    STEP4. Set User Parameters
+    ################################
 
     def set_candidate_parameters(self):
-        self.read_yaml(self.exp_yaml_path)
+        self._read_experimentalplan_yaml(self.exp_yaml_path)
 
         def rename_key(d, old_key, new_key): #inner func.
             if old_key in d:
@@ -766,45 +851,10 @@ class SolutionRegister:
             
         print_color("\n[{self.pipeline}] Success updating << user_parameters >> in the solution_metadata.yaml", color='green')
         self._save_yaml()
-        
-        
-    # def set_user_parameters(self):
-    #     # user parameters setting 
-    #     # subkeys = {}
-    #     # user_parameters = []
-    #     # for step in self.candidate_dict['candidate_parameters']:
-    #     #     print(step)
-    #     #     print('----------')
-    #     #     output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
-    #     #     user_parameters.append(output_data)
-    #     # subkeys['user_parameters'] = user_parameters
-    #     # return subkeys 
-    #     print(self.candidate_dict['candidate_parameters'])
-    #     data = [] #["data1", "data2", "data3", "data4"]
-    #     for step_info in self.candidate_dict['candidate_parameters']:
-    #         for k in step_info['args'][0].keys(): 
-    #             data.append(step_info['step'] + ' / ' + k)
-    #     checkboxes = [widgets.Checkbox(value=False, description=label) for label in data]
-    #     output = widgets.VBox(children=checkboxes)
-    #     display(output)
-    #     selected_data = []
-    #     for i in range(0, len(checkboxes)):
-    #         if checkboxes[i].value == True:
-    #             selected_data = selected_data + [checkboxes[i].description]
-    #     print(selected_data)
-        
 
-    def set_resource(self, resource = 'standard'):
-        if "train" in self.pipeline:
-            self.sm_yaml['pipeline'][0]["resource"] = {"default": resource}
-        elif "inference" in self.pipeline:
-            self.sm_yaml['pipeline'][1]["resource"] = {"default": resource}
-        print_color(f"\n[{self.pipeline}] Success updating << resource >> in the solution_metadata.yaml", color='green')
-        self._save_yaml()
-
-
-        
-        
+    #####################################
+    ##### For Debug 
+    #####################################
     def get_contents(self, url):
         def _is_git_url(url):
             git_url_pattern = r'^(https?|git)://[^\s/$.?#].[^\s]*$'
@@ -817,108 +867,9 @@ class SolutionRegister:
                 shutil.rmtree(contents_path)  # 폴더 제거
             repo = git.Repo.clone_from(url, "./contents")
 
-    def set_alo(self):
-        alo_path = ALODIR
-        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib']
-        work_path = WORKINGDIR + "alo/"
 
-        if os.path.isdir(work_path):
-            shutil.rmtree(work_path)
-        os.mkdir(work_path)
-
-        for item in alo_src:
-            src_path = alo_path + item
-            if os.path.isfile(src_path):
-                shutil.copy2(src_path, work_path)
-                print_color(f'[INFO] copy from " {src_path} "  -->  " {work_path} " ', color='blue')
-            elif os.path.isdir(src_path):
-                dst_path = work_path  + os.path.basename(src_path)
-                shutil.copytree(src_path, dst_path)
-                print_color(f'[INFO] copy from " {src_path} "  -->  " {dst_path} " ', color='blue')
-            
-        print_color("\n Success ALO directory setting.", color='green')
-
-    def set_docker_contatiner(self):
-        try: 
-            dockerfile = "Dockerfile"
-            spm = 'ENV SOLUTION_PIPELINE_MODE='
-            if os.path.isfile(WORKINGDIR + dockerfile):
-                os.remove(WORKINGDIR + dockerfile)
-            shutil.copy(WORKINGDIR + "origin/" + dockerfile, WORKINGDIR)
-            file_path = WORKINGDIR + dockerfile
-            d_file = []
-            with open(file_path, 'r') as file:
-                for line in file:
-                    if line.startswith(spm):
-                        if line.find(self.pipeline) > 0:
-                            # 현재 파이프라인으로 구동
-                            pass
-                        else:
-                            # 다른 파이프라인으로 dockerfile을 수정 후 구동
-                            line = line.replace('train', self.pipeline)
-                    d_file.append(line)
-            data = ''.join(d_file)
-            with open(file_path, 'w') as file:
-                file.write(data)
-            print_color(f"Success DOCKERFILE setting. \n - pipeline: {self.pipeline}", color='green')
-        except Exception as e: 
-            raise NotImplementedError(f"Failed DOCKERFILE setting. \n - pipeline: {self.pipeline} \n {e}")
         
         
-    def set_aws_ecr(self, docker = True, tags = []):
-        self.docker = docker
-        self.ecr_url = self.ecr.split("/")[0]
-        # FIXME 마지막에 붙는 container 이름은 solution_name 과 같게 
-        # http://collab.lge.com/main/pages/viewpage.action?pageId=2126915782
-        # [중요] container uri 는 magna-ws 말고 magna 같은 식으로 쓴다 (231207 임현수C)
-        ecr_scope = self.URI_SCOPE.split('-')[0] # magna-ws --> magna
-        self.ecr_repo = self.ecr.split("/")[1] + '/' + ecr_scope + "/ai-solutions/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
-        self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
-        if self.docker == True:
-            run = 'docker'
-        else:
-            run = 'buildah'
-
-        print_color(f"[INFO] target AWS ECR url: \n{self.ecr_url}", color='blue')
-
-        p1 = subprocess.Popen(
-            ['aws', 'ecr', 'get-login-password', '--region', f'{self.region}'], stdout=subprocess.PIPE
-        )
-        p2 = subprocess.Popen(
-            [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
-        )
-        p1.stdout.close()
-        output = p2.communicate()[0]
-
-        print_color(f"[INFO] AWS ECR | docker login result: \n {output.decode()}", color='cyan')
-        print_color(f"[INFO] Target AWS ECR repository: \n{self.ecr_repo}", color='cyan')
-
-        if len(tags) > 0:
-            command = [
-            "aws",
-            "ecr",
-            "create-repository",
-            "--region", self.region,
-            "--repository-name", self.ecr_repo,
-            "--image-scanning-configuration", "scanOnPush=true",
-            "--tags"
-            ] + tags  # 전달된 태그들을 명령어에 추가합니다.
-        else:
-            command = [
-            "aws",
-            "ecr",
-            "create-repository",
-            "--region", self.region,
-            "--repository-name", self.ecr_repo,
-            "--image-scanning-configuration", "scanOnPush=true",
-            ]
-        # subprocess.run() 함수를 사용하여 명령을 실행합니다.
-        try:
-            result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            print_color(f"\n[INFO] AWS ECR create-repository response: \n{result.stdout}", color='cyan')
-        except subprocess.CalledProcessError as e:
-            raise NotImplementedError(f"Failed to AWS ECR create-repository:\n + {e}")
-
 
     # FIXME [임시] amd docker ecr 등록 실험용 
     def rename_docker(self, pre_existing_docker: str): 
@@ -933,42 +884,7 @@ class SolutionRegister:
         except: 
             raise NotImplementedError("Failed to rename docker.")
         
-    # FIXME 그냥 무조건 latest로 박히나? 
-    def build_docker(self):
-        if self.docker:
-            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:{self.ECR_TAG}'])
-        else:
-            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:{self.ECR_TAG}'])
-
-
-    def docker_push(self):
-        if self.docker:
-            subprocess.run(['docker', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
-        else:
-            subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
-        if self.docker:
-            subprocess.run(['docker', 'logout'])
-        else:
-            subprocess.run(['sudo', 'buildah', 'logout', '-a'])
-
     
-    def register_solution(self): 
-        try: 
-            # 등록을 위한 형태 변경
-            data = {
-            "scope_ws": self.URI_SCOPE,
-            "metadata_json": self.sm_yaml
-            }
-            data =json.dumps(data)
-            solution_params = {
-                "workspace_name": self.WORKSPACE_NAME
-            }
-            # AI 솔루션 등록
-            post_response = requests.post(self.URI + AI_SOLUTION, params=solution_params, data=data, cookies=self.aic_cookie)
-            self.register_solution_response = post_response.json()
-            print_color(f"[INFO] AI solution register response: \n {self.register_solution_response}", color='cyan')
-        except Exception as e: 
-            raise NotImplementedError(f"Failed to register AI solution: \n {e}")
         
         
     def register_solution_instance(self): 
@@ -1079,7 +995,121 @@ class SolutionRegister:
                 print_color(f'Downloaded: {filename}', color='cyan')
         except: 
             raise NotImplementedError("Failed to download train artifacts.")
+
+
+    #####################################
+    ######    Internal Functions
+    #####################################
+
+    def _init_solution_metadata(self, version=VERSION):
+        """ Solution Metadata 를 생성합니다. 
+
+        """
+        self.sm_yaml['version'] = version
+        self.sm_yaml['name'] = ''
+        self.sm_yaml['description'] = {}
+        self.sm_yaml['pipeline'] = []
+        # self.sm_yaml['pipeline'].append({'type': 'inference'})
+        try: 
+            self._save_yaml()
+            if self.debugging:
+                print_color(f"\n << solution_metadata.yaml >> generated. - current version: v{version}", color='green')
+        except: 
+            raise NotImplementedError("Failed to generate << solution_metadata.yaml >>")
+
+    def _sm_append_pipeline(self, pipeline_name): 
+        if not pipeline_name in ['train', 'inference']:
+            raise ValueError(f"Invalid value ({pipeline_name}). Only one of 'train' or 'inference' is allowed as input.")
+        self.sm_yaml['pipeline'].append({'type': pipeline_name})
+        self.pipeline = pipeline_name # 가령 inference 파이프라인 추가 시 인스턴스의 pipeline을 inference 로 변경 
+        self.sm_pipeline_pointer += 1 # 파이프라인 포인터 증가 1
+        try: 
+            self._save_yaml()
+            print_color(f"\n<< solution_metadata.yaml >> updated. - appended pipeline: {pipeline_name}", color='green')
+        except: 
+            raise NotImplementedError("Failed to update << solution_metadata.yaml >>")
     
+    def _save_yaml(self):
+        # YAML 파일로 데이터 저장
+        class NoAliasDumper(Dumper):
+            def ignore_aliases(self, data):
+                return True
+        with open('solution_metadata.yaml', 'w', encoding='utf-8') as yaml_file:
+            yaml.dump(self.sm_yaml, yaml_file, allow_unicode=True, default_flow_style=False, Dumper=NoAliasDumper)
+
+
+    def _set_alo(self):
+
+        self.print_step("Set alo source code")
+
+        alo_path = ALODIR
+        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib']
+        work_path = WORKINGDIR + "alo/"
+
+        if os.path.isdir(work_path):
+            shutil.rmtree(work_path)
+        os.mkdir(work_path)
+
+        for item in alo_src:
+            src_path = alo_path + item
+            if os.path.isfile(src_path):
+                shutil.copy2(src_path, work_path)
+                print_color(f'[INFO] copy from " {src_path} "  -->  " {work_path} " ', color='blue')
+            elif os.path.isdir(src_path):
+                dst_path = work_path  + os.path.basename(src_path)
+                shutil.copytree(src_path, dst_path)
+                print_color(f'[INFO] copy from " {src_path} "  -->  " {dst_path} " ', color='blue')
+            
+        print_color("[SUCCESS] Success ALO directory setting.", color='green')
+
+    def _set_docker_contatiner(self):
+        try: 
+            dockerfile = "Dockerfile"
+            spm = 'ENV SOLUTION_PIPELINE_MODE='
+            if os.path.isfile(WORKINGDIR + dockerfile):
+                os.remove(WORKINGDIR + dockerfile)
+            shutil.copy(WORKINGDIR + "origin/" + dockerfile, WORKINGDIR)
+            file_path = WORKINGDIR + dockerfile
+            d_file = []
+            with open(file_path, 'r') as file:
+                for line in file:
+                    if line.startswith(spm):
+                        if line.find(self.pipeline) > 0:
+                            # 현재 파이프라인으로 구동
+                            pass
+                        else:
+                            # 다른 파이프라인으로 dockerfile을 수정 후 구동
+                            line = line.replace('train', self.pipeline)
+                    d_file.append(line)
+            data = ''.join(d_file)
+            with open(file_path, 'w') as file:
+                file.write(data)
+            print_color(f"[SUCESS] set DOCKERFILE for ({self.pipeline}) pipeline", color='green')
+        except Exception as e: 
+            raise NotImplementedError(f"Failed DOCKERFILE setting. \n - pipeline: {self.pipeline} \n {e}")
+
+
+    def _read_experimentalplan_yaml(self, yaml_file_path):
+        try:
+        # YAML 파일을 읽어옵니다.
+            with open(yaml_file_path, 'r') as yaml_file:
+                data = yaml.safe_load(yaml_file)
+
+        # 파싱된 YAML 데이터를 사용합니다.
+        except FileNotFoundError:
+            print(f'File {yaml_file_path} not found.')
+        
+        if  'solution' in yaml_file_path:
+            self.sm_yaml = data
+        elif 'experimental' in yaml_file_path:
+            self.exp_yaml = data
+            if self.exp_yaml['control'][0]['get_asset_source'] == 'every':
+                self.exp_yaml['control'][0]['get_asset_source'] = 'once'
+            with open(yaml_file_path, 'w') as file:
+                yaml.safe_dump(self.exp_yaml, file)
+        else:
+            pass
+
     def _check_parammeter(self, param):
         if self._check_str(param):
             return param
@@ -1089,6 +1119,19 @@ class SolutionRegister:
 
     def _check_str(self, data):
         return isinstance(data, str)
+
+
+    #####################################
+    ######    Spec-out
+    #####################################
+
+    def set_resource(self, resource = 'standard'):
+        if "train" in self.pipeline:
+            self.sm_yaml['pipeline'][0]["resource"] = {"default": resource}
+        elif "inference" in self.pipeline:
+            self.sm_yaml['pipeline'][1]["resource"] = {"default": resource}
+        print_color(f"\n[{self.pipeline}] Success updating << resource >> in the solution_metadata.yaml", color='green')
+        self._save_yaml()
 
 
 #----------------------------------------#
