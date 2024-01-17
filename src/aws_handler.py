@@ -136,7 +136,8 @@ class AWSHandler:
             latest_model_path = sorted(model_path_list, reverse=True)[0]
             client = boto3.client('s3', region_name=self.region)
             # from, to / PROJECT HOME 에 model.tar.gz 를 s3에서 로컬로 다운로드
-            client.download_file(self.bucket, latest_model_path, PROJECT_HOME)  
+            client.download_file(self.bucket, latest_model_path, PROJECT_HOME + 'model.tar.gz')  
+            PROC_LOGGER.process_info(f"Succes downloading {self.bucket}/{latest_model_path} --> {PROJECT_HOME}")
             # model.tar.gz을 PROJECT HOME 에 바로 압축해제 후 삭제 
             def _create_dir(_dir):
                 # temp model dir 생성 
