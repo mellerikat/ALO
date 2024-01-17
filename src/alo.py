@@ -90,8 +90,16 @@ class ALO:
         self.artifacts = self.artifact.set_artifacts()
 
     def init(self):
+        '''
+        git clone --no-checkout http://mod.lge.com/hub/dxadvtech/aicontents/tcr.git
+        echo "config/experimental_plan.yaml" >> .git/info/sparse-checkout
+        git checkout
+        '''
         pass
-        
+    
+    def _sparse_checkout_copy(self):
+        pass
+    
     #############################
     ####    Main Function    ####
     #############################

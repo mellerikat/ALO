@@ -772,10 +772,33 @@ class SolutionRegister:
 
     # FIXME 그냥 무조건 latest로 박히나? 
     def _build_docker(self):
-        if self.docker:
-            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:{self.cloud_setup["ECR_TAG"]}'])
+        build_command = []
+
+        # CPU/GPU 선택
+        if self.use_gpu:
+            build_command.extend(['--build-arg', 'USE_GPU=true'])
         else:
-            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:{self.cloud_setup["ECR_TAG"]}'])
+            build_command.extend(['--build-arg', 'USE_CPU=true'])
+
+        # ARM/AMD 아키텍처 선택
+        if self.architecture == 'ARM':
+            build_command.extend(['--build-arg', 'ARCHITECTURE=arm'])
+        elif self.architecture == 'AMD':
+            build_command.extend(['--build-arg', 'ARCHITECTURE=amd'])
+
+        # Train/Inference 선택
+        if self.mode == 'Train':
+            build_command.extend(['--build-arg', 'MODE=train'])
+        elif self.mode == 'Inference':
+            build_command.extend(['--build-arg', 'MODE=inference'])
+
+        # Docker 또는 Buildah 사용
+        if self.docker:
+            build_command = ['docker', 'build', '.'] + build_command + ['-t', f'{self.ecr_full_url}:{self.cloud_setup["ECR_TAG"]}']
+        else:
+            build_command = ['sudo', 'buildah', 'build', '--isolation', 'chroot'] + build_command + ['-t', f'{self.ecr_full_url}:{self.cloud_setup["ECR_TAG"]}']
+
+        subprocess.run(build_command)
 
 
     def _docker_push(self):
