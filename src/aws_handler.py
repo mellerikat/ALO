@@ -155,11 +155,13 @@ class AWSHandler:
                 tar = tarfile.open(PROJECT_HOME + 'model.tar.gz') 
                 tar.extractall(self.temp_model_extract_dir) # 본인경로에 풀면안되는듯 
                 tar.close() 
-            # alo에서 생성했던 'train_artifacts.tar.gz'과 'model.tar.gz' 중 train_artifacts 만 PROJECT HOME에 압축해제 (--> .train_artifacts)
+            # alo에서 생성했던 'train_artifacts.tar.gz'과 'model.tar.gz' 중 train_artifacts 만 PROJECT HOME에 압축해제 (--> log, models, output,..)
             # FIXME 이미 .train_artifacts 존재해도 에러 안나고 덮어쓰기 되는지 ? 
             if 'train_artifacts.tar.gz' in os.listdir(self.temp_model_extract_dir): 
                 tar = tarfile.open(self.temp_model_extract_dir + 'train_artifacts.tar.gz')
-                tar.extractall(PROJECT_HOME)
+                # .train_artifacts 폴더 없으면 생성 
+                _create_dir(PROJECT_HOME + '.train_artifacts')
+                tar.extractall(PROJECT_HOME + '.train_artifacts/')
                 tar.close() 
         except: 
             PROC_LOGGER.process_error(f"Failed to download latest sagemaker created model from s3 : \n << {self.s3_uri} >>")
