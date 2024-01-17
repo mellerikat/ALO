@@ -507,10 +507,11 @@ class ALO:
             self.asset_structure.args = self.get_args(pipeline, step)
             try: 
                 self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
+                self.read_structure(pipeline, step)
             except: 
                 self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
 
-            self.read_structure(pipeline, step)
+            
 
 
     def send_summary(self, success_str, ext_saved_path):
