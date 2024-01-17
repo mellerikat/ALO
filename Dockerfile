@@ -11,6 +11,7 @@ RUN apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
  
 # Install required Python packages
+RUN pip install --upgrade pip
 RUN pip install sagemaker-training==4.7.4
  
 # Specify encoding
@@ -20,10 +21,9 @@ ENV LC_ALL=C.UTF-8
 ENV PYTHONUNBUFFERED=TRUE
 ENV PYTHONDONTWRITEBYTECODE=TRUE
 ENV SOLUTION_PIPELINE_MODE='train'
-ENV PATH="/framework:${PATH}"
- 
+ENV COMPUTING='sagemaker'
 #alo v 2.1.3
 COPY /.sagemaker /opt/ml/code/
- 
+RUN pip install -r /opt/ml/code/requirements.txt
 # Defines train.py as script entry point
-ENV SAGEMAKER_PROGRAM ["main.py", "--mode train"]
+ENV SAGEMAKER_PROGRAM main.py

@@ -3,12 +3,12 @@ role: arn:aws:iam::438613450817:role/sagemaker-operation
 region: us-east-2
 # sagemaker 학습용 docker container을 올릴 ECR을 생성하기 위해 repository 및 tag를 입력합니다. 
 # ecr repository는 기존에 존재하지 않는 이름이어야 합니다.
-ecr_repository: sagemaker-test-240115-v2
+ecr_repository: ssagemaker-test-240117
 # FIXME 일단 ecr tag는 미지원
 # ecr_tag: "Key=Company,Value=LGE",
 # 학습 artifact를 저장한 s3 bucket uri을 입력한다. 
 # [?] 미리 생성 안해두면 자동 생성되는지 ?
-s3_bucket_uri:  's3://sagemaker-test-240115-v2/train-artifacts/'
+s3_bucket_uri:  's3://sagemaker-test-240117/ws240117/'
 
 # 학습할 클라우드 EC2 컴퓨팅 리소스 선택
 # 과금 참고 : https://aws.amazon.com/ko/sagemaker/pricing/ 

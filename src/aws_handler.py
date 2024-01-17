@@ -3,6 +3,8 @@ import boto3
 from src.constants import *
 from urllib.parse import urlparse
 import csv 
+import tarfile 
+import shutil
 from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
@@ -20,6 +22,8 @@ class AWSHandler:
         self.s3_uri = s3_uri 
         self.bucket, self.s3_folder =  self.parse_s3_url(s3_uri) # (ex) aicontents-marketplace, cad/inference/
         self.region = region 
+        self.temp_model_extract_dir = PROJECT_HOME + '.temp_sagemaker_model/'
+        
     def init_s3_key(self, s3_key_path): 
         if s3_key_path != None: 
             _, ext = os.path.splitext(s3_key_path)
@@ -112,3 +116,55 @@ class AWSHandler:
             repository_uri_without_tag = response['repository']['repositoryUri']
 
             PROC_LOGGER.process_info(f"Created repository URI: {repository_uri_without_tag}")
+    
+    
+    def download_latest_model(self):
+        try: 
+            # S3 클라이언트 생성
+            s3 = boto3.resource('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
+            # 버킷 목록 가져오기
+            bucket = s3.Bucket(self.bucket)
+            model_path_list = list()
+            for object_summary in bucket.objects.filter(Prefix=self.s3_folder):
+                ## object_summary.Object().key 예시 
+                # train-artifacts/sagemaker-test-240115-v2-2024-01-15-10-05-05-244/debug-output/training_job_end.ts
+                # train-artifacts/sagemaker-test-240115-v2-2024-01-15-10-05-05-244/output/model.tar.gz
+                if 'model.tar.gz' in object_summary.Object().key:
+                    model_path_list.append(object_summary.Object().key)
+            # model.tar.gz 있는 것 중 최신날짜 포함하는 것만 다운로드 
+            # 예시. train-artifacts/sagemaker-test-240115-v2-2024-01-15-10-05-05-244/output/model.tar.gz
+            latest_model_path = sorted(model_path_list, reverse=True)[0]
+            client = boto3.client('s3', region_name=self.region)
+            # from, to / PROJECT HOME 에 model.tar.gz 를 s3에서 로컬로 다운로드
+            client.download_file(self.bucket, latest_model_path, PROJECT_HOME)  
+            # model.tar.gz을 PROJECT HOME 에 바로 압축해제 후 삭제 
+            def _create_dir(_dir):
+                # temp model dir 생성 
+                if os.path.exists(_dir):
+                    shutil.rmtree(_dir, ignore_errors=True)
+                    os.makedirs(_dir)
+                else: 
+                    os.makedirs(_dir)
+            # model.tar.gz 압축 해제 할 임시 폴더 생성 
+            _create_dir(self.temp_model_extract_dir)
+            # 압축 해제 
+            if 'model.tar.gz' in os.listdir(PROJECT_HOME):
+                # model.tar.gz은 train_artifacts 및 models 폴더를 통째로 압축한것들을 포함 (sagemaker에서 만드는 이름)
+                # [주의] 즉 alo에서 만드는 model.tar.gz이랑 다르다 (이름 중복)
+                tar = tarfile.open(PROJECT_HOME + 'model.tar.gz') 
+                tar.extractall(self.temp_model_extract_dir) # 본인경로에 풀면안되는듯 
+                tar.close() 
+            # alo에서 생성했던 'train_artifacts.tar.gz'과 'model.tar.gz' 중 train_artifacts 만 PROJECT HOME에 압축해제 (--> .train_artifacts)
+            # FIXME 이미 .train_artifacts 존재해도 에러 안나고 덮어쓰기 되는지 ? 
+            if 'train_artifacts.tar.gz' in os.listdir(self.temp_model_extract_dir): 
+                tar = tarfile.open(self.temp_model_extract_dir + 'train_artifacts.tar.gz')
+                tar.extractall(PROJECT_HOME)
+                tar.close() 
+        except: 
+            PROC_LOGGER.process_error(f"Failed to download latest sagemaker created model from s3 : \n << {self.s3_uri} >>")
+        finally: 
+            # PROJECT_HOME 상의 model.tar.gz (s3로 부터 받은) 제거 및 temp dir 제거 
+            if os.path.exists(PROJECT_HOME + 'model.tar.gz'): 
+                os.remove(PROJECT_HOME + 'model.tar.gz')
+            shutil.rmtree(self.temp_model_extract_dir, ignore_errors=True)
+                
