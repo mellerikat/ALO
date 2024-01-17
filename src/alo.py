@@ -38,7 +38,6 @@ class AssetStructure:
         self.args = {}
         self.data = {} 
         self.config = {}
-        
 class ALO:
     def __init__(self, exp_plan_file = None, sol_meta_str = None, alo_mode = 'all', boot_on = False, computing = 'local'):
         """실험 계획 (experimental_plan.yaml), 운영 계획(solution_metadata), 
@@ -233,10 +232,9 @@ class ALO:
             # docker push to ecr 
             subprocess.run(['docker', 'push', f'{ecr_full_uri}'])
             ###################################
-            ## Step3: 사용자가 작성한 s3 bucket이 존재하지 않으면 생성하기 >> 할 필요없음 
-            #            >> https://sagemaker.readthedocs.io/en/stable/api/training/estimators.html 읽어보면 fit() 호출 시 알아서 생성함 
+            ## Step3: 사용자가 작성한 s3 bucket이 존재하지 않으면 생성하기 
             ###################################     
-            # aws_handler.create_bucket()
+            aws_handler.create_bucket()
         except Exception as e: 
             self.proc_logger.process_error(f"Failed to push sagemaker docker into ECR and creating S3 bucket: \n" + str(e)) 
         try: 
@@ -257,12 +255,6 @@ class ALO:
             #           train_instance_type='local')
 
             training_estimator.fit() 
-            ###################################
-            ## Step5: 사용자가 지정한 s3_bucket_uri 하단의 모델 directory 중 
-            #         {basenmae}_날짜 폴더 중 latest 를 다운로드 받게함 (그 하단에 output 폴더 미존재 시 학습 안된 것)
-            ################################### 
-            aws_handler.download_latest_model()
-            
         except Exception as e: 
             self.proc_logger.process_error(f"Failed to sagemaker estimator fit: \n" + str(e)) 
 
@@ -288,7 +280,7 @@ class ALO:
             from sagemaker_training import environment
             # [중요] sagemaker 사용 시엔 self.external_path['save_train_artifacts_path']를 sagemaker에서 제공하는 model_dir로 변경
             # [참고] https://github.com/aws/sagemaker-training-toolkit        
-            self.external_path['save_train_artifacts_path'] = environment.Environment().model_dir
+            self.external_path['save_train_artifacts_path'] = os.path.join(environment.Environment().model_dir, "saved_model")
         self.is_always_on = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
             and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
 
@@ -430,7 +422,6 @@ class ALO:
     ###################################
         
     
-
     def read_structure(self, pipeline, step):
         import pickle 
         
@@ -443,7 +434,6 @@ class ALO:
         with open(b, 'rb') as f:
             _data = pickle.load(f)
         return _config, _data
-
     
     def set_asset_structure(self):
         """Asset 의 In/Out 을 data structure 로 전달한다.
@@ -507,12 +497,8 @@ class ALO:
             self.asset_structure.args = self.get_args(pipeline, step)
             try: 
                 self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
-                self.read_structure(pipeline, step)
             except: 
                 self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
-
-            
-
 
     def send_summary(self, success_str, ext_saved_path):
         """save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
