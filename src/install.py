@@ -5,7 +5,7 @@ import sys
 from collections import defaultdict
 from src.logger import ProcessLogger 
 from src.constants import *
-
+from src.yaml import ExperimentalPlan
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
@@ -29,7 +29,7 @@ class Packages:
             cmd = f'cd {ALOMAIN} && git symbolic-ref --short HEAD'
             result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
             ALOVER = result.stdout.decode('utf-8').strip()
-            repository_url = "http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git"
+            repository_url = ExperimentalPlan().get_yaml(PROJECT_HOME + 'src/alo_config/uri.yaml')['alolib-uri']
             destination_directory = "./alolib"
             result = subprocess.run(['git', 'clone', '-b', ALOVER, repository_url, destination_directory], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             if result.returncode == 0:
