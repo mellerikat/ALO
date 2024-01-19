@@ -19,64 +19,86 @@ import pandas as pd
 import shutil
 import tarfile 
 from copy import deepcopy 
+from pprint import pprint
 # yaml = YAML()
 # yaml.preserve_quotes = True
 #----------------------------------------#
 #              REST API                  #
 #----------------------------------------#
-VERSION = 1
 ALODIR = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file__)))) + '/'
 TEMP_ARTIFACTS_DIR = ALODIR + '.temp_artifacts_dir/'
 # 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
 TEMP_MODEL_DIR = ALODIR + '.temp_model_dir/'
 #---------------------------------------------------------
 WORKINGDIR = os.path.abspath(os.path.dirname(__file__)) + '/'
-# REST API Endpoints
-# 6. Train pipeline 요청
-# STREAMS + '/{stream_id}/start # POST
-# 7. Train pipeline 확인
-# STREAMS + '/{stream_history_id}/info # GET
-# 9.a Stream 삭제 
-# STREAMS + '/{stream_id} # DELETE
-# 9.b AI Solution Instance 삭제
-# SOLUTION_INSTANCES + '/{instance_id}' # DELETE
-# 9.c AI Solution 삭제
-# AI_SOLUTION + '/{solution_id}' # DELETE 
-#----------------------------------------#
-#----------------------------------------#
-#              URI SCOPE                 #
-#----------------------------------------#
-#----------------------------------------#
+
 class SolutionRegister:
     #def __init__(self, workspaces, uri_scope, tag, name, pipeline):
-    def __init__(self, cloud_setup, api_uri):
+    def __init__(self, cloud_setup_path=None, api_uri_path=None):
         
-        self.cloud_setup = cloud_setup 
-        self.api_uri = api_uri
-        
+
+        self.print_step("Initiate ALO operation mode")
+        print_color("[SYSTEM] Solutoin 등록에 필요한 setup file 들을 load 합니다. ", color="green")
+
+        if not cloud_setup_path:
+            cloud_setup_path = "./infra_setup.yaml" 
+            print(f"Infra setup 파일이 존재 하지 않으므로, Default 파일을 load 합니다. (path: {cloud_setup_path})")
+        try:    
+            with open(cloud_setup_path) as f:
+                self.cloud_setup = yaml.safe_load(f)
+                pprint(self.cloud_setup)
+        except Exception as e : 
+            raise ValueError(e)
+
+        if not api_uri_path:
+            api_uri_path = "./api_setup.yaml" 
+            print(f"\nAPI setup 파일이 존재 하지 않으므로, Default 파일을 load 합니다. (path: {api_uri_path})")
+        try:    
+            with open(api_uri_path) as f:
+                self.api_uri = yaml.safe_load(f)
+                pprint(self.api_uri)
+        except Exception as e : 
+            raise ValueError(e)
+
+
+        ####################################
+        ########### Configuration ##########
+        ####################################
+
         # solution instance 등록을 위한 interface 폴더 
         self.interface_dir = './interface'
         self.sm_yaml_file_path = './solution_metadata.yaml'
-        # FIXME 다른 이름으로 exp plan yaml 사용하면 ?
         self.exp_yaml_path = "../../config/experimental_plan.yaml"
+        self.wrangler_path = "./wrangler/wrangler.py"
+        self.icon_path = "./icons/"
+
+
         # TODO aws login 방법 고민필요
         if self.cloud_setup["AIC_URI"] == "https://web.aic-dev.lgebigdata.com/": ## 실계정
             self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"  ##  
         else:  ## 현수 kube
             self.s3_access_key_path = "/nas001/users/sehyun.song/aws.key"    ##
         print_color(f"[SYSTEM] S3 key 파일을 로드 합니다. (file: {self.s3_access_key_path})", color="green")
-        self.icon_path = "./icons/"
 
-        self.exp_yaml = {}
-        self.pipeline = None 
-        self.workspaces = None
 
         ## internal variables
+        self.sm_yaml = {}  ## core
+        self.exp_yaml = {} ## core
+
+        self.pipeline = None 
+        self.workspaces = None
         self.aic_cookie = None
         self.solution_name = None
         self.icon_filenames = []
-        self.sm_yaml = {}
-        self.sm_pipeline_pointer = -1  ## 0 부터 시작
+        self.sm_pipe_pointer = -1  ## 0 부터 시작
+        self.resource_list = []
+
+        self.bucket_name = None
+        self.bucket_name_icon = None 
+        self.ecr_name= None
+
+        self.candidate_params = dict()
+        self.candidate_params_df = pd.DataFrame()
 
         ## debugging 용 변수
         self.debugging = False 
@@ -121,6 +143,7 @@ class SolutionRegister:
             response_workspaces.append(ws["name"])
         print(f"해당 계정으로 접근 가능한 workspace list: {response_workspaces}")
 
+        # TODO : case1~4 에 대해 사용자가 가이드 받을 수 있도록 하기 
         ## 로그인 접속은  계정 존재 / 권한 존재 의 경우로 나뉨
         ##   - case1: 계정 O / 권한 X 
         ##   - case2: 계정 O / 권한 single (ex cism-ws) 
@@ -157,7 +180,7 @@ class SolutionRegister:
 
 
         # 231207 임현수C: 사용자는 public 사용못하게 해달라 
-        ONLY_PUBLIC = 0 #1 --> 1로 해야 public, private 다 받아옴 
+        ONLY_PUBLIC = 1 #1 --> 1로 해야 public, private 다 받아옴 
 
         solution_data = {
             "workspace_name": self.cloud_setup["WORKSPACE_NAME"], 
@@ -167,10 +190,8 @@ class SolutionRegister:
         aic = self.cloud_setup["AIC_URI"]
         api = self.api_uri["AI_SOLUTION"]
 
-        print(aic+api)
-        print(self.aic_cookie)
         solution_name = requests.get(aic+api, params=solution_data, cookies=self.aic_cookie)
-        print(solution_name)
+        # print(solution_name)
         solution_name_json = solution_name.json()
 
         if 'solutions' in solution_name_json.keys(): 
@@ -183,7 +204,7 @@ class SolutionRegister:
                 print_color(txt, color='red')
                 raise ValueError("Not allowed solution name.")
             else:  ## NEW solutions
-                txt = f"[SYSTEM] 입력하신 Solution Name ({name})은 사용 가능합니다. (Success)" 
+                txt = f"[SUCCESS] 입력하신 Solution Name ({name})은 사용 가능합니다. " 
                 self.solution_name = name
                 print_color(txt, color='green')
 
@@ -199,6 +220,177 @@ class SolutionRegister:
 
         return self.solution_name
 
+    def set_description(self, description):
+        """솔루션 설명을 solution_metadata 에 삽입합니다. 
+
+        Attributes:
+          - desc (dict): title, overview, input_data (format descr.), output_data (format descr.),
+          user_parameters, algorithm 에 대한 설명문을 작성한다. 
+          추후 mark-up 지원여부 
+        """
+
+        self.print_step("Set AI Solution Description")
+
+        try: 
+            self.sm_yaml['description'].update(description)
+            self.sm_yaml['description']['title'] = description['title'].replace(" ", "-")
+
+            # self.sm_yaml['description']['title'] = self._check_parammeter(desc['title'])
+            # set_sm_name(self._check_parammeter(self.solution_name))
+            # self.sm_yaml['description']['overview'] = self._check_parammeter(desc['overview'])
+            # self.sm_yaml['description']['input_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
+            # self.sm_yaml['description']['output_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
+            # self.sm_yaml['description']['user_parameters'] = self._check_parammeter(desc['user_parameters'])
+            # self.sm_yaml['description']['algorithm'] = self._check_parammeter(desc['algorithm'])
+            self._save_yaml()
+            print_color(f"[SUCCESS] Update solution_metadata.yaml.", color='green')
+            print(f"description: {self.sm_yaml['description']}")
+        except Exception as e: 
+            raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{e}")
+
+
+    def set_wrangler(self):
+        """wrangler.py 를 solution_metadata 의 code-to-string 으로 반영합니다. 
+        ./wrangler/wrangler.py 만 지원 합니다. 
+
+        """
+
+        self.print_step("Set Wrangler")
+
+
+        try: 
+            with open(self.wrangler_path, 'r') as file:
+                python_content = file.read()
+
+            self.sm_yaml['wrangler_code_uri'] = python_content
+            self.sm_yaml['wrangler_dataset_uri'] = ''
+            self._save_yaml()
+        except:
+            msg = f"[WARNING] wrangler.py 가 해당 위치에 존재해야 합니다. (path: {self.wrangler_path})"
+            print_color(msg, color="yellow")
+
+            self.sm_yaml['wrangler_code_uri'] = ''
+            self.sm_yaml['wrangler_dataset_uri'] = ''
+            self._save_yaml()
+        
+    def set_edge(self, metadata_value: dict):
+        """Edge Conductor 에서 처리해야 할 key 를 사용자로 부터 입력 받습니다. 
+        이를 soluton_metadata 에 반영합니다. 
+
+        Attributes:
+          - metadata_value (dict): 'support_labeling', 'inference_result_datatype', 'train_datatype' key 지원
+
+          사용자가 정상적으로 metadata_value 를 설정하였는지를 체크하고, 이를 solution_metadata 에 반영합니다. 
+          - support_labeling : True / False (bool)
+          - inference_result_datatype: table / image (str) --> inference reult 를 csv, image 로 display 할지
+          - train_datatype: table / image (str) --> inference output 의 형태가 csv, image 인지를 선택
+        """
+
+        self.print_step("Set Contents Type (for retrain & relabeling)")
+
+        def _check_edgeconductor_interface(user_dict):
+            check_keys = ['support_labeling', 'inference_result_datatype', 'train_datatype']
+            allowed_datatypes = ['table', 'image']
+            for k in user_dict.keys(): ## 엉뚱한 keys 존재 하는지 확인
+                self._check_parammeter(k)
+                if k not in check_keys: 
+                    raise ValueError(f"[ERROR] << {k} >> is not allowed for contents_type key. \
+                                     (keys: support_labeling, inference_result_datatype, train_datatype) ")
+            for k in check_keys: ## 필수 keys 가 누락되었는지 확인
+                if k not in user_dict.keys(): 
+                    raise ValueError(f"[ERROR] << {k} >> must be in the edgeconductor_interface key list.")
+
+            ## type 체크 및 key 존재 확인
+            if isinstance(user_dict['support_labeling'], bool):
+                pass
+            else: 
+                raise ValueError("[ERRPR] << support_labeling >> parameter must have boolean type.")
+
+            if user_dict['inference_result_datatype'] not in allowed_datatypes:
+                raise ValueError(f"[ERROR] << inference_result_datatype >> parameter must have the value among these: \n{allowed_datatypes}")
+
+            if user_dict['train_datatype'] not in allowed_datatypes:
+                raise ValueError(f"[ERROR] << train_datatype >> parameter must have the value among these: \n{allowed_datatypes}")                  
+
+        # edgeconductor interface 
+        _check_edgeconductor_interface(metadata_value)
+
+        self.sm_yaml['edgeconductor_interface'] = metadata_value
+        
+        ### EdgeAPP 관련 부분도 업데이트 함.
+        self.sm_yaml['edgeapp_interface'] = {'redis_server_uri': ""}
+        self._save_yaml()
+
+        msg = "[SUCCESS] contents_type 을 solution_metadata 에 성공적으로 업데이트 하였습니다."
+        print_color(msg, color="green")
+        print(f"edgeconductor_interfance: {metadata_value}")
+
+    def set_resource_display(self):
+        """AI Conductor 에서 학습에 사용될 resource 를 선택 하도록, 리스트를 보여 줍니다. 
+        """
+        self.print_step(f"Display {self.pipeline} Resource List")
+
+        aic = self.cloud_setup["AIC_URI"]
+        api = self.api_uri["SYSTEM_INFO"]
+        try: 
+            self.workspaces = requests.get(aic+api, cookies=self.aic_cookie)
+        except: 
+            raise NotImplementedError("[ERROR] Failed to get workspaces info.")
+
+
+        resource_list = []
+        try: 
+            for ws in self.workspaces.json()["workspaces"]:
+                if self.cloud_setup["WORKSPACE_NAME"] in ws['name']:
+                    df = pd.DataFrame(ws['execution_specs'])
+
+                    for spec in ws['execution_specs']:
+                        resource_list.append(spec["name"])
+        except: 
+            raise ValueError("Got wrong workspace info.")
+
+        print(f"{self.pipeline} 에 사용될 resource 를 선택해주세요(type{resource_list}):")
+        print_color(df.to_markdown(tablefmt='fancy_grid'), color='cyan')
+
+        ## 해당 함수는 두번 call 될 수 있기 때문에, global 변수로 관리함
+        self.resource_list = resource_list
+        return resource_list
+        
+
+    def set_resource(self, resource= ''):
+        """AI Conductor 에서 학습에 사용될 resource 를 선택 합니다. 
+        사용자에게 선택 하도록 해야 하며, low, standard, high 과 같은 추상적 선택을 하도록 합니다.
+
+        Attributes:
+          - resource (str): 
+        """
+        self.print_step(f"Set {self.pipeline} Resource")
+
+
+        if len(self.resource_list) == 0: # Empty List
+            msg = f"[ERROR] set_resource_list 함수를 먼저 실행 해야 합니다."
+            raise ValueError(msg)
+        
+        if resource == '': # erorr when input is empty 
+            msg = f"[ERROR] 입력된 {self.pipeline}_resource 가 empty 입니다. Spec 을 선택해주세요. (type={self.resource_list})"
+            raise ValueError(msg)
+
+        if not resource in self.resource_list:
+            msg = f"[ERROR] 입력된 {self.pipeline}_resource 가 '{resource}' 입니다. 미지원 값입니다. (type={self.resource_list})"
+            raise ValueError(msg)
+
+        self.sm_yaml['pipeline'][self.sm_pipe_pointer]["resource"] = {"default": resource}
+
+        ## inference 의 resource 를 선택하는 시나리오가 없음. standard 로 강제 고정 (24.01.17)
+        if self.pipeline == "inference":
+            self.sm_yaml['pipeline'][self.sm_pipe_pointer]["resource"] = {"default": 'standard'}
+            resource = 'standard'
+            msg = f"EdgeApp 에 대한 resource 설정은 현재 미지원 입니다. resource=standard 로 고정 됩니다."
+            print_color(msg, color="yellow")
+
+        print_color(f"[SUCCESS] Update solution_metadat.yaml:", color='green')
+        print(f"pipeline[{self.sm_pipe_pointer}]: -resource: {resource}")
+        self._save_yaml()
 
     def load_system_resource(self): 
         """ 사용가능한 ECR, S3 주소를 반환한다. 
@@ -207,6 +399,7 @@ class SolutionRegister:
 
         aic = self.cloud_setup["AIC_URI"]
         api = self.api_uri["SYSTEM_INFO"]
+
         try: 
             self.workspaces = requests.get(aic+api, cookies=self.aic_cookie)
         except: 
@@ -214,9 +407,9 @@ class SolutionRegister:
 
         ## workspace_name 의 ECR, S3 주소를 확인 합니다. 
         try: 
-            # print(self.workspaces.json())
+            # print(self.workspaces.json()['workspaces'])
             for ws in self.workspaces.json()['workspaces']:
-                # print(ws)
+                # print(ws.items())
                 if self.cloud_setup["WORKSPACE_NAME"] in ws['name']:
                     S3_BUCKET_NAME = ws['s3_bucket_name']
                     ECR_NAME = ws['ecr_base_path']       
@@ -235,44 +428,16 @@ class SolutionRegister:
         # workspace로부터 받아온 ecr, s3 정보를 내부 변수화 
         try:
             self.bucket_name = S3_BUCKET_NAME[self.cloud_setup["SOLUTION_TYPE"]] # bucket_scope: private, public
-            self.ecr = ECR_NAME[self.cloud_setup["SOLUTION_TYPE"]]
+            self.bucket_name_icon = S3_BUCKET_NAME["public"] # icon 은 공용 저장소에만 존재. = public
+            self.ecr_name = ECR_NAME[self.cloud_setup["SOLUTION_TYPE"]]
         except Exception as e:
             raise ValueError(f"Wrong format of << workspaces >> received from REST API:\n {e}")
             
         print_color(f"[SYSTEM] AWS ECR:  ", color='green') 
-        print_color(f"{self.ecr}", color='yellow') 
+        print(f"{self.ecr_name}") 
         print_color(f"[SYSTEM] AWS S3 buckeet:  ", color='green') 
-        print_color(f"{self.bucket_name}", color='yellow') 
+        print(f"{self.bucket_name}") 
 
-    def set_wrangler(self, wrangler_path = None):
-        
-        with open('example.py', 'r') as file:
-            python_content = file.read()
-        
-        self.sm_yaml['wrangler_code_uri'] = python_content
-        self.sm_yaml['wrangler_dataset_uri'] = ''
-        self._save_yaml()
-
-    #def set_description(self, overview, input_data, output_data, user_parameters, algorithm):
-    def set_description(self, desc):
-
-        def set_sm_name(self, name):
-            self.name = name.replace(" ", "-")
-            self.sm_yaml['name'] = self.name
-        try: 
-            self.sm_yaml['description']['title'] = self._check_parammeter(desc['title'])
-            set_sm_name(self._check_parammeter(self.solution_name))
-            self.sm_yaml['description']['overview'] = self._check_parammeter(desc['overview'])
-            self.sm_yaml['description']['input_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
-            self.sm_yaml['description']['output_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
-            self.sm_yaml['description']['user_parameters'] = self._check_parammeter(desc['user_parameters'])
-            self.sm_yaml['description']['algorithm'] = self._check_parammeter(desc['algorithm'])
-            # FIXME icon 관련 하드코딩 변경필요 
-            self.sm_yaml['description']['icon'] = self.icon_s3_uri  
-            self._save_yaml()
-            print_color(f"\n<< solution_metadata.yaml >> updated. \n- solution metadata description:\n {self.sm_yaml['description']}", color='green')
-        except Exception as e: 
-            raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{e}")
 
     #s3://s3-an2-cism-dev-aic/artifacts/bolt_fastening_table_classification/train/artifacts/2023/11/06/162000/
     def set_pipeline_uri(self, mode):
@@ -284,72 +449,46 @@ class SolutionRegister:
         Returns:
           - uri (str): s3 uri 를 string 타입으로 반환 함 
         """
+        version = str(int(self.cloud_setup['VERSION']))
         if mode == "artifact":
-            uri = {'artifact_uri': "s3://" + self.bucket_name + "/ai-solutions/" + self.solution_name + f"/v{VERSION}/" + self.pipeline  + "/artifacts/"}
+            prefix_uri = "/ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/artifacts/"
+            uri = {'artifact_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
         elif mode == "data":
-            uri = {'dataset_uri': ["s3://" + self.bucket_name + "/ai-solutions/" + self.solution_name + f"/v{VERSION}/" + self.pipeline  + "/data/"]}
+            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/data/"
+            uri = {'dataset_uri': ["s3://" + self.bucket_name + "/" + prefix_uri]}
         elif mode == "model":  ## model
-            uri = {'model_uri': "s3://" + self.bucket_name + "/ai-solutions/" + self.solution_name + f"/v{VERSION}/" + 'train'  + "/artifacts/"}
+            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + 'train'  + "/artifacts/"
+            uri = {'model_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
         else:
             raise ValueError("mode must be one of [dataset, artifacts, model]")
 
         try: 
             if self.pipeline == 'train':
-                if not self.sm_yaml['pipeline'][self.sm_pipeline_pointer]['type'] == 'train':
+                if not self.sm_yaml['pipeline'][self.sm_pipe_pointer]['type'] == 'train':
                     raise ValueError("Setting << artifact_uri >> in the solution_metadata.yaml is only allowed for << train >> pipeline. \n - current pipeline: {self.pipeline}")
                 ## train pipelne 시에는 model uri 미지원
                 if mode == "model":
                     raise ValueError("Setting << model_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
             else: ## inference
-                if not self.sm_yaml['pipeline'][self.sm_pipeline_pointer]['type'] == 'inference':
+                if not self.sm_yaml['pipeline'][self.sm_pipe_pointer]['type'] == 'inference':
                     raise ValueError("Setting << artifact_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
 
-            self.sm_yaml['pipeline'][self.sm_pipeline_pointer].update(uri)
+            self.sm_yaml['pipeline'][self.sm_pipe_pointer].update(uri)
             self._save_yaml()
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{e}")
         
-        print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
+        print_color(f'[SUCCESS] Update solution_metadata.yaml:', color='green')
         if mode == "artifacts":
-            print(f'pipeline: {self.pipeline} -artifact_uri: {uri} ')
+            print(f'pipeline: type: {self.pipeline}, artifact_uri: {uri} ')
         elif mode == "data":
-            print(f'pipeline: {self.pipeline} -dataset_uri: {uri} ')
+            print(f'pipeline: type: {self.pipeline}, dataset_uri: {uri} ')
         else: ## model
-            print(f'pipeline: {self.pipeline} -model_uri: {uri} ')
+            print(f'pipeline: type:{self.pipeline}, model_uri: {uri} ')
             
 
-        return uri
+        return prefix_uri
 
-    def set_edge(self, edgeconductor_interface: dict):
-
-        def _check_edgeconductor_interface(user_dict):
-            check_keys = ['support_labeling', 'inference_result_datatype', 'train_datatype']
-            allowed_datatypes = ['table', 'image']
-            for k in user_dict.keys(): 
-                self._check_parammeter(k)
-                if k not in check_keys: 
-                    raise ValueError(f"<< {k} >> is not allowed for edgeconductor_interface key.")
-            for k in check_keys: 
-                if k not in user_dict.keys(): 
-                    raise ValueError(f"<< {k} >> must be in the edgeconductor_interface key list.")
-
-            if isinstance(user_dict['support_labeling'], bool):
-                pass
-            else: 
-                raise ValueError("<< support_labeling >> parameter must have boolean type.")
-            if user_dict['inference_result_datatype'] not in allowed_datatypes:
-                raise ValueError(f"<< inference_result_datatype >> parameter must have the value among these: \n{allowed_datatypes}")
-            if user_dict['train_datatype'] not in allowed_datatypes:
-                raise ValueError(f"<< train_datatype >> parameter must have the value among these: \n{allowed_datatypes}")                  
-
-        # edgeconductor interface 
-        _check_edgeconductor_interface(edgeconductor_interface)
-
-        self.sm_yaml['edgeconductor_interface'] = edgeconductor_interface
-        
-        # FIXME edgeapp interface는 우리가 값 채울 필요 X? 
-        self.sm_yaml['edgeapp_interface'] = {'redis_server_uri': ""}
-        self._save_yaml()
 
     def register_solution(self): 
         try: 
@@ -361,6 +500,7 @@ class SolutionRegister:
             data =json.dumps(data)
             solution_params = {
                 "workspace_name": self.WORKSPACE_NAME
+
             }
             # AI 솔루션 등록
             post_response = requests.post(self.URI + AI_SOLUTION, params=solution_params, data=data, cookies=self.aic_cookie)
@@ -373,47 +513,6 @@ class SolutionRegister:
     ######    STEP2. S3 Control
     ################################
 
-    def s3_access_check(self, contents: str):
-        """ S3 에 접속 가능한지를 확인합니다. 
-
-        1) s3_access_key_path 가 존재하면, 파일에서 key 를 확인하고,
-          - TODO file format 공유하기 (프로세스화)
-        2) TODO aws configure가 설정되어 있으면 이를 자동으로 해석한다. 
-        3) key 없이 권한 설정으로 접속 가능한지도 확인한다. 
-
-        """
-        self.print_step("Check to access S3")
-
-        # contents: 'data' or 'artifacts'
-        self.s3_path = f'ai-solutions/{self.solution_name}/v{VERSION}/{self.pipeline}/{contents}'
-        try:
-            f = open(self.s3_access_key_path, "r")
-            keys = []
-            values = []
-            for line in f:
-                key = line.split(":")[0]
-                value = line.split(":")[1].rstrip()
-                keys.append(key)
-                values.append(value)
-            ACCESS_KEY = values[0]
-            SECRET_KEY = values[1]
-            self.s3 = boto3.client('s3',
-                                aws_access_key_id=ACCESS_KEY,
-                                aws_secret_access_key=SECRET_KEY)
-        except:
-            print_color(f"[INFO] Start s3 access check without key file.", color="blue")
-            self.s3 = boto3.client('s3')
-
-        # # FIXME 아래 region이 none으로 나옴 
-        # my_session = boto3.session.Session()
-        # self.region = my_session.region_name
-        print(f"[INFO] AWS region: {self.cloud_setup['REGION']}")
-        if isinstance(boto3.client('s3'), botocore.client.BaseClient) == True:       
-            print_color(f"[INFO] AWS S3 access check: OK", color="green")
-        else: 
-            raise ValueError(f"[ERROR] AWS S3 access check: Fail")
-
-        return isinstance(boto3.client('s3'), botocore.client.BaseClient)
     
             
     def s3_upload_icon_display(self):
@@ -474,23 +573,60 @@ class SolutionRegister:
         if not ".svg" in name:
             name = name+".svg"
         if name in self.icon_filenames:
-            print_color(f"[SUCCESS] Update icon name: {name}", color='green')
 
-            self.icon_s3_uri = "s3://" + self.bucket_name + '/icons/' + name   # 값을 리스트로 감싸줍니다
-            self.sm_yaml['description']['icon'] = self.icon_s3_uri
+            icon_s3_uri = "s3://" + self.bucket_name_icon + '/icons/' + name   # 값을 리스트로 감싸줍니다
+            self.sm_yaml['description']['icon'] = icon_s3_uri
             self._save_yaml()
 
-            print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
-            print(f'description: -icon: {self.icon_s3_uri} ')
+            print_color(f'[SUCCESS] update solution_metadata.yaml:', color='green')
+            print(f'description: -icon: {icon_s3_uri} ')
         else:
             raise ValueError(f"[ERROR] Wrong icon name: {name}. \n(icon_list={self.icon_filenames}) ")
         
+    def _s3_access_check(self):
+        """ S3 에 접속 가능한지를 확인합니다.  s3_client instance 생성을 합니다.
+
+        1) s3_access_key_path 가 존재하면, 파일에서 key 를 확인하고,
+          - TODO file format 공유하기 (프로세스화)
+        2) TODO aws configure가 설정되어 있으면 이를 자동으로 해석한다. 
+        3) key 없이 권한 설정으로 접속 가능한지도 확인한다. 
+
+        """
+        self.print_step("Check to access S3")
+
+        try:
+            f = open(self.s3_access_key_path, "r")
+            keys = []
+            values = []
+            for line in f:
+                key = line.split(":")[0]
+                value = line.split(":")[1].rstrip()
+                keys.append(key)
+                values.append(value)
+            ACCESS_KEY = values[0]
+            SECRET_KEY = values[1]
+            self.s3_client = boto3.client('s3',
+                                aws_access_key_id=ACCESS_KEY,
+                                aws_secret_access_key=SECRET_KEY)
+        except:
+            print_color(f"[INFO] Start s3 access check without key file.", color="blue")
+            self.s3_client = boto3.client('s3')
+
+        # # FIXME 아래 region이 none으로 나옴 
+        # my_session = boto3.session.Session()
+        # self.region = my_session.region_name
+        print(f"[INFO] AWS region: {self.cloud_setup['REGION']}")
+        if isinstance(boto3.client('s3'), botocore.client.BaseClient) == True:       
+            print_color(f"[INFO] AWS S3 access check: OK", color="green")
+        else: 
+            raise ValueError(f"[ERROR] AWS S3 access check: Fail")
+
+        return isinstance(boto3.client('s3'), botocore.client.BaseClient)
 
     def s3_upload_data(self):
         """input 폴더에 존재하는 데이터를 s3 에 업로드 합니다. 
         """
-        self.print_step(f"Upload {self.pipeline} data into S3")
-
+        self.print_step(f"Upload {self.pipeline} data to S3")
 
         # inner func.
         def s3_process(s3, bucket_name, data_path, local_folder, s3_path, delete=True):
@@ -498,62 +634,64 @@ class SolutionRegister:
                 objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
                 if 'Contents' in objects_to_delete:
                     for obj in objects_to_delete['Contents']:
-                        self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                        print_color(f'[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
+                        self.s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                        print_color(f'[SYSTEM] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
                 s3.delete_object(Bucket=bucket_name, Key=s3_path)
-            s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
+            s3.put_object(Bucket=bucket_name, Key=(s3_path))
+
+            ## s3 생성
             try:    
-                response = s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
+                response = s3.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
             except NoCredentialsError as e:
                 raise NoCredentialsError("NoCredentialsError: \n{e}")
             except ClientError as e:
                 print(f"ClientError: ", e)
                 return False
             # temp = s3_path + "/" + data_path[len(local_folder):]
-            uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
-            print_color(f"\nSuccess uploading into S3: \n{uploaded_path }", color='green')
+            uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
+            print_color(f"[SUCCESS] update train_data to S3:", color='green')
+            print(f"{uploaded_path }")
             return True
+
+
+        try:
+            s3_prefix_uri = self.set_pipeline_uri(mode="data")
+        except Exception as e: 
+            raise NotImplementedError(f'[ERROR] Failed updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline} \n{e}')
  
         if "train" in self.pipeline:
             local_folder = ALODIR + "input/train/"
-            print_color(f'[INFO] Start uploading data into S3 from local folder:', color='cyan')
+            print_color(f'[SYSTEM] Start uploading data into S3 from local folder:', color='cyan')
             print(f'{local_folder}')
+
             try: 
                 for root, dirs, files in os.walk(local_folder):
                     for idx, file in enumerate(files):
                         data_path = os.path.join(root, file)
                         if idx == 0: #최초 1회만 delete s3
-                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, True) # self.s3_path 는 s3_access_check 할때 셋팅
+                            s3_process(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, True) 
                         else: 
-                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, False)
+                            s3_process(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
             except Exception as e: 
-                raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
+                raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
 
-
-            try:    
-                self.set_pipeline_uri(mode="data")
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml \n{e}')
         elif "inference" in self.pipeline:
             local_folder = ALODIR + "input/inference/"
             print_color(f'[INFO] Start uploading data into S3 from local folder:', color='cyan')
             print(f'{local_folder}')
+
             try: 
                 for root, dirs, files in os.walk(local_folder):
                     for idx, file in enumerate(files):
                         data_path = os.path.join(root, file)
                         if idx == 0: #최초 1회만 delete s3
-                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, True) # self.s3_path 는 s3_access_check 할때 셋팅
+                            s3_process(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, True) 
                         else: 
-                            s3_process(self.s3, self.bucket_name, data_path, local_folder, self.s3_path, False)
+                            s3_process(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
             except Exception as e: 
-                raise NotImplementedError(f'\nFailed to upload local data into << self.s3_path >>') 
-            try:
-                self.set_pipeline_uri(mode="data")
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline} \n{e}')
+                raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
         else:
-            raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
+            raise ValueError(f"[ERROR] Not allowed value for << pipeline >>: {self.pipeline}")
 
 
     def s3_upload_artifacts(self):
@@ -563,7 +701,7 @@ class SolutionRegister:
 
         """
 
-        self.print_step(f"Upload {self.pipeline} artifacts into S3")
+        self.print_step(f"Upload {self.pipeline} artifacts to S3")
 
 
         # inner func.
@@ -572,7 +710,7 @@ class SolutionRegister:
                 objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
                 if 'Contents' in objects_to_delete:
                     for obj in objects_to_delete['Contents']:
-                        self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                        self.s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
                         print_color(f'[INFO] Deleted pre-existing S3 object:', color = 'yellow')
                         print(f'{obj["Key"]}')
                 s3.delete_object(Bucket=bucket_name, Key=s3_path)
@@ -586,52 +724,54 @@ class SolutionRegister:
                 return False
             # temp = s3_path + "/" + data_path[len(local_folder):]
             uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
-            print_color(f"Success uploading into S3: ", color='green')
+            print_color(f"[SUSTEM] S3 object key (new): ", color='green')
             print(f"{uploaded_path }")
             return True
 
+        try: 
+            s3_prefix_uri = self.set_pipeline_uri(mode="artifact")
+        except Exception as e: 
+            raise NotImplementedError(f'Failed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
         
         if "train" in self.pipeline:
             artifacts_path = _tar_dir(".train_artifacts")  # artifacts tar.gz이 저장된 local 경로 return
             local_folder = os.path.split(artifacts_path)[0] + '/'
-            print_color(f'[INFO] Start uploading train artifacts into S3 from local folder:', color='cyan')
+            print_color(f'[SYSTEM] Start uploading train artifacts into S3 from local folder:', color='cyan')
             print(f'{local_folder}')
-            s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path) # self.s3_path 는 s3_access_check 할때 셋팅
-            try: 
-                self.set_pipeline_uri(mode="artifact")
-            except Exception as e: 
-                raise NotImplementedError(f'Failed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
-            finally:
-                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+
+            s3_process(self.s3_client, self.bucket_name, artifacts_path, local_folder, s3_prefix_uri) 
+            shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+
         elif "inference" in self.pipeline:
             ## inference artifacts tar gz 업로드 
             artifacts_path = _tar_dir(".inference_artifacts")  # artifacts tar.gz이 저장된 local 경로 
             local_folder = os.path.split(artifacts_path)[0] + '/'
             print_color(f'[INFO] Start uploading inference artifacts into S3 from local folder:', color='cyan')
             print(f'{local_folder}')
-            s3_process(self.s3, self.bucket_name, artifacts_path, local_folder, self.s3_path)
-            try: 
-                self.set_pipeline_uri(mode="artifact")
-            except Exception as e: 
-                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
-            finally:
-                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+
+            s3_process(self.s3_client, self.bucket_name, artifacts_path, local_folder, s3_prefix_uri)
+            shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
 
 
             ## model tar gz 업로드 
             # [중요] model_uri는 inference type 밑에 넣어야되는데, 경로는 inference 대신 train이라고 pipeline 들어가야함 (train artifacts 경로에 저장)
-            train_artifacts_s3_path = self.s3_path.replace(f'v{VERSION}/inference', f'v{VERSION}/train')
+            version = str(int(self.cloud_setup['VERSION']))
+            train_artifacts_s3_path = s3_prefix_uri.replace(f'v{version}/inference', f'v{version}/train')
             model_path = _tar_dir(".train_artifacts/models")  # model tar.gz이 저장된 local 경로 return 
             local_folder = os.path.split(model_path)[0] + '/'
-            print_color(f'\n[INFO] Start uploading << model >> into S3 from local folder:\n {local_folder}', color='cyan')
+            print_color(f'\n[SYSTEM] Start uploading << model >> into S3 from local folder:', color='cyan')
+            print(f'{local_folder}')
             # 주의! 이미 train artifacts도 같은 경로에 업로드 했으므로 model.tar.gz올릴 땐 delete object하지 않는다. 
-            s3_process(self.s3, self.bucket_name, model_path, local_folder, train_artifacts_s3_path, delete=False) 
+            s3_process(self.s3_client, self.bucket_name, model_path, local_folder, train_artifacts_s3_path, delete=False) 
+
+            ## model uri 기록
             try: 
                 self.set_pipeline_uri(mode="model")
             except Exception as e: 
-                raise NotImplementedError(f'\nFailed updating solution_metadata.yaml - << model_uri >> info / pipeline: {self.pipeline} \n{e}')
+                raise NotImplementedError(f'[ERROR] Failed updating solution_metadata.yaml - << model_uri >> info / pipeline: {self.pipeline} \n{e}')
             finally:
                 shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+
         else:
             raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
 
@@ -671,12 +811,12 @@ class SolutionRegister:
 
 
         self.docker = docker
-        self.ecr_url = self.ecr.split("/")[0]
+        self.ecr_url = self.ecr_name.split("/")[0]
         # FIXME 마지막에 붙는 container 이름은 solution_name 과 같게 
         # http://collab.lge.com/main/pages/viewpage.action?pageId=2126915782
         # [중요] container uri 는 magna-ws 말고 magna 같은 식으로 쓴다 (231207 임현수C)
         ecr_scope = self.cloud_setup["WORKSPACE_NAME"].split('-')[0] # magna-ws --> magna
-        self.ecr_repo = self.ecr.split("/")[1] + '/' + ecr_scope + "/ai-solutions/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
+        self.ecr_repo = self.ecr_name.split("/")[1] + '/' + ecr_scope + "/ai-solutions/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
         self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
 
         ## 동일 이름의 ECR 존재 시, 삭제하고 다시 생성한다. 
@@ -815,7 +955,7 @@ class SolutionRegister:
         try: 
             data = {'container_uri': self.ecr_full_url} # full url 는 tag 정보까지 포함 
             data = {'container_uri': self.ecr_full_url}
-            self.sm_yaml['pipeline'][self.sm_pipeline_pointer].update(data)
+            self.sm_yaml['pipeline'][self.sm_pipe_pointer].update(data)
             print_color(f"[SYSTEM] Completes setting << container_uri >> in solution_metadata.yaml:", color='green')
             print(f"pipeline: -container_uri: {data['container_uri']}")
             self._save_yaml()
@@ -826,7 +966,12 @@ class SolutionRegister:
     ######    STEP4. Set User Parameters
     ################################
 
-    def set_candidate_parameters(self):
+    def set_candidate_parameters(self, display_table=True):
+        """experimental_plan.yaml 에서 제작한 parameter 들으 보여주고, 기능 정의 하도록 한다.
+        """
+        self.print_step("Display User Parameter List:")
+
+
         self._read_experimentalplan_yaml(self.exp_yaml_path)
 
         def rename_key(d, old_key, new_key): #inner func.
@@ -834,20 +979,164 @@ class SolutionRegister:
                 d[new_key] = d.pop(old_key)
         
         ### candidate parameters setting
-        if "train" in self.pipeline:
-            self.candidate_params = self.exp_yaml['user_parameters'][0]
-            rename_key(self.candidate_params, 'train_pipeline', 'candidate_parameters')
-            self.sm_yaml['pipeline'][0].update({'parameters' : self.candidate_params})
-        elif "inference" in self.pipeline:
-            self.candidate_params = self.exp_yaml['user_parameters'][1]
-            rename_key(self.candidate_params, 'inference_pipeline', 'candidate_parameters')
-            self.sm_yaml['pipeline'][1].update({'parameters' : self.candidate_params})
-        #print(self.sm_yaml['pipeline'][0]['parameters'])
-        return self.candidate_params['candidate_parameters']
+        params = deepcopy(self.exp_yaml['user_parameters'])
+        for pipe_dict in params:
+            pipe_name = None # init
+            if 'train_pipeline' in list(pipe_dict.keys()):
+                pipe_name = 'train'
+            elif 'inference_pipeline' in list(pipe_dict.keys()):
+                pipe_name = 'inference'
+            else:
+                pipe_name = None
+
+            ## single pipeline 이 지원되도록 하기 
+            rename_key(pipe_dict, f'{pipe_name}_pipeline', 'candidate_parameters')
+            sm_pipe_type = self.sm_yaml['pipeline'][self.sm_pipe_pointer]['type']
+
+            if sm_pipe_type == pipe_name:
+
+                subkeys = {}
+                subkeys.update(pipe_dict)  ## candidate
+
+                # 빈 user_parameters 생성 
+                user_parameters = []
+                for step in pipe_dict['candidate_parameters']:
+                    output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
+                    user_parameters.append(output_data)
+                subkeys['user_parameters'] = user_parameters
+                subkeys['selected_user_parameters'] = user_parameters
+        
+                self.sm_yaml['pipeline'][self.sm_pipe_pointer].update({'parameters':subkeys})
+                print(subkeys)
+                self._save_yaml()
+
+
+            
+        ## display
+        params2 = deepcopy(self.exp_yaml['user_parameters'])
+        columns = ['pipeline', 'step', 'parmeter', 'value']
+        df = pd.DataFrame(columns=columns)
+        table_idx = 0
+        self.candidate_format = {} ## return format 만들기 
+        for pipe_dict in params2:
+            if 'train_pipeline' in list(pipe_dict.keys()):
+                pipe_name = 'train'
+                self.candidate_format.update({'train_pipeline':[]})
+            elif 'inference_pipeline' in list(pipe_dict.keys()):
+                pipe_name = 'inference'
+                self.candidate_format.update({'inference_pipeline':[]})
+            else:
+                pipe_name = None
+
+            step_idx = 0
+            for step_dict in pipe_dict[f'{pipe_name}_pipeline']:
+                step_name = step_dict['step']
+                new_dict = {'step': step_name, 
+                            'args': []}
+                self.candidate_format[f'{pipe_name}_pipeline'].append(new_dict)
+
+                for key, value in step_dict['args'][0].items():
+                    item = [pipe_name, step_name, key, value]
+                    df.loc[table_idx] = item
+
+                    new_dict2 = {
+                        'name': key,
+                        'description': '',
+                        'type': '',
+                    }
+                    self.candidate_format[f'{pipe_name}_pipeline'][step_idx]['args'].append(new_dict2)
+                    table_idx += 1
+                step_idx += 1
+
+        ## 길이 제한
+        # 'text' 컬럼 값을 미리 10글자로 제한
+        MAX_LEN = 40
+        df['value'] = df['value'].astype(str)
+        df['value'] = df['value'].apply(lambda x: x[:MAX_LEN] + '...' if len(x) > MAX_LEN else x)
+
+        if display_table:
+            print_color(df.to_markdown(tablefmt='fancy_grid'), color='cyan')
+
+        self.candidate_params_df = df
+
+        return self.candidate_format
     
-    
-    def set_user_parameters(self, _user_parameters=[]):
-        user_parameters = deepcopy(_user_parameters) # 안하면 jupyter의 user_parameters 리스트와 메모리 공유 돼서 꼬임 
+    def check_user_parameters():
+        """ 입력한 user_parametrs 가 edge conductor 가 요구하는 format 에 맞는지 확인한다. 
+
+        1) candidate 와 동일한 step 을 가지고 있는가? -- 없다면 내부에서 만들어냄
+        2) parameter 가 candidate 와 동일 step 에 존재 하는지 확인 
+        3) parameter 가 가져야 할 key 를 전부 가지고 있는가? 
+        4) parameter 의 key 별 허용값을 
+
+        """
+        # - name: parameters name
+        #   description: description param
+        #   type: float | string | int | single_selection | multi_selection
+        #   selectable:
+        #     - option1
+        #     - option2
+        #     - option3
+        #   default:
+        #     - option1
+        #   range: range of float or int or length of string
+        # --------- float 입력 시 ---------------------
+        #  - name: float_param
+        #    description: this is param to input float
+        #    type: float
+        #    default:
+        #      - 0.5
+        #    range:
+        #      - 0.0
+        #      - 1.0
+        # --------- string 입력 시 ---------------------
+        #  - name: string_param
+        #    description: this is param to input string
+        #    type: string
+        #    default:
+        #      - hello  "x1, x2, x3,"
+        #    range:
+        #      - 5
+        #      - 100
+        # --------- string-selection 입력 시 ---------------------
+        #  - name: single_selection_param
+        #    description: this is param to input single selection
+        #    type: single_selection
+        #    selectable:
+        #      - option1
+        #      - option2
+        #      - option4
+        #    default:
+        #      - option1
+        # --------- multiple-selection 입력 시 ---------------------
+        #  - name: multi_selection_param
+        #    description: this is param to input multi selection
+        #    type: multi_selection
+        #    selected:
+        #      - option1
+        #      - option2
+        #      - option3
+        #    default:
+        #      - option1
+        #      - option3 
+       
+
+
+
+    def set_user_parameters(self, user_parameters={}):
+        """ 사용자가 입력한 user_parameter 를 candidate_parameter 와 비교하여 이상값를 찾아낸다. 
+        문제 없다면 solution_metadata 에 반영한다. 
+
+        Attributes:
+          - user_parameter (dict): UI 로 표현하고 싶은 parameter 를 선택하고, format 을 결정한다.
+        """
+
+        if len(self.candidate_params_df) == 0 : 
+            raise ValueError("set_candidate_parameter() 를 호출하여 선택가능한 parameter 를 확인 합니다.")
+
+
+
+        user_parameters = deepcopy(user_parameters) # 안하면 jupyter의 user_parameters 리스트와 메모리 공유 돼서 꼬임 
         ### user parameters setting 
         subkeys = {}
         # 빈 user_parameters 생성 
@@ -1024,12 +1313,16 @@ class SolutionRegister:
     ######    Internal Functions
     #####################################
 
-    def _init_solution_metadata(self, version=VERSION):
+    def _init_solution_metadata(self):
         """ Solution Metadata 를 생성합니다. 
 
         """
-        self.sm_yaml['version'] = version
-        self.sm_yaml['name'] = ''
+
+        if not type(self.cloud_setup['VERSION']) == float:
+            raise ValueError("solution_metadata 의 VERSION 은 float 타입이어야 합니다.")
+
+        self.sm_yaml['version'] = self.cloud_setup['VERSION']
+        self.sm_yaml['name'] = self.solution_name
         self.sm_yaml['description'] = {}
         self.sm_yaml['pipeline'] = []
         # self.sm_yaml['pipeline'].append({'type': 'inference'})
@@ -1045,10 +1338,9 @@ class SolutionRegister:
             raise ValueError(f"Invalid value ({pipeline_name}). Only one of 'train' or 'inference' is allowed as input.")
         self.sm_yaml['pipeline'].append({'type': pipeline_name})
         self.pipeline = pipeline_name # 가령 inference 파이프라인 추가 시 인스턴스의 pipeline을 inference 로 변경 
-        self.sm_pipeline_pointer += 1 # 파이프라인 포인터 증가 1
+        self.sm_pipe_pointer += 1 # 파이프라인 포인터 증가 1
         try: 
             self._save_yaml()
-            print_color(f"\n<< solution_metadata.yaml >> updated. - appended pipeline: {pipeline_name}", color='green')
         except: 
             raise NotImplementedError("Failed to update << solution_metadata.yaml >>")
     
@@ -1144,17 +1436,6 @@ class SolutionRegister:
         return isinstance(data, str)
 
 
-    #####################################
-    ######    Spec-out
-    #####################################
-
-    def set_resource(self, resource = 'standard'):
-        if "train" in self.pipeline:
-            self.sm_yaml['pipeline'][0]["resource"] = {"default": resource}
-        elif "inference" in self.pipeline:
-            self.sm_yaml['pipeline'][1]["resource"] = {"default": resource}
-        print_color(f"\n[{self.pipeline}] Success updating << resource >> in the solution_metadata.yaml", color='green')
-        self._save_yaml()
 
 
 #----------------------------------------#
