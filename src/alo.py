@@ -90,8 +90,16 @@ class ALO:
         self.artifacts = self.artifact.set_artifacts()
 
     def init(self):
+        '''
+        git clone --no-checkout http://mod.lge.com/hub/dxadvtech/aicontents/tcr.git
+        echo "config/experimental_plan.yaml" >> .git/info/sparse-checkout
+        git checkout
+        '''
         pass
-        
+    
+    def _sparse_checkout_copy(self):
+        pass
+    
     #############################
     ####    Main Function    ####
     #############################
@@ -247,6 +255,11 @@ class ALO:
             #           train_instance_type='local')
 
             training_estimator.fit() 
+            ###################################
+            ## Step5: 사용자가 지정한 s3_bucket_uri 하단의 모델 directory 중 
+            #         {basenmae}_날짜 폴더 중 latest 를 다운로드 받게함 (그 하단에 output 폴더 미존재 시 학습 안된 것)
+            ################################### 
+            aws_handler.download_latest_model()
         except Exception as e: 
             self.proc_logger.process_error(f"Failed to sagemaker estimator fit: \n" + str(e)) 
 
@@ -272,7 +285,7 @@ class ALO:
             from sagemaker_training import environment
             # [중요] sagemaker 사용 시엔 self.external_path['save_train_artifacts_path']를 sagemaker에서 제공하는 model_dir로 변경
             # [참고] https://github.com/aws/sagemaker-training-toolkit        
-            self.external_path['save_train_artifacts_path'] = os.path.join(environment.Environment().model_dir, "saved_model")
+            self.external_path['save_train_artifacts_path'] = environment.Environment().model_dir
         self.is_always_on = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
             and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
 
@@ -491,9 +504,6 @@ class ALO:
                 self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
             except: 
                 self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
-
-            self.read_structure(pipeline, step)
-
 
     def send_summary(self, success_str, ext_saved_path):
         """save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  

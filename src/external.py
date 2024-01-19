@@ -266,7 +266,7 @@ class ExteranlHandler:
             
             return
 
-    def external_load_model(external_path, external_path_permission): 
+    def external_load_model(self, external_path, external_path_permission): 
         '''
         # external_load_model은 inference pipeline에서만 실행함 (alo.py에서)
         # external_load_model은 path 하나만 지원 (list X --> str only)
@@ -340,7 +340,7 @@ class ExteranlHandler:
                     tar.extractall(models_path)
                     tar.close()
                 else:
-                    PROC_LOGGER.process_warning(f"No << model.tar.gz >> exists in the path << ext_path >>. \n Instead, try to download the all of << ext_path >> ")
+                    PROC_LOGGER.process_warning(f"No << model.tar.gz >> exists in the path << {ext_path} >>. \n Instead, try to download the all of << {ext_path} >> ")
                     s3_downloader.download_folder(models_path)  
                 PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>') 
             except:

@@ -2,6 +2,7 @@ import pkg_resources
 import os
 import subprocess
 import sys
+import yaml 
 from collections import defaultdict
 from src.logger import ProcessLogger 
 from src.constants import *
@@ -17,6 +18,20 @@ class Packages:
     def __init__(self):
         pass
     
+
+    def get_yaml(self, _yaml_file):
+        yaml_dict = dict()
+        try:
+            with open(_yaml_file, encoding='UTF-8') as f:
+                yaml_dict  = yaml.load(f, Loader=yaml.FullLoader)
+        except FileNotFoundError:
+            PROC_LOGGER.process_error(f"Not Found : {_yaml_file}")
+        except:
+            PROC_LOGGER.process_error(f"Check yaml format : {_yaml_file}")
+
+        return yaml_dict 
+    
+    
     def set_alolib(self):
         """ALO 는 Master (파이프라인 실행) 와 slave (Asset 실행) 로 구분되어 ALO API 로 통신합니다. 
         기능 업데이트에 따라 API 의 버전 일치를 위해 Master 가 slave 의 버전을 확인하여 최신 버전으로 설치 되도록 강제한다.
@@ -29,7 +44,7 @@ class Packages:
             cmd = f'cd {ALOMAIN} && git symbolic-ref --short HEAD'
             result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
             ALOVER = result.stdout.decode('utf-8').strip()
-            repository_url = "http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git"
+            repository_url = self.get_yaml(PROJECT_HOME + 'src/alo_config/uri.yaml')['alolib-uri']
             destination_directory = "./alolib"
             result = subprocess.run(['git', 'clone', '-b', ALOVER, repository_url, destination_directory], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             if result.returncode == 0:
