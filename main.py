@@ -1,4 +1,5 @@
 import json
+import subprocess
 from src.alo import ALO
 from src.utils import set_args, init_redis
 
@@ -39,7 +40,9 @@ if __name__ == "__main__":
                 alo.runs()
         except Exception as e: 
             raise NotImplementedError(str(e))
-        
+        finally: 
+             with open('solution_requirements.txt', 'w') as file_:
+                subprocess.Popen(['pip', 'freeze'], stdout=file_).communicate()
     elif args.loop == True: 
         # EdgeApp 과의 통신을 위한 redis 초기화
         q = init_redis()
