@@ -10,8 +10,9 @@ RUN apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install required Python packages
-# COPY ai_con_demo/requirements.txt /opt/program/requirements.txt
-# RUN pip install --no-cache-dir -r /opt/program/requirements.txt
+COPY /solution_requirements.txt /alo/solution_requirements.txt
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r /alo/solution_requirements.txt
 
 # Specify encoding
 ENV LC_ALL=C.UTF-8

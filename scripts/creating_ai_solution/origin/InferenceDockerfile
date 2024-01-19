@@ -1,8 +1,7 @@
 FROM public.ecr.aws/docker/library/python:3.10-slim-bullseye
-RUN apt-get update  --fix-missing
+RUN apt-get update
 RUN apt-get install -y apt-utils
 RUN apt-get install -y --no-install-recommends \
-        --fix-missing \
          build-essential \
          wget \
          ca-certificates \
@@ -15,7 +14,9 @@ RUN apt-get install -y --no-install-recommends \
 
 
 # Install required Python packages
-
+COPY /solution_requirements.txt /alo/solution_requirements.txt
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r /alo/solution_requirements.txt
 
 # Specify encoding
 ENV LC_ALL=C.UTF-8
