@@ -157,6 +157,11 @@ class ALO:
         try:
             from sagemaker.estimator import Estimator
             ###################################
+            ## Step0: aws configure의 profile을 my-config로 변경 (sagemaker 및 본인 계정 s3, ecr 권한 있는)
+            #        사용자가 미리 my-config와 meerkat-config를 multiprofile 등록해놨어야 함
+            ###################################
+            os.environ["AWS_PROFILE"] = "my-config"
+            ###################################
             ## Step1: .sagemaker 임시 폴더 생성 후 
             ##        ['main.py', 'src', 'config', 'assets', 'alolib', '.git'] 를 .sagemaker로 복사 
             ###################################
