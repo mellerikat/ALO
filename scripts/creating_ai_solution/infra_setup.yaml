@@ -1,0 +1,29 @@
+
+# 'AIC_URI': "http://10.158.2.243:9999/",   ## 담당 테스트 서버 
+# 'AIC_URI': "https://aic-kic.aidxlge.com/"   ## 고객지수 서버
+'AIC_URI': "https://web.aic-dev.lgebigdata.com/"   ## 실 서버 
+"REGION": "ap-northeast-2"
+"WORKSPACE_NAME": "cism-ws"  ## magna-ws, cism-ws
+"BUILD_METHOD": "docker"  ## docker, buildah 
+
+"INFERENCE_RESOURCE": "amd"  # amd, arm  
+
+######################################
+#### Do not modify 
+######################################
+
+'VERSION': 1.0
+"LOGIN_MODE": "static" ## ldap, static
+"ECR_TAG": "latest"   ## 없어질 사항
+"SOLUTION_TYPE": "private" ##public, private 
+"BUILDAH_TAGS": 
+  - "Key=Company,Value=LGE"
+  - "Key=Owner,Value=IC360"
+  - "Key=HQ,Value=CDO"
+  - "Key=Division,Value=CDO"
+  - "Key=Infra Region,Value=KIC"
+  - "Key=Service Mode,Value=OP"
+  - "Key=Cost Type,Value=COMPUTING"
+  - "Key=Project,Value=CIS"
+  - "Key=Sub Project,Value=CISM"
+  - "Key=System,Value=AIDX"
