@@ -6,7 +6,10 @@
 'SYSTEM_INFO': 'api/v1/workspaces' # GET
 
 # 2. AI Solution 이름 설정 / 3. AI Solution 등록
-'AI_SOLUTION': 'api/v1/solutions/workspace' # 이름 설정 시 GET, 등록 시 POST
+'SOLUTION_LIST': 'api/v1/solutions/workspace' # 이름 설정 시 GET, 등록 시 POST
+
+# 3. AI Solution 등록
+'REGISTER_SOLUTION': 'api/v1/solutions' # 등록 시 POST
 
 # 4. AI Solution Instance 등록
 'SOLUTION_INSTANCE': 'api/v1/instances' # POST
