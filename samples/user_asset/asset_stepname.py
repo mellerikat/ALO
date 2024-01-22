@@ -19,7 +19,6 @@ class UserAsset(Asset):
         # self.asset.load_config()    : 이번 Asset 에 필요한 설정값을 가져온다.
         # self.asset.load_data()      : 이번 Asset 에 필요한 데이터를 가져온다.
         # self.asset.load_args()      : 이번 Asset 에 필요한 사용자 파라미터를 가져온다.
-        # self.asset.load_envs()      : 이번 Asset 에 필요한 환경변수를 가져온다.
         # self.asset.load_summary()   : 이미 이전 Asset에서 save_summary를 통해 만들어진 summary.yaml이 존재한다면 해당 yaml을 dict로 load한다.
         
         #######################################  save 관련  ###################################
