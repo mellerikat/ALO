@@ -29,6 +29,8 @@ ALODIR = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file_
 TEMP_ARTIFACTS_DIR = ALODIR + '.temp_artifacts_dir/'
 # 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
 TEMP_MODEL_DIR = ALODIR + '.temp_model_dir/'
+
+KUBEFLOW_STATUS = ("Pending", "Running", "Succeeded", "Skipped", "Failed", "Error")
 #---------------------------------------------------------
 WORKINGDIR = os.path.abspath(os.path.dirname(__file__)) + '/'
 
@@ -40,7 +42,7 @@ class SolutionRegister:
         print_color("[SYSTEM] Solutoin 등록에 필요한 setup file 들을 load 합니다. ", color="green")
 
         if not infra_setup:
-            infra_setup = "./infra_setup.yaml" 
+            infra_setup = "./setup/infra_setup.yaml" 
             print(f"Infra setup 파일이 존재 하지 않으므로, Default 파일을 load 합니다. (path: {infra_setup})")
             try:    
                 with open(infra_setup) as f:
@@ -49,11 +51,11 @@ class SolutionRegister:
                 raise ValueError(e)
         else:
             self.infra_setup = infra_setup
-        print_color("[SYSTEM] infra_setup: ", color='green')
-        pprint(self.infra_setup)
+        print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
+        pprint(self.infra_setup, depth=5)
 
         if not api_uri:
-            api_uri = "./api_setup.yaml" 
+            api_uri = "./setup/api_setup.yaml" 
             print(f"\nAPI setup 파일이 존재 하지 않으므로, Default 파일을 load 합니다. (path: {api_uri})")
 
             try:    
@@ -69,8 +71,8 @@ class SolutionRegister:
             raise ValueError("solution infomation 을 입력해야 합니다.")
         else:
             self.solution_info = solution_info
-        print_color("[SYSTEM] solution_info.: ", color='green')
-        pprint(self.solution_info)
+        print_color("[SYSTEM] solution_info. (max display: 5 line): ", color='green')
+        pprint(self.solution_info, depth=5)
 
 
         ####################################
@@ -156,26 +158,29 @@ class SolutionRegister:
         ### icon 설명
         #############################
         html_content = self.s3_upload_icon_display()  ## pre-define 된 icon 들 보여주기
-        # display(HTML(html_content))  ## 테스트중에는 꺼둠
+        # display(HTML(html_content))  ##  icon 고정됨으로 spec 변경 됨으로 주석 처리 됨
         self.s3_upload_icon(name='ic_artificial_intelligence')
 
-        ############################
-        ### train resource 설정
-        ############################
         ## common
         self._s3_access_check()  ## s3 instnace 생성 
-
-        self._sm_append_pipeline(pipeline_name='train')
-        self.set_resource_display()
-        self.set_resource(resource='standard')  ## resource 선택은 spec-out 됨
-        candidate = self.set_user_parameters()
-        self.s3_upload_data()
-        self.s3_upload_artifacts()
-        if (not self.debugging) and (not self.skip_generation_docker):
-            self.make_docker_container()
+        ############################
+        ### Train pipeline 설정
+        ############################
+        if self.infra_setup['inference_only']:
+            pass
+        else:
+            self._sm_append_pipeline(pipeline_name='train')
+            self.set_resource_display()   
+            self.set_resource(resource='standard')  ## resource 선택은 spec-out 됨
+            self.set_user_parameters()
+            self.s3_upload_data()
+            self.s3_upload_artifacts()
+            if (not self.debugging) and (not self.skip_generation_docker):
+                self.make_docker_container()
         
-
-        ####### Inference pipeline 세팅  ########
+        ############################
+        ### Inference pipeline 설정
+        ############################
         self._sm_append_pipeline(pipeline_name='inference')
         self.set_resource(resource='standard')  ## resource 선택은 spec-out 됨
         self.set_user_parameters(display_table=False)
@@ -262,7 +267,7 @@ class SolutionRegister:
         self.print_step("Solution Name Creation")
 
         if not name:
-            name = self.solution_info['name']
+            name = self.solution_info['solution_name']
 
         # 231207 임현수C: 사용자는 public 사용못하게 해달라 
         ONLY_PUBLIC = 1 #1 --> 1로 해야 public, private 다 받아옴 
@@ -332,7 +337,7 @@ class SolutionRegister:
                 d[key] = ""
         
         validate_dict(description)
-        description['title'] = self.solution_info['name']  ## name 을 title default 로 설정함
+        description['title'] = self.solution_info['solution_name']  ## name 을 title default 로 설정함
 
         try: 
             self.sm_yaml['description'].update(description)
@@ -1142,8 +1147,9 @@ class SolutionRegister:
                 user_parameters = []
                 step_list = []
                 for step in pipe_dict['candidate_parameters']:
-                    output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
+                    output_data = {'step': step['step'], 'args': {}} # solution metadata v9 기준 args가 dict
                     selected_user_parameters.append(output_data.copy())
+                    output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
                     user_parameters.append(output_data.copy())
                     step_list.append(step['step'])
 
@@ -1294,7 +1300,7 @@ class SolutionRegister:
             yaml_data = yaml.safe_load(file)
         data = {
             "name": response_solution['name'],
-            "solution_version_id": response_solution['version']['id'],
+            "solution_version_id": response_solution['versions'][0]['id'],
             "metadata_json": yaml_data,
         }
         data =json.dumps(data) # json 화
@@ -1463,8 +1469,18 @@ class SolutionRegister:
 
 
     def get_stream_status(self):
-        # [?] 계속 running 상태여서 artifacts 안생기는 듯 
-        # Train pipeline 확인
+        """ KUBEFLOW_STATUS 에서 지원하는 status 별 action 처리를 진행 함. 
+            KUBEFLOW_STATUS = ("Pending", "Running", "Succeeded", "Skipped", "Failed", "Error")
+            https://www.kubeflow.org/docs/components/pipelines/v2/reference/api/kubeflow-pipeline-api-spec/
+
+          - Pending : docker container 가 실행되기 전 임을 알림.
+          - Running : 실행 중 임을 알림.
+          - Succeeded : 성공 상태 
+          - Skipped : Entity has been skipped. For example, due to caching
+          - STOPPED : 중지 상태 
+          - FAILED : 실패 상태 
+
+        """
 
         self.print_step("Get AI solution stream status")
 
@@ -1567,6 +1583,181 @@ class SolutionRegister:
             raise NotImplementedError("Failed to download train artifacts.")
 
 
+
+    #####################################
+    ######    Delete
+    #####################################
+
+    def delete_stream(self): 
+
+        self.print_step("Delete stream")
+
+        ## file load 한다. 
+        try:
+            path = self.interface_path + self.stream_file
+            with open(path) as f:
+                response_stream = json.load(f)
+
+            print_color(f"[SYSTEM] Strema 등록 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_solution_instance)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
+        # stream 등록 
+        stream_params = {
+            "stream_id": response_stream['id'],
+            "workspace_name": response_stream['workspace_name']
+        }
+
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["STREAMS"] + f"/{response_stream['id']}"
+        response = requests.delete(aic+api, 
+                                 params=stream_params, 
+                                 cookies=self.aic_cookie)
+        response_delete_stream = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] Stream 삭제를 성공하였습니다. ", color='cyan')
+            print(f"[INFO] response: \n {response_delete_stream}")
+
+            # # interface 용 폴더 생성.
+            # try:
+            #     if not os.path.exists(self.interface_path):
+            #         os.mkdir(self.interface_path)
+            # except Exception as e:
+            #     raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            # path = self.interface_path + self.stream_file
+            # with open(path, 'w') as f:
+            #   json.dump(response_delete_stream, f, indent=4)
+            #   print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] Stream 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", response_delete_stream["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] Stream 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", response_delete_stream["detail"])
+            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_stream}")
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_stream}")
+
+    def delete_solution_instance(self): 
+
+        self.print_step("Delete AI solution instance")
+
+        ## file load 한다. 
+        try:
+            path = self.interface_path + self.solution_instance_file
+            with open(path) as f:
+                response_instance = json.load(f)
+
+            print_color(f"[SYSTEM] AI solution instance 등록 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_solution_instance)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
+        # stream 등록 
+        stream_params = {
+            "instance_id": response_instance['id'],
+            "workspace_name": response_instance['workspace_name']
+        }
+
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["SOLUTION_INSTANCE"] + f"/{response_instance['id']}"
+        response = requests.delete(aic+api, 
+                                 params=stream_params, 
+                                 cookies=self.aic_cookie)
+        response_delete_instance = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] AI solution instance 삭제를 성공하였습니다. ", color='cyan')
+            print(f"[INFO] response: \n {response_delete_instance}")
+
+            # # interface 용 폴더 생성.
+            # try:
+            #     if not os.path.exists(self.interface_path):
+            #         os.mkdir(self.interface_path)
+            # except Exception as e:
+            #     raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            # path = self.interface_path + self.stream_file
+            # with open(path, 'w') as f:
+            #   json.dump(response_delete_instance, f, indent=4)
+            #   print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] AI solution insatnce 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", response_delete_instance["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] AI solution instance 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", response_delete_instance["detail"])
+            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_instance}")
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_instance}")
+
+    def delete_solution(self): 
+
+        self.print_step("Delete AI solution")
+
+        ## file load 한다. 
+        try:
+            path = self.interface_path + self.solution_file
+            with open(path) as f:
+                response_solution = json.load(f)
+
+            print_color(f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_solution_instance)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
+        # stream 등록 
+        stream_params = {
+            "solution_id": response_solution['id'],
+            "workspace_name": response_solution['workspace_name']
+        }
+
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["REGISTER_SOLUTION"] + f"/{response_solution['id']}"
+        response = requests.delete(aic+api, 
+                                 params=stream_params, 
+                                 cookies=self.aic_cookie)
+        response_delete_solution = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] AI solution 삭제를 성공하였습니다. ", color='cyan')
+            print(f"[INFO] response: \n {response_delete_solution}")
+
+            # # interface 용 폴더 생성.
+            # try:
+            #     if not os.path.exists(self.interface_path):
+            #         os.mkdir(self.interface_path)
+            # except Exception as e:
+            #     raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            # path = self.interface_path + self.stream_file
+            # with open(path, 'w') as f:
+            #   json.dump(response_delete_solution, f, indent=4)
+            #   print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] AI solution 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", response_delete_solution["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] AI solution 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", response_delete_solution["detail"])
+            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_solution}")
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_solution}")
+
+    #####################################
+    ######    Internal Functions
+    #####################################
+
+
     def load_solution_instance_list(self): 
 
         self.print_step("Load AI solution instance list")
@@ -1624,7 +1815,9 @@ class SolutionRegister:
             print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
             print("Error message: ", self.response_instance_list["detail"])
         else:
+
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+
 
 
     #####################################
@@ -1937,27 +2130,3 @@ def convert_args_type(values: dict):
             
     return output
         
-
-if __name__ == "__main__":
-    user_input ={
-        # 시스템 URI
-        'URI': "http://10.158.2.243:9999/", 
-        
-        # workspace 이름 
-        'WORKSPACE_NAME': "magna-ws", # "cism-ws"
-        
-        # 로그인 정보 
-        'LOGIN_ID': '', # "cism-dev"
-        'LOGIN_PW': '', # "cism-dev@com"
-        
-        
-        # ECR에 올라갈 컨테이너 URI TAG 
-        'ECR_TAG': 'latest', 
-        
-        # scripts/creating_ai_solution/image/ 밑에 UI에 표시될 아이콘 이미지 파일 (ex. icon.png) 를 업로드 해주세요. 
-        # 이후 해당 아이콘 파일 명을 아래에 기록 해주세요.
-        'ICON_FILE': 'icon.png'
-    }
-    registerer = RegisterUtils(user_input)
-
-

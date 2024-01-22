@@ -9,3 +9,9 @@ __pycache__/
 .vscode/
 Dockerfile
 .sagemaker
+scripts/creating_ai_solution/interface/
+scripts/creating_ai_solution/alo/
+scripts/creating_ai_solution/Dockerfile
+scripts/creating_ai_solution/solution_metadata.yaml
+alolib/
+solution_requirements.txt
