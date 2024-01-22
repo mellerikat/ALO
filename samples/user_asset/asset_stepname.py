@@ -29,7 +29,11 @@ class UserAsset(Asset):
         #                                                                 [참고] save_summary 관련 문서: 
         #                                                                 http://collab.lge.com/main/pages/viewpage.action?pageId=2210629363
         
-        ####################################### model, artifacts 관련  #########################
+        ##################################  input data 경로 관련  ##############################
+        # self.asset.get_input_path()       : input data가 존재하는 base 경로를 반환합니다. 
+        #                                     (ex. ~/alo/input/train(혹은 inference)/)  
+        
+        ##################################  model, artifacts 관련  #############################
         # self.asset.get_model_path()       : 학습된 모델을 save (학습 시)하거나 load (추론 시)할 경로를 가져온다. 
         # self.asset.get_output_path()      : 학습 or 추론 결과를 저장할 경로를 가져온다. 
         #                                     [참고] 결과는 output.csv 혹은 output.jpg 각각은 하나씩만 있어야 한다. 
