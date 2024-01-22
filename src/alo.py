@@ -67,21 +67,45 @@ class ALO:
         self.proc_logger = None
         self.package_list = []
 
+        self.exp_plan_file = exp_plan_file
+        self.pipeline_type = pipeline_type
+        self.boot_on = boot_on
+
         # logger 초기화
         self.init_logger()
         
         # init solution metadata
         self.sol_meta = json.loads(solution_metadata) if solution_metadata != None else None # None or dict from json 
 
+    def init(self, url = None):
+        '''
+        git clone --no-checkout http://mod.lge.com/hub/dxadvtech/aicontents/tcr.git
+        echo "config/experimental_plan.yaml" >> .git/info/sparse-checkout
+        git checkout
+        '''
+
+        if url != None:
+            self._sparse_checkout_copy(url)
+        else:
+            def is_file_in_folder():
+                # 파일의 전체 경로를 구성
+                file_path = EXP_PLAN
+
+                # 파일이 존재하는지 확인
+                return os.path.exists(file_path)
+            if is_file_in_folder():
+                pass
+            else:
+                print("experimental_plan 이 없습니다. alo.init을 통해 yaml을 설치해주세요. alo.init(git_url)")
+        
         system_envs = {}
-        # init experimental_plan 
-        self.experimental_plan = ExperimentalPlan(exp_plan_file, self.sol_meta)
+
+        self.experimental_plan = ExperimentalPlan(self.exp_plan_file, self.sol_meta)
         self.exp_plan_file, system_envs = self.experimental_plan.read_yaml(system_envs)
 
         self._set_attr()
-        
-        # 시스템 전역 변수 초기화
-        self.system_envs = self._set_system_envs(pipeline_type, boot_on) 
+
+        self.system_envs = self._set_system_envs(self.pipeline_type, self.boot_on, system_envs) 
 
         # 현재 ALO 버전
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
@@ -91,17 +115,34 @@ class ALO:
 
         # artifacts home 초기화 (from src.utils)
         self.artifacts = self.artifact.set_artifacts()
-
-    def init(self):
-        '''
-        git clone --no-checkout http://mod.lge.com/hub/dxadvtech/aicontents/tcr.git
-        echo "config/experimental_plan.yaml" >> .git/info/sparse-checkout
-        git checkout
-        '''
-        pass
     
-    def _sparse_checkout_copy(self):
-        pass
+    def _sparse_checkout_copy(self, url):
+        file_path = "config/experimental_plan.yaml"  # 복사할 파일 경로
+        target_dir = PROJECT_HOME + "config"  # 파일을 복사할 대상 경로
+
+        # 저장소 이름 추출
+        repo_name = url.split('/')[-1]
+        if repo_name.endswith('.git'):
+            repo_name = repo_name[:-4]
+
+        # 저장소 클론
+        subprocess.run(['git', 'clone', url])
+
+        # 파일이 존재하는지 확인
+        source_file_path = os.path.join(repo_name, file_path)
+        if not os.path.exists(source_file_path):
+            print("The specified file does not exist in the repository.")
+        else:
+            # 대상 디렉토리가 존재하는지 확인하고, 없으면 생성
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir)
+
+            # 파일 복사
+            target_file_path = os.path.join(target_dir, os.path.basename(file_path))
+            shutil.copyfile(source_file_path, target_file_path)
+            print(f"File copied successfully to {target_file_path}")
+
+            shutil.rmtree(PROJECT_HOME + repo_name)
     
     #############################
     ####    Main Function    ####
@@ -411,8 +452,8 @@ class ALO:
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
         self.proc_logger = ProcessLogger(PROJECT_HOME)  
 
-    def _set_system_envs(self, pipeline_type, boot_on):
-        system_envs = {}
+    def _set_system_envs(self, pipeline_type, boot_on, _system_envs):
+        system_envs = _system_envs
         # solution meta 버전 
         system_envs['solution_metadata_version'] = None 
         # edgeapp interface 관련 
