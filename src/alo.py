@@ -64,6 +64,7 @@ class ALO:
         # 필요한 전역변수 선언
         self.exp_plan = None
         self.proc_logger = None
+        self.package_list = []
 
         # logger 초기화
         self.init_logger()
@@ -146,7 +147,8 @@ class ALO:
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
                     elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
-
+        
+        self._create_contents_requirements()
 
     def sagemaker_runs(self): 
         ###################################
@@ -281,7 +283,7 @@ class ALO:
         self.control = self.experimental_plan.control
                         
     def run(self, pipeline):
-
+        
         self._set_attr()
 
         self.system_envs['pipeline_start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
@@ -325,7 +327,7 @@ class ALO:
             ###################################
             ## Step3: Asset git clone 및 패키지 설치 
             ###################################
-            self.setup_asset(pipeline)
+            packages = self.setup_asset(pipeline)
 
             ###################################
             ## Step4: Asset interface 용 data structure 준비 
@@ -361,6 +363,8 @@ class ALO:
 
         self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
+
+        self.package_list.extend(list(packages.items()))
 
     #####################################
     ####    Part1. Initialization    ####
@@ -463,6 +467,7 @@ class ALO:
         self.asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
         self.asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
 
+    
     def setup_asset(self, pipeline):
         """asset 의 git clone 및 패키지를 설치 한다. 
         
@@ -488,8 +493,8 @@ class ALO:
         # 운영 무한 루프 구조일 땐 boot_on 시 에만 install 하고 이후에는 skip 
         if (self.system_envs['boot_on'] == False) and (self.system_envs['redis_host'] is not None):
             pass 
-        else: 
-            self._install_steps(pipeline, get_asset_source)
+        else:
+            return self._install_steps(pipeline, get_asset_source)
     
     def run_asset(self, pipeline):
         """파이프라인 내의 asset 를 순차적으로 실행한다. 
@@ -755,7 +760,7 @@ class ALO:
             self.asset.setup_asset(asset_config, get_asset_source)
             requirements_dict[asset_config['step']] = asset_config['source']['requirements']
         
-        self.install.check_install_requirements(requirements_dict)
+        return self.install.check_install_requirements(requirements_dict)
 
     def get_args(self, pipeline, step):
         if type(self.user_parameters[pipeline][step]['args']) == type(None):
@@ -806,6 +811,18 @@ class ALO:
         self.proc_logger.process_info(f"==================== Finish pipeline: {pipeline} / step: {asset_config['step']}")
         
         return asset_structure
+    
+    def _create_contents_requirements(self):
+
+        package_list = []
+        for key, value in self.package_list:
+            package_list.extend(value)
+
+        package_list = set(package_list)
+
+        with open("contents_requiremnets.txt", 'w+') as file:
+            file.write('\n'.join(package_list))
+
 
     ##########################################
     ####    Part5. Use external method    ####
