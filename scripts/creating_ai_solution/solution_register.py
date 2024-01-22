@@ -78,12 +78,18 @@ class SolutionRegister:
         ####################################
 
         # solution instance 등록을 위한 interface 폴더 
-        self.interface_dir = './interface'
-        self.sm_yaml_file_path = './solution_metadata.yaml'
-        self.exp_yaml_path = "../../config/experimental_plan.yaml"
-        self.wrangler_path = "./wrangler/wrangler.py"
+        self.sm_yaml_path_file = './solution_metadata.yaml'
+        self.exp_yaml_path_file = "../../config/experimental_plan.yaml"
+        self.wrangler_path_file = "./wrangler/wrangler.py"
         self.icon_path = "./icons/"
 
+        self.interface_path = './interface/'
+        self.solution_file = '.response_solution.json'
+        self.solution_instance_file = '.response_solution_instance.json'
+        self.instance_list_file = '.response_instance_list.json'
+        self.stream_file = '.response_stream.json'
+        self.stream_run_file = '.response_stream_run.json'
+        self.stream_status_file = '.response_stream_status.json'
 
         # TODO aws login 방법 고민필요
         if self.infra_setup["AIC_URI"] == "https://web.aic-dev.lgebigdata.com/": ## 실계정
@@ -96,7 +102,7 @@ class SolutionRegister:
         ## internal variables
         self.sm_yaml = {}  ## core
         self.exp_yaml = {} ## core
-        self._read_experimentalplan_yaml(self.exp_yaml_path)  ## set exp_yaml
+        self._read_experimentalplan_yaml(self.exp_yaml_path_file)  ## set exp_yaml
 
         self.pipeline = None 
         self.workspaces = None
@@ -115,6 +121,7 @@ class SolutionRegister:
 
         ## debugging 용 변수
         self.debugging = False 
+        self.skip_generation_docker = False
         
     
     ################################################
@@ -122,7 +129,7 @@ class SolutionRegister:
     def run(self, username, password):
 
         #############################
-        ###  Solution Name 입력
+        ###  Login 입력
         #############################
         self.login(username, password)
 
@@ -164,8 +171,9 @@ class SolutionRegister:
         candidate = self.set_user_parameters()
         self.s3_upload_data()
         self.s3_upload_artifacts()
-        if not self.debugging:
+        if (not self.debugging) and (not self.skip_generation_docker):
             self.make_docker_container()
+        
 
         ####### Inference pipeline 세팅  ########
         self._sm_append_pipeline(pipeline_name='inference')
@@ -173,7 +181,7 @@ class SolutionRegister:
         self.set_user_parameters(display_table=False)
         self.s3_upload_data()
         self.s3_upload_artifacts()  ## inference 시, upload model 도 진행
-        if not self.debugging:
+        if (not self.debugging) and (not self.skip_generation_docker):
             self.make_docker_container()
 
         if not self.debugging:
@@ -182,9 +190,9 @@ class SolutionRegister:
 
 
     def print_step(self, step_name):
-        print_color("\n#########################################", color='blue')
+        print_color("\n######################################################", color='blue')
         print_color(f'#######    {step_name}', color='blue')
-        print_color("#########################################\n", color='blue')
+        print_color("########################################################\n", color='blue')
 
 
     def login(self, id, pw): 
@@ -347,14 +355,14 @@ class SolutionRegister:
 
 
         try: 
-            with open(self.wrangler_path, 'r') as file:
+            with open(self.wrangler_path_file, 'r') as file:
                 python_content = file.read()
 
             self.sm_yaml['wrangler_code_uri'] = python_content
             self.sm_yaml['wrangler_dataset_uri'] = ''
             self._save_yaml()
         except:
-            msg = f"[WARNING] wrangler.py 가 해당 위치에 존재해야 합니다. (path: {self.wrangler_path})"
+            msg = f"[WARNING] wrangler.py 가 해당 위치에 존재해야 합니다. (path: {self.wrangler_path_file})"
             print_color(msg, color="yellow")
 
             self.sm_yaml['wrangler_code_uri'] = ''
@@ -582,6 +590,9 @@ class SolutionRegister:
 
 
     def register_solution(self): 
+
+        self.print_step("Register AI solution")
+
         try: 
             # 등록을 위한 형태 변경
             data = {
@@ -596,11 +607,39 @@ class SolutionRegister:
             # AI 솔루션 등록
             aic = self.infra_setup["AIC_URI"]
             api = self.api_uri["REGISTER_SOLUTION"]
-            post_response = requests.post(aic+api, params=solution_params, data=data, cookies=self.aic_cookie)
-            self.register_solution_response = post_response.json()
-            print_color(f"[INFO] AI solution register response: \n {self.register_solution_response}", color='cyan')
+            response = requests.post(aic+api, params=solution_params, data=data, cookies=self.aic_cookie)
+            self.response_solution = response.json()
         except Exception as e: 
             raise NotImplementedError(f"Failed to register AI solution: \n {e}")
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] AI Solution 등록을 성공하였습니다. ", color='cyan')
+            print(f"[INFO] AI solution register response: \n {self.response_solution}")
+
+            # interface 용 폴더 생성.
+            try:
+                if os.path.exists(self.interface_path):
+                    shutil.rmtree(self.interface_path)
+                os.mkdir(self.interface_path)
+            except Exception as e:
+                raise NotImplementedError(f"Failed to generate interface directory while registering solution instance: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            path = self.interface_path + self.solution_file
+            with open(path, 'w') as f:
+              json.dump(response.json(), f, indent=4)
+              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.response_solution["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.response_solution["detail"])
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+    
+
+    
 
     ################################
     ######    STEP2. S3 Control
@@ -891,7 +930,7 @@ class SolutionRegister:
             ## docker login 실행 
             self._set_aws_ecr(docker=True)
         else:  ##buildah
-            self._set_aws_ecr(docker=False, tags=self.infra_setup["BUILDAH_TAGS"]) 
+            self._set_aws_ecr(docker=False, tags=self.infra_setup["REPOSITORY_TAGS"]) 
 
         self.print_step("Upload Docker Container")
 
@@ -1230,117 +1269,362 @@ class SolutionRegister:
         except: 
             raise NotImplementedError("Failed to rename docker.")
         
-    
-        
-        
     def register_solution_instance(self): 
-        solution_id = self.register_solution_response['version']['id']
-        save_json = {"server_uri" : self.URI,
-            "name" : self.solution_name,
-            "version_id": solution_id,
-            "workspace_name": self.WORKSPACE_NAME}
+
+        self.print_step("Register AI solution instance")
+
+        ## file load 한다. 
         try:
-            # 폴더가 이미 존재하는 경우 삭제합니다.
-            if os.path.exists(self.interface_dir):
-                shutil.rmtree(self.interface_dir)
-            # 새로운 폴더를 생성합니다.
-            os.mkdir(self.interface_dir)
-        except Exception as e:
-            raise NotImplementedError(f"Failed to generate interface directory while registering solution instance: \n {e}")
+            path = self.interface_path + self.solution_file
+            with open(path) as f:
+                response_solution = json.load(f)
 
-        with open(self.interface_dir + "/solution_certification.json", 'w') as outfile:
-            json.dump(save_json, outfile)
+            print_color(f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_solution)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
 
-        with open("./interface/solution_certification.json", 'r') as outfile:
-            interface = json.load(outfile)
-            
-        self.solution_instance_params = {"name": interface['name'],
-        "solution_version_id": interface['version_id'],
-        "workspace_name": interface['workspace_name']
+        self.solution_instance_params = {
+            "workspace_name": response_solution['scope_ws']
         }
         print_color(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}", color='blue')
-        # solution instance 등록
-        solution_instance = requests.post(interface['server_uri'] + SOLUTION_INSTANCE, params=self.solution_instance_params, cookies=self.aic_cookie)
-        self.solution_instance = solution_instance.json()
-        print_color(f"\n[INFO] AI solution instance register response: \n {self.solution_instance}", color='cyan')
-    
-    
-    # FIXME [?] stream 요청은 무조건 train만 지원인지 현재? 
-    def register_stream(self): 
-        # stream 등록 
-        instance_params = {
-            "name": self.solution_instance['name'],
-            "instance_id": self.solution_instance['id'],
-            "workspace_name": self.solution_instance['workspace_name']
-        }
-        with open("./interface/solution_certification.json", 'r') as outfile:
-            interface = json.load(outfile)
-        stream = requests.post(interface['server_uri'] + STREAMS, params=instance_params, cookies=self.aic_cookie)
-        self.stream = stream.json() 
-        print_color(f"[INFO] AI solution stream register response: \n {self.stream}", color='cyan')
-        
 
-    def request_run_stream(self): 
-        # Train pipeline 요청
-        # solution_metadata.yaml을 읽어서 metadata_json에 넣기
-        # [?] config path? 
-        # solution_metadata.yaml 읽어오기 
-        # YAML 파일 경로
-        
-        # YAML 파일을 읽어서 parsing
-        with open(self.sm_yaml_file_path, 'r') as file:
+        # solution_metadata 를 읽어서 json 화 
+        with open(self.sm_yaml_path_file, 'r') as file:
             yaml_data = yaml.safe_load(file)
         data = {
-        "metadata_json": yaml_data,
-        "config_path": "" # FIXME config_path는 일단 뭐넣을지 몰라서 비워둠 
+            "name": response_solution['name'],
+            "solution_version_id": response_solution['version']['id'],
+            "metadata_json": yaml_data,
         }
-        data =json.dumps(data)
+        data =json.dumps(data) # json 화
+
+        # solution instance 등록
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["SOLUTION_INSTANCE"]
+        response = requests.post(aic+api, 
+                                 params=self.solution_instance_params, 
+                                 data=data,
+                                 cookies=self.aic_cookie)
+        self.response_solution_instance = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
+            print(f"[INFO] response: \n {self.response_solution_instance}")
+
+            # interface 용 폴더 생성.
+            try:
+                if not os.path.exists(self.interface_path):
+                    os.mkdir(self.interface_path)
+            except Exception as e:
+                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            path = self.interface_path + self.solution_instance_file
+            with open(path, 'w') as f:
+              json.dump(self.response_solution_instance, f, indent=4)
+              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.response_solution_instance["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.response_solution_instance["detail"])
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+
+    
+    def register_stream(self): 
+
+        self.print_step("Register AI solution stream")
+
+        ## file load 한다. 
+        try:
+            path = self.interface_path + self.solution_instance_file
+            with open(path) as f:
+                response_solution_instance = json.load(f)
+
+            print_color(f"[SYSTEM] AI solution instance 등록 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_solution_instance)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
         # stream 등록 
         stream_params = {
-        "stream_id": self.stream['id'],
-        "workspace_name": self.stream['workspace_name']
+            "workspace_name": response_solution_instance['workspace_name']
         }
-        with open("./interface/solution_certification.json", 'r') as outfile:
-            interface = json.load(outfile)
-        stream_history = requests.post(interface['server_uri'] + f"{STREAMS}/{self.stream['id']}/start", params=stream_params, data=data, cookies=self.aic_cookie)
-        self.stream_history = stream_history.json()
-        print_color(f"[INFO] Run pipeline << {self.pipeline} >> response: \n {self.stream_history}", color='cyan')
+
+        data = {
+            "instance_id": response_solution_instance['id'],
+            "name": response_solution_instance['name']
+        }
+        data =json.dumps(data) # json 화
+        # pprint(stream_params)
+        # pprint(data)
+
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["STREAMS"]
+        response = requests.post(aic+api, 
+                                 params=stream_params, 
+                                 data=data,
+                                 cookies=self.aic_cookie)
+        self.response_stream = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] Stream 등록을 성공하였습니다. ", color='cyan')
+            print(f"[INFO] response: \n {self.response_stream}")
+
+            # interface 용 폴더 생성.
+            try:
+                if not os.path.exists(self.interface_path):
+                    os.mkdir(self.interface_path)
+            except Exception as e:
+                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            path = self.interface_path + self.stream_file
+            with open(path, 'w') as f:
+              json.dump(self.response_stream, f, indent=4)
+              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] Stream 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.response_stream["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] Stream 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.response_stream["detail"])
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+
+
+    def request_run_stream(self): 
+
+        self.print_step("Request AI solution stream run")
+
+
+        ## stream file load 한다. 
+        try:
+            path = self.interface_path + self.stream_file
+            with open(path) as f:
+                response_stream = json.load(f)
+
+            print_color(f"[SYSTEM] Stream 등록 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_stream)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
+
+        # stream 등록 
+        stream_params = {
+            "stream_id": response_stream['id'],
+            "workspace_name": response_stream['workspace_name']
+        }
+        pprint(stream_params)
+
+        # solution_metadata 를 읽어서 json 화 
+        with open(self.sm_yaml_path_file, 'r') as file:
+            yaml_data = yaml.safe_load(file)
+        data = {
+            "metadata_json": yaml_data,
+            "config_path": "" # FIXME config_path는 일단 뭐넣을지 몰라서 비워둠 
+        }
+        data =json.dumps(data) # json 화
+
+
+
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["STREAM_RUN"] + f"/{response_stream['id']}"
+        response = requests.post(aic+api, params=stream_params, data=data, cookies=self.aic_cookie)
+        self.response_stream_run = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] Stream Run 요청을 성공하였습니다. ", color='cyan')
+            print(f"[INFO] response: \n {self.response_stream_run}")
+
+            # interface 용 폴더 생성.
+            try:
+                if not os.path.exists(self.interface_path):
+                    os.mkdir(self.interface_path)
+            except Exception as e:
+                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            path = self.interface_path + self.stream_run_file
+            with open(path, 'w') as f:
+              json.dump(self.response_stream_run, f, indent=4)
+              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] Stream Run 요청을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.response_stream_run["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] Stream Run 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.response_stream_run["detail"])
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
 
 
     def get_stream_status(self):
         # [?] 계속 running 상태여서 artifacts 안생기는 듯 
         # Train pipeline 확인
-        stream_history_parmas = {
-            "stream_history_id": self.stream_history['id'],
-            "workspace_name": self.stream_history['workspace_name']
+
+        self.print_step("Get AI solution stream status")
+
+        ## stream file load 한다. 
+        try:
+            path = self.interface_path + self.stream_run_file
+            with open(path) as f:
+                response_stream_run = json.load(f)
+
+            print_color(f"[SYSTEM] Stream 실행 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_stream_run)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
+        stream_history_params = {
+            "stream_history_id": response_stream_run['id'],
+            "workspace_name": response_stream_run['workspace_name']
         }
-        with open("./interface/solution_certification.json", 'r') as outfile:
-            interface = json.load(outfile)
-        info = requests.get(interface['server_uri'] + f"{STREAMS}/{self.stream_history['id']}/info", params=stream_history_parmas, cookies=self.aic_cookie)
-        print_color(f"Stream status: {info.json()['status']}", color="cyan") 
+
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["STREAM_RUN"] + f"/{response_stream_run['id']}/info"
+        response = requests.get(aic+api, 
+                                params=stream_history_params, 
+                                cookies=self.aic_cookie)
+        self.response_stream_status = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] Stream Status 요청을 성공하였습니다. ", color='cyan')
+            print(f"[INFO] response: \n {self.response_stream_status}")
+
+            # interface 용 폴더 생성.
+            try:
+                if not os.path.exists(self.interface_path):
+                    os.mkdir(self.interface_path)
+            except Exception as e:
+                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            path = self.interface_path + self.stream_status_file
+            with open(path, 'w') as f:
+              json.dump(self.response_stream_status, f, indent=4)
+              print_color(f"[SYSTEM] status 확인 결과를 {path} 에 저장합니다.",  color='green')
+            
+            return self.response_stream_status["status"]
+        elif response.status_code == 400:
+            print_color("[ERROR] Stream status 요청을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.response_stream_status["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] Stream status 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.response_stream_status["detail"])
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+
 
 
     def download_artifacts(self): 
+
+        self.print_step("Download train artifacts ")
+
         def split_s3_path(s3_path): #inner func.
             # 's3://'를 제거하고 '/'를 기준으로 첫 부분을 분리하여 bucket과 나머지 경로를 얻습니다.
             path_parts = s3_path.replace('s3://', '').split('/', 1)
             bucket = path_parts[0]
             rest_of_the_path = path_parts[1]
             return bucket, rest_of_the_path
+
+        ## s3_client 생성
+        try:
+            f = open(self.s3_access_key_path, "r")
+            keys = []
+            values = []
+            for line in f:
+                key = line.split(":")[0]
+                value = line.split(":")[1].rstrip()
+                keys.append(key)
+                values.append(value)
+            ACCESS_KEY = values[0]
+            SECRET_KEY = values[1]
+            s3_client = boto3.client('s3',
+                                aws_access_key_id=ACCESS_KEY,
+                                aws_secret_access_key=SECRET_KEY,
+                                region_name=self.infra_setup['REGION'])
+        except:
+            print_color(f"[INFO] Start s3 access check without key file.", color="blue")
+            s3_client = boto3.client('s3')
+
+
         try: 
-            s3 = boto3.client('s3')
             s3_bucket = split_s3_path(self.stream_history['train_artifact_uri'])[0]
             s3_prefix = split_s3_path(self.stream_history['train_artifact_uri'])[1]
             # S3 버킷에서 파일 목록 가져오기
-            objects = s3.list_objects(Bucket=s3_bucket, Prefix=s3_prefix)
+            objects = s3_client.list_objects(Bucket=s3_bucket, Prefix=s3_prefix)
             # 파일 다운로드
             for obj in objects.get('Contents', []):
                 key = obj['Key']
                 filename = key.split('/')[-1]  # 파일 이름 추출
-                s3.download_file(s3_bucket, key, filename)
+                s3_client.download_file(s3_bucket, key, filename)
                 print_color(f'Downloaded: {filename}', color='cyan')
         except: 
             raise NotImplementedError("Failed to download train artifacts.")
+
+
+    def load_solution_instance_list(self): 
+
+        self.print_step("Load AI solution instance list")
+
+        ## file load 한다. 
+        try:
+            path = self.interface_path + self.solution_file
+            with open(path) as f:
+                response_solution = json.load(f)
+
+            print_color(f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_solution)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
+        self.solution_instance_params = {
+            "workspace_name": response_solution['scope_ws']
+        }
+        print_color(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}", color='blue')
+
+        # solution instance 등록
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["SOLUTION_INSTANCE"]
+        response = requests.get(aic+api, 
+                                 params=self.solution_instance_params, 
+                                 cookies=self.aic_cookie)
+        self.response_instance_list = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
+            pprint("[INFO] response: ")
+            for cnt, instance in enumerate(self.response_instance_list["instances"]):
+                id = instance["id"]
+                name = instance["name"]
+
+                max_name_len = len(max(name, key=len))
+                print(f"(idx: {cnt:{max_name_len}}), instance_name: {name:{max_name_len}}, instance_id: {id}")
+
+            # interface 용 폴더 생성.
+            try:
+                if not os.path.exists(self.interface_path):
+                    os.mkdir(self.interface_path)
+            except Exception as e:
+                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            path = self.interface_path + self.instance_list_file
+            with open(path, 'w') as f:
+              json.dump(self.response_instance_list, f, indent=4)
+              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.response_instance_list["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.response_instance_list["detail"])
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
 
 
     #####################################
@@ -1410,7 +1694,7 @@ class SolutionRegister:
                 print_color(f'[INFO] copy from " {src_path} "  -->  " {dst_path} " ', color='blue')
             
         ## experimental_plan.yaml 를 수정한다. 
-        exp_path = self.exp_yaml_path
+        exp_path = self.exp_yaml_path_file
         yaml_file_path = work_path + exp_path.replace("../","")
 
         print("SSH_DEBUG: ", yaml_file_path)

@@ -17,6 +17,9 @@
 # 5. Stream 등록
 'STREAMS': 'api/v1/streams' # POST
 
+# 5. Stream 등록
+'STREAM_RUN': 'api/v1/streamhistories' # POST
+
 # REST API Endpoints
 # 6. Train pipeline 요청
 # STREAMS + '/{stream_id}/start # POST
