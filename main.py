@@ -28,11 +28,11 @@ if __name__ == "__main__":
     args = set_args()
     if args.loop == False:  ## batch mode 
         try:
-            kwargs = {'sol_meta_str': args.system, 'alo_mode': args.mode, 'exp_plan_file': args.config, 'boot_on': args.loop, 'computing': args.computing}
+            kwargs = {'solution_metadata': args.system, 'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': args.loop, 'computing': args.computing}
             alo = ALO(**kwargs)
             if args.computing == 'sagemaker':
                 # sagemaker boot-on >> assets, alolib 등 설치하기 위해 필요 (실제 asset run함수 실행은 X)
-                ALO(alo_mode = 'train', boot_on = True).runs() 
+                ALO(pipeline_type = 'train', boot_on = True).runs() 
                 print('\033[92m==================== Finish ALO boot-on ====================\033[0m \n')
                 # sagemaker 자원으로 학습 
                 alo.sagemaker_runs()
@@ -53,10 +53,10 @@ if __name__ == "__main__":
 
         # TODO http://clm.lge.com/issue/browse/DXADVTECH-520?attachmentSortBy=dateTime&attachmentOrder=asc 11.16 댓글 (boot-on 완료 메시지관련)
         # [주의] boot-on을 위해선 solution meta yaml 과 일치하는 experimental plan yaml 이 이미 존재해야한다. 
-        # boot-on: inference alo_mode로 하면 약 3.xx 초 
-        # FIXME alo_mode train-inference 인 경우 검증 필요 
+        # boot-on: inference pipeline_type로 하면 약 3.xx 초 
+        # FIXME pipeline_type train-inference 인 경우 검증 필요 
         try: 
-            alo = ALO(alo_mode = args.mode, boot_on = True)
+            alo = ALO(pipeline_type = args.mode, boot_on = True)
             alo.runs() 
             print('\033[92m==================== Finish ALO boot-on ====================\033[0m \n')
         except: 
@@ -73,9 +73,9 @@ if __name__ == "__main__":
                     # http://clm.lge.com/issue/browse/AIADVISOR-705?attachmentSortBy=dateTime&attachmentOrder=asc
                     msg_dict = json.loads(start_msg.decode('utf-8')) # dict 
                     ## 운영시에만 사용되는 solution_metadata 는 string 으로 입력 받는다. 
-                    sol_meta_str = msg_dict['solution_metadata']
+                    solution_metadata = msg_dict['solution_metadata']
 
-                    kwargs = {'sol_meta_str': args.system, 'alo_mode': args.mode, 'exp_plan_file': args.config, 'boot_on': False}
+                    kwargs = {'solution_metadata': args.system, 'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': False}
                     alo = ALO(**kwargs)
                     alo.runs()
                 except Exception as e: 

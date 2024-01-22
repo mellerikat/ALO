@@ -39,14 +39,14 @@ class AssetStructure:
         self.data = {} 
         self.config = {}
 class ALO:
-    def __init__(self, exp_plan_file = None, sol_meta_str = None, alo_mode = 'all', boot_on = False, computing = 'local'):
+    def __init__(self, exp_plan_file = None, solution_metadata = None, pipeline_type = 'all', boot_on = False, computing = 'local'):
         """실험 계획 (experimental_plan.yaml), 운영 계획(solution_metadata), 
         파이프라인 종류(train, inference), 동작방식(always-on) 에 대한 설정을 완료함
 
         Args:
             exp_plan_file: 실험 계획 (experimental_plan.yaml) 을 yaml 파일 위치로 받기
-            sol_meta_str: 운영 계획 (solution_metadata(str)) 정보를 string 으로 받기
-            alo_mode: 파이프라인 모드 (all, train, inference)
+            solution_metadata: 운영 계획 (solution_metadata(str)) 정보를 string 으로 받기
+            pipeline_type: 파이프라인 모드 (all, train, inference)
             boot_on: always-on 시, boot 과정 인지 아닌지를  구분 (True, False)
             computing: 학습하는 컴퓨팅 자원 (local, sagemaker)
         Returns:
@@ -69,7 +69,7 @@ class ALO:
         self.init_logger()
         
         # init solution metadata
-        self.sol_meta = json.loads(sol_meta_str) if sol_meta_str != None else None # None or dict from json 
+        self.sol_meta = json.loads(solution_metadata) if solution_metadata != None else None # None or dict from json 
 
         # init experimental_plan 
         self.experimental_plan = ExperimentalPlan(exp_plan_file, self.sol_meta)
@@ -78,7 +78,7 @@ class ALO:
         self._set_attr()
         
         # 시스템 전역 변수 초기화
-        self.system_envs = self._set_system_envs(alo_mode, boot_on) 
+        self.system_envs = self._set_system_envs(pipeline_type, boot_on) 
 
         # 현재 ALO 버전
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
@@ -383,7 +383,7 @@ class ALO:
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
         self.proc_logger = ProcessLogger(PROJECT_HOME)  
 
-    def _set_system_envs(self, alo_mode, boot_on):
+    def _set_system_envs(self, pipeline_type, boot_on):
         system_envs = {}
         # solution meta 버전 
         system_envs['solution_metadata_version'] = None 
@@ -398,19 +398,19 @@ class ALO:
         system_envs['inference_result_datatype'] = None 
         system_envs['train_datatype'] = None 
 
-        system_envs['alo_mode'] = alo_mode 
+        system_envs['pipeline_mode'] = pipeline_type 
         system_envs['boot_on'] = boot_on
         system_envs['start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
 
-        if alo_mode == 'all':
+        if pipeline_type == 'all':
             system_envs['pipeline_list'] = [*self.user_parameters]
         else:
-            system_envs['pipeline_list'] = [f"{alo_mode}_pipeline"]
+            system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
         # FIXME sagemaker train 을 위해 덮어쓰기 추가 
         try:
             sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
             if sol_pipe_mode is not None: 
-                system_envs['alo_mode'] = sol_pipe_mode
+                system_envs['pipeline_mode'] = sol_pipe_mode
                 system_envs['pipeline_list'] = ["train_pipeline"]
             else:   
                 raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
@@ -592,7 +592,7 @@ class ALO:
         # [중요] SOLUTION_PIPELINE_MODE라는 환경 변수는 ecr build 시 생성하게 되며 (ex. train, inference, all) 이를 ALO mode에 덮어쓰기 한다. 
         sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
         if sol_pipe_mode is not None: 
-            self.system_envs['alo_mode'] = sol_pipe_mode
+            self.system_envs['pipeline_mode'] = sol_pipe_mode
         else:   
             raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
         # solution metadata version 가져오기 --> inference summary yaml의 version도 이걸로 통일 
