@@ -2,6 +2,9 @@ import json
 import subprocess
 from src.alo import ALO
 from src.utils import set_args, init_redis
+import os
+
+os.environ["SOLUTION_PIPELINE_MODE"] = "train"
 
 # --------------------------------------------------------------------------------------------------------------------------
 #    MAIN

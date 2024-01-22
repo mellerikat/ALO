@@ -73,9 +73,10 @@ class ALO:
         # init solution metadata
         self.sol_meta = json.loads(solution_metadata) if solution_metadata != None else None # None or dict from json 
 
+        system_envs = {}
         # init experimental_plan 
         self.experimental_plan = ExperimentalPlan(exp_plan_file, self.sol_meta)
-        self.exp_plan_file = self.experimental_plan.read_yaml()
+        self.exp_plan_file, system_envs = self.experimental_plan.read_yaml(system_envs)
 
         self._set_attr()
         
@@ -839,6 +840,11 @@ class ALO:
 
         package_list = []
         for key, value in self.package_list:
+            try:
+                if '--force-reinstall' in value[0]:
+                    continue
+            except:
+                pass
             package_list.extend(value)
 
         package_list = set(package_list)
