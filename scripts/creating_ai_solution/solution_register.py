@@ -226,44 +226,61 @@ class SolutionRegister:
         })
         try:
             if self.infra_setup["LOGIN_MODE"] == 'ldap':
-                login_response = requests.post(self.infra_setup["AIC_URI"] + self.api_uri["LDAP_LOGIN"], data = login_data)
-                print(login_response)
+                response = requests.post(self.infra_setup["AIC_URI"] + self.api_uri["LDAP_LOGIN"], data = login_data)
+                print(response)
             else:
-                login_response = requests.post(self.infra_setup["AIC_URI"] + self.api_uri["STATIC_LOGIN"], data = login_data)
+                response = requests.post(self.infra_setup["AIC_URI"] + self.api_uri["STATIC_LOGIN"], data = login_data)
         except Exception as e:
             print(e)
 
-        login_response_json = login_response.json()
+        response_login = response.json()
 
-        cookies = login_response.cookies.get_dict()
+        cookies = response.cookies.get_dict()
         access_token = cookies.get('access-token', None)
         self.aic_cookie = {
         'access-token' : access_token 
         }
 
-        response_workspaces = []
-        for ws in login_response_json["workspace"]:
-            response_workspaces.append(ws["name"])
-        print(f"해당 계정으로 접근 가능한 workspace list: {response_workspaces}")
+        if response.status_code == 200:
+            print_color("[SUCCESS] Login 접속을 성공하였습니다. ", color='cyan')
+            print(f"[INFO] Login response: \n {response_login}")
 
-        # TODO : case1~4 에 대해 사용자가 가이드 받을 수 있도록 하기 
-        ## 로그인 접속은  계정 존재 / 권한 존재 의 경우로 나뉨
-        ##   - case1: 계정 O / 권한 X 
-        ##   - case2: 계정 O / 권한 single (ex cism-ws) 
-        ##   - case3: 계정 O / 권한 multi (ex cism-ws, magna-ws) -- 권한은 workspace 단위로 부여 
-        ##   - case4: 계정 X  ()
-        if login_response_json['account_id']:
-            if self.debugging:
-                print_color(f'[SYSTEM] Success getting cookie from AI Conductor:\n {self.aic_cookie}', color='green')
-                print_color(f'[SYSTEM] Success Login: {login_response_json}', color='green')
-            if self.infra_setup["WORKSPACE_NAME"] in response_workspaces:
-                msg = f'[SYSTEM] 접근 요청하신 workspace ({self.infra_setup["WORKSPACE_NAME"]}) 은 해당 계정으로 접근 가능합니다.'
-                print_color(msg, color='green')
-            else:
-                msg = f'[SYSTEM] 접근 요청하신 workspace ({self.infra_setup["WORKSPACE_NAME"]}) 은 해당 계정으로 접근 불가능 합니다.'
-                raise ValueError()
-        else: 
-            print_color(f'\n>> Failed Login: {login_response_json}', color='red')   
+            response_workspaces = []
+            for ws in response_login["workspace"]:
+                response_workspaces.append(ws["name"])
+            pprint(f"해당 계정으로 접근 가능한 workspace list: {response_workspaces}")
+
+            # TODO : case1~4 에 대해 사용자가 가이드 받을 수 있도록 하기 
+            ## 로그인 접속은  계정 존재 / 권한 존재 의 경우로 나뉨
+            ##   - case1: 계정 O / 권한 X 
+            ##   - case2: 계정 O / 권한 single (ex cism-ws) 
+            ##   - case3: 계정 O / 권한 multi (ex cism-ws, magna-ws) -- 권한은 workspace 단위로 부여 
+            ##   - case4: 계정 X  ()
+            if response_login['account_id']:
+                if self.debugging:
+                    print_color(f'[SYSTEM] Success getting cookie from AI Conductor:\n {self.aic_cookie}', color='green')
+                    print_color(f'[SYSTEM] Success Login: {response_login}', color='green')
+                if self.infra_setup["WORKSPACE_NAME"] in response_workspaces:
+                    msg = f'[SYSTEM] 접근 요청하신 workspace ({self.infra_setup["WORKSPACE_NAME"]}) 은 해당 계정으로 접근 가능합니다.'
+                    print_color(msg, color='green')
+                else:
+                    msg = f'[SYSTEM] 접근 요청하신 workspace ({self.infra_setup["WORKSPACE_NAME"]}) 은 해당 계정으로 접근 불가능 합니다.'
+                    raise ValueError()
+            else: 
+                print_color(f'\n>> Failed Login: {response_login}', color='red')   
+
+            
+        elif response.status_code == 401:
+            print_color("[ERROR] login 실패. 잘못된 아이디 또는 비밀번호입니다.", color='red')
+            print("Error message: ", self.response_solution)
+        elif response.status_code == 400:
+            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.response_solution["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.response_solution["detail"])
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
 
 
     def check_solution_name(self, name=None): 
