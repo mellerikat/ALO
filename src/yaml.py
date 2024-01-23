@@ -72,7 +72,7 @@ class ExperimentalPlan:
                 if os.path.isabs(_path) == True:
                     pass
                 else: 
-                    exp_plan_file_path = PROJECT_HOME + 'config/' + exp_plan_file_path  
+                    exp_plan_file_path = _path + "/" + _file  
                     _path, _file = os.path.split(exp_plan_file_path) 
                 # 경로가 config랑 동일하면 (samefile은 dir, file 다 비교가능) 그냥 바로 return 
                 if os.path.samefile(_path, PROJECT_HOME + 'config/'): 

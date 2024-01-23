@@ -16,7 +16,7 @@ from src.install import Packages
 # 이름을 한번 다시 생각
 from src.assets import Assets
 
-from src.external import ExteranlHandler #external_load_data, external_load_model, external_save_artifacts
+from src.external import ExternalHandler #external_load_data, external_load_model, external_save_artifacts
 from src.redisqueue import RedisQueue
 from src.logger import ProcessLogger  
 # s3를 옮김
@@ -53,7 +53,7 @@ class ALO:
         Returns:
         """
         # 필요 class init
-        self.ext_data = ExteranlHandler()
+        self.ext_data = ExternalHandler()
         self.install = Packages()
         self.asset = Assets(ASSET_HOME)
         self.artifact = Aritifacts()
@@ -67,10 +67,10 @@ class ALO:
         self.proc_logger = None
         self.package_list = []
 
-        if exp_plan_file == "":
-            self.exp_plan_file = "exp_plan_file"
+        if exp_plan_file == "" or exp_plan_file == None:
+            self.exp_plan_file = "./config/experimental_plan.yaml"
         else:
-            pass
+            self.exp_plan_file = exp_plan_file
         self.pipeline_type = pipeline_type
         self.boot_on = boot_on
 
