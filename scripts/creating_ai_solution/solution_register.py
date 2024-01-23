@@ -1032,22 +1032,22 @@ class SolutionRegister:
             print_color(f"[INFO] Start s3 access check without key file.", color="blue")
             ecr_client = boto3.client('ecr')
 
-        ### TEST 
-        # resp = ecr_client.describe_repositories(repositoryNames=['086558720570'])
-        # print("SSH!!!!:   ", resp['repositories'])
 
-        repos = ecr_client.describe_repositories(
-            maxResults=600  ## 갯수가 작아서 찾지 못하는 Issue 있었음 (24.01)
-            )
-        for repo in repos['repositories']:
-            # print(repo['repositoryName'])
-            if repo['repositoryName'] == self.ecr_repo:
-                print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
-                ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
+        ## Spec-out : 고객지수는 모든 ecr 를 불러 올 수 있는 권한이 없다. 
+        # repos = ecr_client.describe_repositories(
+        #     maxResults=600  ## 갯수가 작아서 찾지 못하는 Issue 있었음 (24.01)
+        #     )
+        # for repo in repos['repositories']:
+        #     # print(repo['repositoryName'])
+        #     if repo['repositoryName'] == self.ecr_repo:
+        #         print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
+        #         ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
 
-        # print(f"Creating new repository {repository_name}") 
-        # ecr_client.create_repository(repositoryName=repository_name)
-
+        try:
+            ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
+            print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
+        except:
+            pass
 
         if self.docker == True:
             run = 'docker'
@@ -1095,11 +1095,13 @@ class SolutionRegister:
             ]
         # subprocess.run() 함수를 사용하여 명령을 실행합니다.
         try:
-            # result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            # print_color(f"[INFO] AWS ECR create-repository response: \n{result.stdout}", color='cyan')
-            resp = ecr_client.create_repository(repositoryName=self.ecr_repo, tags=tags)
-            print_color(f"[SYSTEM] AWS ECR create-repository response: ", color='cyan')
-            print(f"{resp}")
+            if self.docker: 
+                resp = ecr_client.create_repository(repositoryName=self.ecr_repo, tags=tags)
+                print_color(f"[SYSTEM] AWS ECR create-repository response: ", color='cyan')
+                print(f"{resp}")
+            else:
+                resp = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                print_color(f"[INFO] AWS ECR create-repository response: \n{resp.stdout}", color='cyan')
         except subprocess.CalledProcessError as e:
             raise NotImplementedError(f"Failed to AWS ECR create-repository:\n + {e}")
 
@@ -1835,15 +1837,15 @@ class SolutionRegister:
             raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
 
         # stream 등록 
-        stream_params = {
+        solutin_params = {
             "solution_id": response_solution['id'],
-            "workspace_name": response_solution['workspace_name']
+            "workspace_name": response_solution['scope_ws']
         }
 
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["REGISTER_SOLUTION"] + f"/{response_solution['id']}"
         response = requests.delete(aic+api, 
-                                 params=stream_params, 
+                                 params=solutin_params, 
                                  cookies=self.aic_cookie)
         response_delete_solution = response.json()
 
