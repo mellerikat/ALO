@@ -559,7 +559,7 @@ class SolutionRegister:
 
 
     #s3://s3-an2-cism-dev-aic/artifacts/bolt_fastening_table_classification/train/artifacts/2023/11/06/162000/
-    def set_pipeline_uri(self, mode):
+    def set_pipeline_uri(self, mode, data_paths = [], skip_update=False):
         """ dataset, artifacts, model 중에 하나를 선택하면 이에 맞느 s3 uri 를 생성하고, 이를 solution_metadata 에 반영한다.
 
         Attributes:
@@ -574,7 +574,13 @@ class SolutionRegister:
             uri = {'artifact_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
         elif mode == "data":
             prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/data/"
-            uri = {'dataset_uri': ["s3://" + self.bucket_name + "/" + prefix_uri]}
+            if len(data_paths) ==0 :
+                uri = {'dataset_uri': ["s3://" + self.bucket_name + "/" + prefix_uri]}
+            else:
+                uri = {'dataset_uri': []}
+                for data in data_paths:
+                    uri['dataset_uri'].append(prefix_uri + data)
+
         elif mode == "model":  ## model
             prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + 'train'  + "/artifacts/"
             uri = {'model_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
@@ -592,18 +598,22 @@ class SolutionRegister:
                 if not self.sm_yaml['pipeline'][self.sm_pipe_pointer]['type'] == 'inference':
                     raise ValueError("Setting << artifact_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
 
-            self.sm_yaml['pipeline'][self.sm_pipe_pointer].update(uri)
-            self._save_yaml()
+            if skip_update:
+                pass
+            else:
+                self.sm_yaml['pipeline'][self.sm_pipe_pointer].update(uri)
+                self._save_yaml()
+
+                print_color(f'[SUCCESS] Update solution_metadata.yaml:', color='green')
+                if mode == "artifacts":
+                    print(f'pipeline: type: {self.pipeline}, artifact_uri: {uri} ')
+                elif mode == "data":
+                    print(f'pipeline: type: {self.pipeline}, dataset_uri: {uri} ')
+                else: ## model
+                    print(f'pipeline: type:{self.pipeline}, model_uri: {uri} ')
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{e}")
         
-        print_color(f'[SUCCESS] Update solution_metadata.yaml:', color='green')
-        if mode == "artifacts":
-            print(f'pipeline: type: {self.pipeline}, artifact_uri: {uri} ')
-        elif mode == "data":
-            print(f'pipeline: type: {self.pipeline}, dataset_uri: {uri} ')
-        else: ## model
-            print(f'pipeline: type:{self.pipeline}, model_uri: {uri} ')
             
 
         return prefix_uri
@@ -801,22 +811,26 @@ class SolutionRegister:
                 return False
             # temp = s3_path + "/" + data_path[len(local_folder):]
             uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
+            # print(data_path)
             print_color(f"[SUCCESS] update train_data to S3:", color='green')
             print(f"{uploaded_path }")
             return True
 
-
-        try:
-            s3_prefix_uri = self.set_pipeline_uri(mode="data")
-        except Exception as e: 
-            raise NotImplementedError(f'[ERROR] Failed updating solution_metadata.yaml - << dataset_uri >> info / pipeline: {self.pipeline} \n{e}')
- 
         if "train" in self.pipeline:
             local_folder = ALODIR + "input/train/"
             print_color(f'[SYSTEM] Start uploading data into S3 from local folder:', color='cyan')
             print(f'{local_folder}')
 
             try: 
+                ## sol_metadata 업데이트 
+                data_uri_list = []
+                for item in os.listdir(local_folder):
+                    sub_folder = os.path.join(local_folder, item)
+                    if os.path.isdir(sub_folder):
+                        data_uri_list.append(item+"/")
+                s3_prefix_uri = self.set_pipeline_uri(mode="data", data_paths=data_uri_list)
+
+                ### upload data to S3
                 for root, dirs, files in os.walk(local_folder):
                     for idx, file in enumerate(files):
                         data_path = os.path.join(root, file)
@@ -833,6 +847,15 @@ class SolutionRegister:
             print(f'{local_folder}')
 
             try: 
+                ## sol_metadata 업데이트 
+                data_uri_list = []
+                for item in os.listdir(local_folder):
+                    sub_folder = os.path.join(local_folder, item)
+                    if os.path.isdir(sub_folder):
+                        data_uri_list.append(item+"/")
+                s3_prefix_uri = self.set_pipeline_uri(mode="data", data_paths=data_uri_list)
+
+                ### upload data to S3
                 for root, dirs, files in os.walk(local_folder):
                     for idx, file in enumerate(files):
                         data_path = os.path.join(root, file)
