@@ -246,8 +246,8 @@ class ProcessLogger:
                     "level": "INFO",
                 },
             },
-            #"root": {"handlers": ["console", "file_train", "file_inference"], "level": "INFO"},
-            "root": {"handlers": ["file_train", "file_inference"], "level": "INFO"},
+            "root": {"handlers": ["console", "file_train", "file_inference"], "level": "INFO"},
+            #"root": {"handlers": ["file_train", "file_inference"], "level": "INFO"},
             "loggers": {"ERROR": {"level": "ERROR"}, "WARNING": {"level": "WARNING"}, "INFO": {"level": "INFO"}}
         }
         self.meta_logging_config = deepcopy(self.process_logging_config)
