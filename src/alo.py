@@ -212,12 +212,19 @@ class ALO:
     # TODO sagemaker 용 class 만들어서 refactoring 하기 
     def sagemaker_runs(self): 
         try:
-            # FIXME sagemaker install 은 sagemaker_runs일 때만 진행 
-            self.install_sagemaker()
-            ###################################
             # aws configure의 profile을 sagemaker-profile로 변경 (sagemaker 및 본인 계정 s3, ecr 권한 있는)
             # 사외 서비스 시엔 사용자가 미리 sagemaker-profile와 meerkat-profile를 aws configure multi-profile 등록해놨어야 함
             os.environ["AWS_PROFILE"] = "sagemaker-profile"
+            # FIXME sagemaker install 은 sagemaker_runs일 때만 진행 
+            self.install_sagemaker()
+            ###################################
+            try: 
+                import sagemaker
+                sagemaker_session = sagemaker.Session()
+                role = sagemaker.get_execution_role()
+            except: 
+                self.proc_logger.process_error(f"You do not have sagemaker role.") 
+
             try:
                 ###################################
                 ## Step0: sagemaker dependency import 
@@ -241,7 +248,7 @@ class ALO:
                 # load sagemaker_config.yaml 
                 sagemaker_config = self.experimental_plan.get_yaml(PROJECT_HOME + 'config/sagemaker_config.yaml') # dict key ; account_id, role, region 
                 account_id = str(sagemaker_config['account_id'])
-                role = sagemaker_config['role']
+                # role = sagemaker_config['role']
                 region = sagemaker_config['region']
                 ecr_repository = sagemaker_config['ecr_repository']
                 # FIXME ecr tag ??
@@ -257,8 +264,8 @@ class ALO:
                 # 새로운 폴더를 생성합니다.
                 os.mkdir(self.sagemaker_dir)
                 # 컨테이너 빌드에 필요한 파일들을 sagemaker dir로 복사 
-                # FIXME alolib requirements.txt는 master requirements.txt 분리될 때까지 임시로 copy
-                alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'input', 'alolib/requirements.txt']
+
+                alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'input', 'requirements.txt']
                 for item in alo_src:
                     src_path = PROJECT_HOME + item
                     if os.path.isfile(src_path):

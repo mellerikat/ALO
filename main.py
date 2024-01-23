@@ -30,15 +30,16 @@ if __name__ == "__main__":
     if args.loop == False:  ## batch mode 
         try:
             kwargs = {'solution_metadata': args.system, 'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': args.loop, 'computing': args.computing}
-            alo = ALO(**kwargs)
-            alo.init()
             if args.computing == 'sagemaker':
                 # sagemaker boot-on >> assets, alolib 등 설치하기 위해 필요 (실제 asset run함수 실행은 X)
-                ALO(pipeline_type = 'train', boot_on = True).runs() 
+                alo = ALO(pipeline_type = 'train', boot_on = True)
+                alo.init()
                 print('\033[92m==================== Finish ALO boot-on ====================\033[0m \n')
                 # sagemaker 자원으로 학습 
                 alo.sagemaker_runs()
             else: 
+                alo = ALO(**kwargs)
+                alo.init()
                 alo.runs()
         except Exception as e: 
             raise NotImplementedError(str(e))
