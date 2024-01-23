@@ -578,8 +578,9 @@ class SolutionRegister:
                 uri = {'dataset_uri': ["s3://" + self.bucket_name + "/" + prefix_uri]}
             else:
                 uri = {'dataset_uri': []}
-                for data in data_paths:
-                    uri['dataset_uri'].append(prefix_uri + data)
+                data_path_base = "s3://" + self.bucket_name + "/" + prefix_uri
+                for data_path_sub in data_paths:
+                    uri['dataset_uri'].append(data_path_base + data_path_sub)
 
         elif mode == "model":  ## model
             prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + 'train'  + "/artifacts/"
