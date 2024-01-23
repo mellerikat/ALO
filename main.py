@@ -2,6 +2,9 @@ import json
 import subprocess
 from src.alo import ALO
 from src.utils import set_args, init_redis
+import os
+
+os.environ["SOLUTION_PIPELINE_MODE"] = "train"
 
 # --------------------------------------------------------------------------------------------------------------------------
 #    MAIN
@@ -30,6 +33,7 @@ if __name__ == "__main__":
         try:
             kwargs = {'solution_metadata': args.system, 'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': args.loop, 'computing': args.computing}
             alo = ALO(**kwargs)
+            alo.init()
             if args.computing == 'sagemaker':
                 # sagemaker boot-on >> assets, alolib 등 설치하기 위해 필요 (실제 asset run함수 실행은 X)
                 ALO(pipeline_type = 'train', boot_on = True).runs() 
@@ -57,6 +61,7 @@ if __name__ == "__main__":
         # FIXME pipeline_type train-inference 인 경우 검증 필요 
         try: 
             alo = ALO(pipeline_type = args.mode, boot_on = True)
+            alo.init()
             alo.runs() 
             print('\033[92m==================== Finish ALO boot-on ====================\033[0m \n')
         except: 
@@ -77,6 +82,7 @@ if __name__ == "__main__":
 
                     kwargs = {'solution_metadata': args.system, 'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': False}
                     alo = ALO(**kwargs)
+                    alo.init()
                     alo.runs()
                 except Exception as e: 
                     ## always-on 모드에서는 Error 가 발생해도 종료되지 않도록 한다. 

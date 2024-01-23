@@ -1064,41 +1064,10 @@ class SolutionRegister:
 
     # FIXME 그냥 무조건 latest로 박히나? 
     def _build_docker(self):
-        build_command = []
-
-        # CPU/GPU 선택
-
-        if self.solution_info['train_gpu'] and self.pipeline == 'train':
-            flag_gpu = True
-        elif self.solution_info['inference_gpu'] and self.pipeline == 'inference':
-            flag_gpu = True
+        if self.docker:
+            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:{self.infra_setup["ECR_TAG"]}'])
         else:
-            flag_gpu = False
-
-        if flag_gpu:
-            build_command.extend(['--build-arg', 'USE_GPU=true'])
-        else:
-            build_command.extend(['--build-arg', 'USE_CPU=true'])
-
-        # ARM/AMD 아키텍처 선택
-        if self.solution_info['inference_arm']:
-            build_command.extend(['--build-arg', 'ARCHITECTURE=arm'])
-        elif self.architecture == 'AMD':
-            build_command.extend(['--build-arg', 'ARCHITECTURE=amd'])
-
-        # Train/Inference 선택
-        if self.pipeline == 'train':
-            build_command.extend(['--build-arg', 'MODE=train'])
-        elif self.pipeline == 'inference':
-            build_command.extend(['--build-arg', 'MODE=inference'])
-
-        # Docker 또는 Buildah 사용
-        if self.infra_setup['BUILD_METHOD'] == 'docker':
-            build_command = ['docker', 'build', '.'] + build_command + ['-t', f'{self.ecr_full_url}:{self.infra_setup["ECR_TAG"]}']
-        else:
-            build_command = ['sudo', 'buildah', 'build', '--isolation', 'chroot'] + build_command + ['-t', f'{self.ecr_full_url}:{self.infra_setup["ECR_TAG"]}']
-
-        subprocess.run(build_command)
+            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:{self.infra_setup["ECR_TAG"]}'])
 
 
     def _docker_push(self):
@@ -1130,13 +1099,13 @@ class SolutionRegister:
     def set_user_parameters(self, display_table=False):
         """experimental_plan.yaml 에서 제작한 parameter 들으 보여주고, 기능 정의 하도록 한다.
         """
-
+ 
         self.print_step(f"Set {self.pipeline} user parameters:")
-
+ 
         def rename_key(d, old_key, new_key): #inner func.
             if old_key in d:
                 d[new_key] = d.pop(old_key)
-        
+       
         ### candidate parameters setting
         params = deepcopy(self.exp_yaml['user_parameters'])
         for pipe_dict in params:
@@ -1147,17 +1116,17 @@ class SolutionRegister:
                 pipe_name = 'inference'
             else:
                 pipe_name = None
-
-            ## single pipeline 이 지원되도록 하기 
+ 
+            ## single pipeline 이 지원되도록 하기
             rename_key(pipe_dict, f'{pipe_name}_pipeline', 'candidate_parameters')
             sm_pipe_type = self.sm_yaml['pipeline'][self.sm_pipe_pointer]['type']
-
+ 
             if sm_pipe_type == pipe_name:
-
+ 
                 subkeys = {}
                 subkeys.update(pipe_dict)  ## candidate
-
-                # 빈 user_parameters 생성 
+ 
+                # 빈 user_parameters 생성
                 selected_user_parameters = []
                 user_parameters = []
                 step_list = []
@@ -1167,32 +1136,32 @@ class SolutionRegister:
                     output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
                     user_parameters.append(output_data.copy())
                     step_list.append(step['step'])
-
-
+ 
+ 
                 subkeys['selected_user_parameters'] = selected_user_parameters
                 subkeys['user_parameters'] = user_parameters
-
+ 
                 ui_dict = deepcopy(self.exp_yaml['ui_args_detail'])
                 new_dict = {'user_parameters': {}}
                 for ui_args_step in ui_dict:
                     if f'{pipe_name}_pipeline' in list(ui_args_step.keys()):
                         new_dict['user_parameters'] = ui_args_step[f'{pipe_name}_pipeline']
-
+ 
                 ## step name 추가
                 for new_step in new_dict['user_parameters']:
                     for cnt, steps in enumerate(subkeys['user_parameters']):
                         if steps['step'] == new_step['step']:
                             subkeys['user_parameters'][cnt]['args'] = new_step['args']
-
-
-                ## ui_args_detail 존재 여부 체크 
+ 
+ 
+                ## ui_args_detail 존재 여부 체크
                 print_color("[SYSTEM] experimental_plan.yaml 에 ui_args_detail 이 정상 기록 되었는지 체크 합니다.", color='green')
                 for candi_step_dict in pipe_dict['candidate_parameters']:
                     if 'ui_args' in candi_step_dict:
                         # print(step)
                         for ui_arg in candi_step_dict['ui_args']:
                             flag = False
-
+ 
                             ## 존재 여부 검색 시작
                             ui_dict = deepcopy(self.exp_yaml['ui_args_detail'])
                             for ui_pipe_dict in ui_dict:
@@ -1205,7 +1174,7 @@ class SolutionRegister:
                                                     print(f"ui_arg_detail: 에 [{candi_step_dict['step']}]({ui_arg}) 이 기록됨을 확인. ")
                             if not flag :
                                 raise ValueError (f"[ERROR] ui_arg_detail: 에서 [{candi_step_dict['step']}]({ui_arg}) 를 찾을 수 없습니다. ! ")
-        
+       
                 self.sm_yaml['pipeline'][self.sm_pipe_pointer].update({'parameters':subkeys})
                 # print(subkeys)
                 self._save_yaml()
@@ -2042,7 +2011,7 @@ class SolutionRegister:
         self.print_step("Set alo source code")
 
         alo_path = ALODIR
-        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib']
+        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'requirements.txt', 'contents_requiremnets.txt']
         work_path = WORKINGDIR + "alo/"
 
         if os.path.isdir(work_path):
