@@ -67,7 +67,10 @@ class ALO:
         self.proc_logger = None
         self.package_list = []
 
-        self.exp_plan_file = exp_plan_file
+        if exp_plan_file == "":
+            self.exp_plan_file = "exp_plan_file"
+        else:
+            pass
         self.pipeline_type = pipeline_type
         self.boot_on = boot_on
 

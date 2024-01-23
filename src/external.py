@@ -162,7 +162,7 @@ class S3Handler:
         except: 
             PROC_LOGGER.process_error(f"Failed to upload << {file_path} >> onto << {self.s3_uri} >>.")
 
-class ExteranlHandler:
+class ExternalHandler:
     def __init__(self):
         pass
 
