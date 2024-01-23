@@ -1,5 +1,6 @@
 # from ruamel.yaml import YAML
 import sys
+import time
 import boto3
 import os
 import re
@@ -30,7 +31,7 @@ TEMP_ARTIFACTS_DIR = ALODIR + '.temp_artifacts_dir/'
 # 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
 TEMP_MODEL_DIR = ALODIR + '.temp_model_dir/'
 
-KUBEFLOW_STATUS = ("Pending", "Running", "Succeeded", "Skipped", "Failed", "Error")
+KUBEFLOW_STATUS = ("pending", "running", "succeeded", "skipped", "failed", "error")
 #---------------------------------------------------------
 WORKINGDIR = os.path.abspath(os.path.dirname(__file__)) + '/'
 
@@ -85,13 +86,20 @@ class SolutionRegister:
         self.wrangler_path_file = "./wrangler/wrangler.py"
         self.icon_path = "./icons/"
 
-        self.interface_path = './interface/'
+        self.interface_path = './.interface/'
         self.solution_file = '.response_solution.json'
         self.solution_instance_file = '.response_solution_instance.json'
-        self.instance_list_file = '.response_instance_list.json'
         self.stream_file = '.response_stream.json'
         self.stream_run_file = '.response_stream_run.json'
         self.stream_status_file = '.response_stream_status.json'
+
+        self.stream_history_list_file = '.response_stream_history_list.json'
+        self.stream_list_file = '.response_stream_list.json'
+        self.instance_list_file = '.response_instance_list.json'
+        self.solution_list_file = '.response_solution_list.json'
+
+        ## name 
+        self.prefix_name = "alo-test-"
 
         # TODO aws login 방법 고민필요
         if self.infra_setup["AIC_URI"] == "https://web.aic-dev.lgebigdata.com/": ## 실계정
@@ -163,14 +171,14 @@ class SolutionRegister:
 
         ## common
         self._s3_access_check()  ## s3 instnace 생성 
+        self.set_resource_list()   
         ############################
         ### Train pipeline 설정
         ############################
-        if self.infra_setup['inference_only']:
+        if self.solution_info['inference_only']:
             pass
         else:
             self._sm_append_pipeline(pipeline_name='train')
-            self.set_resource_display()   
             self.set_resource(resource='standard')  ## resource 선택은 spec-out 됨
             self.set_user_parameters()
             self.s3_upload_data()
@@ -191,6 +199,13 @@ class SolutionRegister:
 
         if not self.debugging:
             self.register_solution()
+
+
+    def run_train(self, status_period=5):
+        self.register_solution_instance()
+        self.register_stream()
+        self.request_run_stream()
+        self.get_stream_status(status_period=status_period)
 
 
 
@@ -429,8 +444,8 @@ class SolutionRegister:
         print_color(msg, color="green")
         print(f"edgeconductor_interfance: {metadata_value}")
 
-    def set_resource_display(self):
-        """AI Conductor 에서 학습에 사용될 resource 를 선택 하도록, 리스트를 보여 줍니다. 
+    def set_resource_list(self):
+        """AI Conductor 에서 학습에 사용될 resource 를 선택 하도록, 리스트를 보여 줍니다. (필수 실행)
         """
         self.print_step(f"Display {self.pipeline} Resource List")
 
@@ -1299,7 +1314,7 @@ class SolutionRegister:
         with open(self.sm_yaml_path_file, 'r') as file:
             yaml_data = yaml.safe_load(file)
         data = {
-            "name": response_solution['name'],
+            "name": self.prefix_name + response_solution['name'],
             "solution_version_id": response_solution['versions'][0]['id'],
             "metadata_json": yaml_data,
         }
@@ -1362,7 +1377,7 @@ class SolutionRegister:
 
         data = {
             "instance_id": response_solution_instance['id'],
-            "name": response_solution_instance['name']
+            "name": response_solution_instance['name']  ## prefix name 이 instance 에서 추가 되었으므로 두번 하지 않음
         }
         data =json.dumps(data) # json 화
         # pprint(stream_params)
@@ -1461,14 +1476,17 @@ class SolutionRegister:
         elif response.status_code == 400:
             print_color("[ERROR] Stream Run 요청을 실패하였습니다. 잘못된 요청입니다. ", color='red')
             print("Error message: ", self.response_stream_run["detail"])
+            raise ValueError("Error message: ", self.response_stream_run["detail"])
         elif response.status_code == 422:
             print_color("[ERROR] Stream Run 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
             print("Error message: ", self.response_stream_run["detail"])
+            raise ValueError("Error message: ", self.response_stream_run["detail"])
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            raise ValueError(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})")
 
 
-    def get_stream_status(self):
+    def get_stream_status(self, status_period):
         """ KUBEFLOW_STATUS 에서 지원하는 status 별 action 처리를 진행 함. 
             KUBEFLOW_STATUS = ("Pending", "Running", "Succeeded", "Skipped", "Failed", "Error")
             https://www.kubeflow.org/docs/components/pipelines/v2/reference/api/kubeflow-pipeline-api-spec/
@@ -1502,37 +1520,72 @@ class SolutionRegister:
 
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["STREAM_RUN"] + f"/{response_stream_run['id']}/info"
-        response = requests.get(aic+api, 
-                                params=stream_history_params, 
-                                cookies=self.aic_cookie)
-        self.response_stream_status = response.json()
 
-        if response.status_code == 200:
-            print_color("[SUCCESS] Stream Status 요청을 성공하였습니다. ", color='cyan')
-            print(f"[INFO] response: \n {self.response_stream_status}")
+        start_time = time.time()
+        time_format = "%Y-%m-%d %H:%M:%S"
+        start_time_str = time.strftime(time_format, time.localtime(start_time))
+        while True: 
+            time.sleep(status_period)
 
-            # interface 용 폴더 생성.
-            try:
-                if not os.path.exists(self.interface_path):
-                    os.mkdir(self.interface_path)
-            except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+            response = requests.get(aic+api, 
+                                    params=stream_history_params, 
+                                    cookies=self.aic_cookie)
+            self.response_stream_status = response.json()
 
-            # JSON 데이터를 파일에 저장
-            path = self.interface_path + self.stream_status_file
-            with open(path, 'w') as f:
-              json.dump(self.response_stream_status, f, indent=4)
-              print_color(f"[SYSTEM] status 확인 결과를 {path} 에 저장합니다.",  color='green')
+            if response.status_code == 200:
+                # print_color("[SUCCESS] Stream Status 요청을 성공하였습니다. ", color='cyan')
+                # print(f"[INFO] response: \n {self.response_stream_status}")
+
+                status = self.response_stream_status["status"]
+                status = status.lower()
+                if not status in KUBEFLOW_STATUS:
+                    raise ValueError(f"[ERROR] 지원하지 않는 status 입니다. (status: {status})")
+
+                end_time = time.time()
+                elapsed_time = end_time - start_time
+                elapsed_time_str = time.strftime(time_format, time.localtime(elapsed_time))
+                ## KUBEFLOW_STATUS = ("Pending", "Running", "Succeeded", "Skipped", "Failed", "Error")
+                if status == "succeeded":
+                    print_color(f"[SUCCESS] (run_time: {elapsed_time_str}) Train pipeline (status:{status}) 정상적으로 실행 하였습니다. ", color='green')
+
+                    # JSON 데이터를 파일에 저장
+                    path = self.interface_path + self.stream_status_file
+                    with open(path, 'w') as f:
+                      json.dump(self.response_stream_status, f, indent=4)
+                      print_color(f"[SYSTEM] status 확인 결과를 {path} 에 저장합니다.",  color='green')
+
+                    return status 
+                
+                elif status == "failed":
+                    print_color(f"[ERROR] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 실패 하였습니다. ", color='red')
+                    return status 
+                elif status == "pending":
+                    print_color(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 준비 중입니다. ", color='yellow')
+                    continue
+                elif status == "running":
+                    print_color(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 실행 중입니다. ", color='yellow')
+                    continue
+                elif status == "skipped":
+                    print_color(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 스킵 되었습니다. ", color='yellow')
+                    return status 
+                elif status == "error":
+                    print_color(f"[ERROR] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 에러 발생 하였습니다. ", color='red')
+                    return status 
+                else:
+                    raise ValueError(f"[ERROR] 지원하지 않는 status 입니다. (status: {status})")
+                 
+            elif response.status_code == 400:
+                # print_color("[ERROR] Stream status 요청을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+                # print("Error message: ", self.response_stream_status["detail"])
+                raise ValueError(f"[ERROR] Stream status 요청을 실패하였습니다. 잘못된 요청입니다. ")
+            elif response.status_code == 422:
+                print_color("[ERROR] Stream status 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+                print("Error message: ", self.response_stream_status["detail"])
+                raise ValueError(f"[ERROR] Stream status 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.")
+            else:
+                print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+                raise ValueError(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})")
             
-            return self.response_stream_status["status"]
-        elif response.status_code == 400:
-            print_color("[ERROR] Stream status 요청을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.response_stream_status["detail"])
-        elif response.status_code == 422:
-            print_color("[ERROR] Stream status 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.response_stream_status["detail"])
-        else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
 
 
 
@@ -1587,6 +1640,64 @@ class SolutionRegister:
     #####################################
     ######    Delete
     #####################################
+
+    def delete_stream_history(self): 
+
+        self.print_step("Delete stream history")
+
+        ## file load 한다. 
+        try:
+            path = self.interface_path + self.stream_run_file
+            with open(path) as f:
+                response_stream_run = json.load(f)
+
+            print_color(f"[SYSTEM] Strema 등록 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_solution_instance)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
+        # stream 등록 
+        stream_params = {
+            "stream_history_id": response_stream_run['id'],
+            "workspace_name": response_stream_run['workspace_name']
+        }
+
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["STREAMS"] + f"/{response_stream_run['id']}"
+        response = requests.delete(aic+api, 
+                                 params=stream_params, 
+                                 cookies=self.aic_cookie)
+        response_delete_stream_history = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] Stream history 삭제를 성공하였습니다. ", color='cyan')
+            print(f"[INFO] response: \n {response_delete_stream_history}")
+
+            # # interface 용 폴더 생성.
+            # try:
+            #     if not os.path.exists(self.interface_path):
+            #         os.mkdir(self.interface_path)
+            # except Exception as e:
+            #     raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            # path = self.interface_path + self.stream_file
+            # with open(path, 'w') as f:
+            #   json.dump(response_delete_stream, f, indent=4)
+            #   print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[WARNING] Stream history 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='yellow')
+            print("Error message: ", response_delete_stream_history["detail"])
+            ## 실패하더라도 stream 삭제로 넘어가게 하기
+        elif response.status_code == 422:
+            print_color("[ERROR] Stream history 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", response_delete_stream_history["detail"])
+            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_stream_history}")
+        else:
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_stream_history}")
+
+
 
     def delete_stream(self): 
 
@@ -1754,11 +1865,72 @@ class SolutionRegister:
             raise NotImplementedError(f"Failed to delete stream: \n {response_delete_solution}")
 
     #####################################
-    ######    Internal Functions
+    ######    List Solution & Instance & Stream
     #####################################
 
 
-    def load_solution_instance_list(self): 
+    def list_stream_history(self): 
+
+        self.print_step("List stream history")
+
+        ## file load 한다. 
+        try:
+            path = self.interface_path + self.stream_run_file
+            with open(path) as f:
+                response_stream_run = json.load(f)
+
+            print_color(f"[SYSTEM] Stream runs 등록 정보를 {path} 에서 확인합니다.", color='green')
+            # pprint(response_solution)
+        except:
+            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
+        self.stream_run_params = {
+            "stream_id": response_stream_run["id"],
+            "workspace_name": response_stream_run['workspace_name']
+        }
+        print_color(f"\n[INFO] AI solution interface information: \n {self.stream_run_params}", color='blue')
+
+        # solution instance 등록
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["STREAM_RUN"]
+        response = requests.get(aic+api, 
+                                 params=self.stream_run_params, 
+                                 cookies=self.aic_cookie)
+        self.stream_history_list = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
+            pprint("[INFO] response: ")
+            for cnt, instance in enumerate(self.stream_history_list["stream_histories"]):
+                id = instance["id"]
+                name = instance["name"]
+
+                max_name_len = len(max(name, key=len))
+                print(f"(idx: {cnt:{max_name_len}}), stream_name: {name:{max_name_len}}, stream_id: {id}")
+
+            # interface 용 폴더 생성.
+            try:
+                if not os.path.exists(self.interface_path):
+                    os.mkdir(self.interface_path)
+            except Exception as e:
+                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            path = self.interface_path + self.stream_history_list_file
+            with open(path, 'w') as f:
+              json.dump(self.stream_history_list, f, indent=4)
+              print_color(f"[SYSTEM] list 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.stream_history_list["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.stream_history_list["detail"])
+        else:
+
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+
+    def list_solution_instance(self): 
 
         self.print_step("Load AI solution instance list")
 
@@ -1817,6 +1989,7 @@ class SolutionRegister:
         else:
 
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+
 
 
 
