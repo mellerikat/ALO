@@ -2,7 +2,8 @@ import os
 import boto3
 from src.constants import *
 from urllib.parse import urlparse
-import csv 
+import subprocess
+import pkg_resources
 import tarfile 
 import shutil
 from src.logger import ProcessLogger
@@ -10,57 +11,142 @@ from src.logger import ProcessLogger
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
-
+# FIXME sagemaker version hard-fixed
+SAGEMAKER_PACKAGE = "sagemaker==2.203.1"
 #--------------------------------------------------------------------------------------------------------------------------
 
-class AWSHandler:
-    def __init__(self, s3_uri='', load_s3_key_path=None, region=''):
-        # url : (ex) 's3://aicontents-marketplace/cad/inference/' 
-        # S3 VARIABLES
-        # TODO 파일 기반으로 key 로드할 거면 무조건 파일은 access_key 먼저 넣고, 그 다음 줄에 secret_key 넣는 구조로 만들게 가이드한다.
-        self.access_key, self.secret_key = self.init_s3_key(load_s3_key_path) 
-        self.s3_uri = s3_uri 
-        self.bucket, self.s3_folder =  self.parse_s3_url(s3_uri) # (ex) aicontents-marketplace, cad/inference/
-        self.region = region 
+class SagemakerHandler:
+    def __init__(self, sm_config):
+        self.sm_config = sm_config
+        self.sagemaker_dir = PROJECT_HOME + '.sagemaker/'
         self.temp_model_extract_dir = PROJECT_HOME + '.temp_sagemaker_model/'
         
-    def init_s3_key(self, s3_key_path): 
-        if s3_key_path != None: 
-            _, ext = os.path.splitext(s3_key_path)
-            if ext != '.csv': 
-                PROC_LOGGER.process_error(f"AWS key file extension must be << csv >>. \n You entered: << {s3_key_path} >>")
-            try: 
-                with open(s3_key_path, newline='') as csvfile: 
-                    csv_reader = csv.reader(csvfile, delimiter=',')
-                    reader_list = [] 
-                    for row in csv_reader: 
-                        reader_list.append(row) 
-                        if len(row) != 2: # 컬럼 수 2가 아니면 에러 
-                            PROC_LOGGER.process_error(f"AWS key file must have regular format \n - first row: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY \n - second row: << access key value >>, << secret access key value >>")
-                    if len(reader_list) != 2: # 행 수 2가 아니면 에러 
-                        PROC_LOGGER.process_error(f"AWS key file must have regular format \n - first row: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY \n - second row: << access key value >>, << secret access key value >>")
-                PROC_LOGGER.process_info(f"Successfully read AWS key file from << {s3_key_path} >>")
-                return tuple((reader_list[1][0].strip(), reader_list[1][1].strip()))
-            except: 
-                PROC_LOGGER.process_error(f'Failed to get s3 key from {s3_key_path}. The shape of contents in the S3 key file may be incorrect.')
-        else: # yaml에 s3 key path 입력 안한 경우는 한 번 시스템 환경변수에 사용자가 key export 해둔게 있는지 확인 후 있으면 반환 없으면 경고   
-            access_key, secret_key = os.getenv("AWS_ACCESS_KEY_ID"), os.getenv("AWS_SECRET_ACCESS_KEY")
-            if (access_key != None) and (secret_key != None):
-                PROC_LOGGER.process_info('Successfully got << AWS_ACCESS_KEY_ID >> or << AWS_SECRET_ACCESS_KEY >> from os environmental variables.') 
-                return access_key, secret_key 
-            else: # 둘 중 하나라도 None 이거나 둘 다 None 이면 warning (key 필요 없는 SA 방식일 수 있으므로?)
-                PROC_LOGGER.process_warning('<< AWS_ACCESS_KEY_ID >> or << AWS_SECRET_ACCESS_KEY >> is not defined on your system environment.')  
-                return access_key, secret_key 
+        
+    def init(self):
+        """
+        각종 config를 클래스 변수화 합니다.
+        """
+        # aws configure의 profile을 sagemaker-profile로 변경 (sagemaker 및 본인 계정 s3, ecr 권한 있는)
+        # 사외 서비스 시엔 사용자가 미리 sagemaker-profile와 meerkat-profile를 aws configure multi-profile 등록해놨어야 함
+        os.environ["AWS_PROFILE"] = "sagemaker-profile"
+        # FIXME sagemaker install 은 sagemaker_runs일 때만 진행 
+        self._install_sagemaker()
+        try: 
+            # FIXME get_execution_role은 sagemaker jupyter notebook에서만 sagemaker role을 반환한다. 
+            # 참고 https://github.com/aws/sagemaker-python-sdk/issues/300
+            import sagemaker
+            sagemaker_session = sagemaker.Session()
+            self.role = sagemaker.get_execution_role()
+        except: 
+            self.role = self.sm_config['role'] 
+        self.region = self.sm_config['region'] 
+        self.account_id = str(self.sm_config['account_id'])
+        self.region = self.sm_config['region']
+        ## s3
+        self.s3_uri = self.sm_config['s3_bucket_uri']
+        self.bucket, self.s3_folder =  self._parse_s3_url(self.s3_uri) # (ex) aicontents-marketplace, cad/inference/
+        ## ecr
+        self.ecr_repository = self.sm_config['ecr_repository']
+        # FIXME ecr tag ??
+        self.ecr_tag = [] 
+        self.docker_tag = 'latest'
+        self.ecr_uri = f'{self.account_id}.dkr.ecr.{self.region}.amazonaws.com'
+        self.ecr_full_uri = self.ecr_uri + f'/{self.ecr_repository}:{self.docker_tag}'
+        ## resource
+        # FIXME 일단 이건 sagemaker_config 로는 안뺌 
+        self.train_instance_count = 1 
+        self.train_instance_type = self.sm_config['train_instance_type']
+            
+    
+    def setup(self):
+        """
+        docker build 에 필요한 요소들을 sagemaker dir에 복사합니다.
+        """
+        # 폴더가 이미 존재하는 경우 삭제합니다.
+        if os.path.exists(self.sagemaker_dir):
+            shutil.rmtree(self.sagemaker_dir)
+        # 새로운 폴더를 생성합니다.
+        os.mkdir(self.sagemaker_dir)
+        # 컨테이너 빌드에 필요한 파일들을 sagemaker dir로 복사 
+        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'input', 'requirements.txt']
+        for item in alo_src:
+            src_path = PROJECT_HOME + item
+            if os.path.isfile(src_path):
+                shutil.copy2(src_path, self.sagemaker_dir)
+                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.sagemaker_dir} >> ')
+            elif os.path.isdir(src_path):
+                dst_path =  self.sagemaker_dir + os.path.basename(src_path)
+                shutil.copytree(src_path, dst_path)
+                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.sagemaker_dir} >> ')
+                
+
+    def build_solution(self): 
+        """
+        docker build, ecr push, create s3 bucket 
+        """
+        # Dockefile setting
+        sagemaker_dockerfile = PROJECT_HOME + 'src/Dockerfiles/SagemakerDockerfile'
+        # Dockerfile이 이미 존재하는 경우 삭제합니다. 
+        if os.path.isfile(PROJECT_HOME + 'Dockerfile'):
+            os.remove(PROJECT_HOME + 'Dockerfile')
+        shutil.copy(sagemaker_dockerfile, PROJECT_HOME + 'Dockerfile')
+        # aws ecr login 
+        p1 = subprocess.Popen(
+            ['aws', 'ecr', 'get-login-password', '--region', self.region], stdout=subprocess.PIPE
+        )
+        # 주의: 여기선 ecr_full_uri 가 아닌 ecr_uri 
+        p2 = subprocess.Popen( 
+            [f'docker', 'login', '--username', 'AWS','--password-stdin', self.ecr_uri], stdin=p1.stdout, stdout=subprocess.PIPE
+        )
+        p1.stdout.close()
+        output = p2.communicate()[0]
+        PROC_LOGGER.process_info(f"AWS ECR | docker login result: \n {output.decode()}")
+        # aws ecr repo create 
+        # ECR 클라이언트 생성
+        self._create_ecr_repository(ecr_repository=self.ecr_repository)
+        # docker build 
+        subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_uri}'])
+        # docker push to ecr 
+        subprocess.run(['docker', 'push', f'{self.ecr_full_uri}'])
+        # 사용자가 작성한 s3 bucket이 존재하지 않으면 생성하기 
+        self._create_bucket()
+
+
+    def fit_estimator(self):
+        """
+        fit sagemaker estimator (cloud resource train)
+        """
+        from sagemaker.estimator import Estimator
+        training_estimator = Estimator(image_uri=self.ecr_full_uri,
+                                role=self.role,
+                                train_instance_count=self.train_instance_count,
+                                train_instance_type=self.train_instance_type,
+                                output_path=self.s3_uri)
+        training_estimator.fit() 
+        
+        
+    def _install_sagemaker(self):
+        # FIXME 버전 hard coded: 어디다 명시할지?
+        package = SAGEMAKER_PACKAGE
+        try: # 이미 같은 버전 설치 돼 있는지 
+            pkg_resources.get_distribution(package) # get_distribution tact-time 테스트: 약 0.001s
+            PROC_LOGGER.process_info(f'[OK] << {package} >> already exists')
+        except: # 사용자 가상환경에 해당 package 설치가 아예 안 돼있는 경우 
+            try: # nested try/except 
+                PROC_LOGGER.process_info(f'>>> Start installing package - {package}')
+                subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
+            except Exception as e:
+                PROC_LOGGER.process_error(f"Failed to install {package}: \n {str(e)}")
                 
                 
-    def parse_s3_url(self, uri):
+    def _parse_s3_url(self, uri):
         parts = urlparse(uri)
         bucket = parts.netloc
         key = parts.path.lstrip('/')
         return bucket, key
     
     
-    def create_bucket(self):
+    def _create_bucket(self):
         # S3 클라이언트 생성
         s3 = boto3.client('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
         # 버킷 목록 가져오기
@@ -82,7 +168,7 @@ class AWSHandler:
             PROC_LOGGER.process_info(f"S3 Bucket already exists. (bucket name:{self.bucket})")
         
 
-    def create_ecr_repository(self, ecr_repository):
+    def _create_ecr_repository(self, ecr_repository):
         # aws ecr repo create 
         # ECR 클라이언트 생성
         # 참고: http://mod.lge.com/hub/ai_contents_marketplace/aia-ml-marketplace/-/blob/main/aia-pad-notebook/aia-pad-algo-for-market/UPAD-Test-SamgeMaker-Make-Algorithm-ARN.ipynb

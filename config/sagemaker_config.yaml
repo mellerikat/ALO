@@ -1,5 +1,7 @@
 account_id: 438613450817
 
+role: arn:aws:iam::438613450817:role/sagemaker-operation
+
 region: us-east-2
 # sagemaker 학습용 docker container을 올릴 ECR을 생성하기 위해 repository 및 tag를 입력합니다. 
 # ecr repository는 기존에 존재하지 않는 이름이어야 합니다.
