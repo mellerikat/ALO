@@ -89,7 +89,7 @@ if __name__ == "__main__":
                     print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
                     continue  
             else:
-                msg = "EdgeApp 에서 추론 요청 시, Empty message 로 전달 됨."
+                msg = "Empty message recevied for EdgeApp inference request."
                 print("\033[91m" + "Error: " + str(msg) + "\033[0m") # print red 
 
     else: 
