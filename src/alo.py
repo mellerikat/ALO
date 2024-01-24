@@ -197,6 +197,11 @@ class ALO:
 
     def sagemaker_runs(self): 
         try:
+            try: 
+                # FIXME 로컬에서 안돌리면 input 폴더 없으므로 데이터 가져오는 것 여기에 별도 추가 
+                self._external_load_data('train_pipeline')
+            except Exception as e:
+                self.proc_logger.process_error("Failed to get external data. \n" + str(e)) 
             try:
                 # load sagemaker_config.yaml - (account_id, role, region, ecr_repository, s3_bucket_uri, train_instance_type)
                 sm_config = self.experimental_plan.get_yaml(PROJECT_HOME + 'config/sagemaker_config.yaml') 

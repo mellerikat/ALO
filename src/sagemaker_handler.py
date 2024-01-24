@@ -256,4 +256,19 @@ class SagemakerHandler:
             if os.path.exists(PROJECT_HOME + 'model.tar.gz'): 
                 os.remove(PROJECT_HOME + 'model.tar.gz')
             shutil.rmtree(self.temp_model_extract_dir, ignore_errors=True)
-                
+
+
+## FIXME sagemaker notebook 이외의 로컬 환경에서 sagemaker role 어떻게 얻을지? 
+## https://github.com/aws/sagemaker-python-sdk/issues/300
+# def resolve_sm_role():
+#     client = boto3.client('iam', region_name=region)
+#     response_roles = client.list_roles(
+#         PathPrefix='/',
+#         # Marker='string',
+#         MaxItems=999
+#     )
+#     for role in response_roles['Roles']:
+#         if role['RoleName'].startswith('AmazonSageMaker-ExecutionRole-'):
+#             print('Resolved SageMaker IAM Role to: ' + str(role))
+#             return role['Arn']
+#     raise Exception('Could not resolve what should be the SageMaker role to be used')

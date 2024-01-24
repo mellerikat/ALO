@@ -33,7 +33,8 @@ if __name__ == "__main__":
             if args.computing == 'sagemaker':
                 # sagemaker boot-on >> assets, alolib 등 설치하기 위해 필요 (실제 asset run함수 실행은 X)
                 alo = ALO(pipeline_type = 'train', boot_on = True)
-                alo.init()
+                alo.init() 
+                alo.runs() # boot_on으로 했기 때문에 실제 run은 안함 
                 print('\033[92m==================== Finish ALO boot-on ====================\033[0m \n')
                 # sagemaker 자원으로 학습 
                 alo.sagemaker_runs()
@@ -45,7 +46,7 @@ if __name__ == "__main__":
             raise NotImplementedError(str(e))
         finally: 
              with open('solution_requirements.txt', 'w') as file_:
-                subprocess.Popen(['pip', 'freeze'], stdout=file_).communicate()
+                subprocess.Popen(['pip','list', '--format=freeze'], stdout=file_).communicate()
     elif args.loop == True: 
         # EdgeApp 과의 통신을 위한 redis 초기화
         q = init_redis()
