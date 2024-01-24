@@ -1061,8 +1061,9 @@ class SolutionRegister:
             ['aws', 'ecr', 'get-login-password', '--region', f'{self.infra_setup["REGION"]}'], stdout=subprocess.PIPE
         )
         p2 = subprocess.Popen(
-            [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
+            ['sudo', f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE
         )
+
         p1.stdout.close()
         output = p2.communicate()[0]
 
