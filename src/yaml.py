@@ -75,21 +75,21 @@ class ExperimentalPlan:
                     exp_plan_file_path = _path + "/" + _file  
                     _path, _file = os.path.split(exp_plan_file_path) 
                 # 경로가 config랑 동일하면 (samefile은 dir, file 다 비교가능) 그냥 바로 return 
-                if os.path.samefile(_path, PROJECT_HOME + 'config/'): 
-                    PROC_LOGGER.process_info(f"Successfully loaded experimental plan yaml: \n {PROJECT_HOME + 'config/' + _file}")
-                    return  PROJECT_HOME + 'config/' + _file 
+                if os.path.samefile(_path, SOLUTION_HOME): 
+                    PROC_LOGGER.process_info(f"Successfully loaded experimental plan yaml: \n {SOLUTION_HOME + _file}")
+                    return  SOLUTION_HOME + _file 
                 
                 # 경로가 config랑 동일하지 않으면 
                 # 외부 exp plan yaml을 config/ 밑으로 복사 
-                if _file in os.listdir(PROJECT_HOME + 'config/'):
+                if _file in os.listdir(SOLUTION_HOME):
                     PROC_LOGGER.process_warning(f"<< {_file} >> already exists in config directory. The file is overwritten.")
                 try: 
-                    shutil.copy(exp_plan_file_path, PROJECT_HOME + 'config/')
+                    shutil.copy(exp_plan_file_path, SOLUTION_HOME)
                 except: 
-                    PROC_LOGGER.process_error(f"Failed to copy << {exp_plan_file_path} >> into << {PROJECT_HOME + 'config/'} >>")
+                    PROC_LOGGER.process_error(f"Failed to copy << {exp_plan_file_path} >> into << {SOLUTION_HOME} >>")
                 # self.exp_plan_file 변수에 config/ 경로로 대입하여 return 
-                PROC_LOGGER.process_info(f"Successfully loaded experimental plan yaml: \n {PROJECT_HOME + 'config/' + _file}")
-                return  PROJECT_HOME + 'config/' + _file 
+                PROC_LOGGER.process_info(f"Successfully loaded experimental plan yaml: \n {SOLUTION_HOME + _file}")
+                return  SOLUTION_HOME + _file 
             except: 
                 PROC_LOGGER.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {exp_plan_file_path}")
 

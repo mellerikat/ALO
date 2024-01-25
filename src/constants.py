@@ -2,9 +2,9 @@ import os
 import sys 
 
 PROJECT_HOME = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) + "/"
-
+SOLUTION_HOME = PROJECT_HOME + "solution/"
 # experimental plan yaml의 위치
-EXP_PLAN = PROJECT_HOME + "config/experimental_plan.yaml"
+EXP_PLAN = SOLUTION_HOME + "experimental_plan.yaml"
 
 # interface mode support type 
 INTERFACE_TYPES = ['memory', 'file']

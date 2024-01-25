@@ -67,7 +67,7 @@ class ALO:
         self.package_list = []
 
         if exp_plan_file == "" or exp_plan_file == None:
-            self.exp_plan_file = "./config/experimental_plan.yaml"
+            self.exp_plan_file = EXP_PLAN
         else:
             self.exp_plan_file = exp_plan_file
         self.pipeline_type = pipeline_type
@@ -120,7 +120,7 @@ class ALO:
     
     def _sparse_checkout_copy(self, url):
         file_path = "config/experimental_plan.yaml"  # 복사할 파일 경로
-        target_dir = PROJECT_HOME + "config"  # 파일을 복사할 대상 경로
+        target_dir = SOLUTION_HOME  # 파일을 복사할 대상 경로
 
         # 저장소 이름 추출
         repo_name = url.split('/')[-1]

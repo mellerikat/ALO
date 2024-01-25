@@ -308,7 +308,7 @@ class ExternalHandler:
             os.makedirs(TEMP_MODEL_DIR)
             
         if (ext_type  == 'absolute') or (ext_type  == 'relative'):
-            ext_path = PROJECT_HOME + 'config/' + ext_path if ext_type == 'relative' else ext_path 
+            ext_path = SOLUTION_HOME + ext_path if ext_type == 'relative' else ext_path 
             try: 
                 if 'model.tar.gz' in os.listdir(ext_path):
                     shutil.copy(ext_path + 'model.tar.gz', TEMP_MODEL_DIR)  
@@ -411,7 +411,7 @@ class ExternalHandler:
             
         # FIXME external save path 를 지우고 다시 만드는게 맞는가 ? (로컬이든 s3든)
         if (ext_type  == 'absolute') or (ext_type  == 'relative'):
-            ext_path = PROJECT_HOME + 'config/' + ext_path if ext_type == 'relative' else ext_path
+            ext_path = SOLUTION_HOME + ext_path if ext_type == 'relative' else ext_path
             try: 
                 os.makedirs(ext_path, exist_ok=True) 
                 shutil.copy(artifacts_tar_path, ext_path)
@@ -494,7 +494,7 @@ class ExternalHandler:
         elif ext_type == 'relative': 
             try:
                 base_dir = os.path.basename(os.path.normpath(ext_path))
-                rel_config_path = PROJECT_HOME + 'config/' + ext_path
+                rel_config_path = SOLUTION_HOME + ext_path
                 shutil.copytree(rel_config_path, input_data_dir + base_dir) 
             except: 
                 PROC_LOGGER.process_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong relative path (must be existing directory!) \n / or You do not have permission to access.')
