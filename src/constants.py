@@ -5,6 +5,9 @@ PROJECT_HOME = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) + "/"
 SOLUTION_HOME = PROJECT_HOME + "solution/"
 # experimental plan yaml의 위치
 EXP_PLAN = SOLUTION_HOME + "experimental_plan.yaml"
+ALO_LIB = PROJECT_HOME + "alolib/"
+
+SOLUTION_META = PROJECT_HOME + "solution_metadata.yaml"
 
 # interface mode support type 
 INTERFACE_TYPES = ['memory', 'file']

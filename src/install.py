@@ -45,7 +45,7 @@ class Packages:
             result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
             ALOVER = result.stdout.decode('utf-8').strip()
             repository_url = self.get_yaml(PROJECT_HOME + 'src/alo_config/uri.yaml')['alolib-uri']
-            destination_directory = "./alolib"
+            destination_directory = ALO_LIB
             result = subprocess.run(['git', 'clone', '-b', ALOVER, repository_url, destination_directory], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             if result.returncode == 0:
                 print("alolib git pull success.")
