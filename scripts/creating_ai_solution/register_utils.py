@@ -1,31 +1,27 @@
-# from ruamel.yaml import YAML
-import sys
 import boto3
+import botocore
+from botocore.exceptions import ClientError, NoCredentialsError
+import datetime
 import os
 import re
 import git
+import sys
 import shutil
-import datetime
-import yaml 
-from yaml import Dumper
-import botocore
-from botocore.exceptions import ClientError, NoCredentialsError
-import subprocess
-# 모듈 import 
-import os
 import json
 import requests
+import yaml 
+from yaml import Dumper
+import subprocess
 import pandas as pd 
-import shutil
 import tarfile 
-from copy import deepcopy 
+from src.constants import *
 # yaml = YAML()
 # yaml.preserve_quotes = True
 #----------------------------------------#
 #              REST API                  #
 #----------------------------------------#
-VERSION = 1
-ALODIR = os.path.dirname(os.path.dirname(os.path.abspath(os.path.dirname(__file__)))) + '/'
+VERSION = 1 # FIXME 임시: version 은 1으로 고정 
+ALODIR = PROJECT_HOME
 TEMP_ARTIFACTS_DIR = ALODIR + '.temp_artifacts_dir/'
 # 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
 TEMP_MODEL_DIR = ALODIR + '.temp_model_dir/'
@@ -44,6 +40,7 @@ AI_SOLUTION = BASE_URI + 'solutions' # 이름 설정 시 GET, 등록 시 POST
 SOLUTION_INSTANCE = BASE_URI + 'instances' # POST
 # 5. Stream 등록
 STREAMS = BASE_URI + 'streams' # POST
+STREAM_HISTORIES =  BASE_URI + 'streamhistories'
 # 6. Train pipeline 요청
 # STREAMS + '/{stream_id}/start # POST
 # 7. Train pipeline 확인
@@ -67,7 +64,7 @@ class RegisterUtils:
         self.user_input = user_input # dict 
         self.set_user_input() # dict 
         self.URI_SCOPE = self.WORKSPACE_NAME #'magna-ws' #'public'
-        print('URI_SCOPE: ', self.URI_SCOPE)
+        #print('URI_SCOPE: ', self.URI_SCOPE)
         self.access_scope = 'private' # 'public'
         
         self.sm_yaml = {}
@@ -75,18 +72,18 @@ class RegisterUtils:
         self.pipeline = None 
         self.solution_name = None
         self.workspaces = None 
-
+        
+        # icon 경로 
+        self.icon_path = "./icons/"
         # FIXME sm.set_aws_ecr 할 때 boto3 session 생성 시 region 을 None으로 받아와서 에러나므로 일단 임시로 추가 
         self.region = "ap-northeast-2"
         self.ECR_TAG = 'latest' # 사용자 설정가능 
-        # FIXME aws login 방법 고민필요
         self.s3_access_key_path = "/nas001/users/ruci.sung/aws.key"
         
         # solution instance 등록을 위한 interface 폴더 
         self.interface_dir = './interface'
-        self.sm_yaml_file_path = './solution_metadata.yaml'
-        # FIXME 다른 이름으로 exp plan yaml 사용하면 ?
-        self.exp_yaml_path = "../../config/experimental_plan.yaml"
+        self.sm_yaml_file_path = SOLUTION_META
+        self.exp_yaml_path = EXP_PLAN
         
 
         
@@ -118,23 +115,32 @@ class RegisterUtils:
         self.aic_cookie = {
         'access-token' : access_token 
         }
-        if login_response_json['result'] == 'OK':
-            print_color(f'\n>> Success getting cookie from AI Conductor:\n {self.aic_cookie}', color='green')
-            print_color(f'\n>> Success Login: {login_response_json}', color='green')
-        else: 
-            print_color(f'\n>> Failed Login: {login_response_json}', color='red')   
+        try: 
+            if 'account_id' in login_response_json.keys():
+                flag = 0
+                for ws in login_response_json['workspace']:
+                    if self.WORKSPACE_NAME in ws['name']:
+                        print_color(f"You have permission to workpsace: << {self.WORKSPACE_NAME} >>", color='green')
+                        flag = 1
+                if flag == 0: 
+                    raise NotImplementedError(f'\n>> Failed Login - you do not have permission to workspace << {self.WORKSPACE_NAME} >> : \n {login_response_json}')  
+                print_color(f'\n>> Success getting cookie from AI Conductor:\n {self.aic_cookie}', color='green')
+                print_color(f'\n>> Success Login: {login_response_json}', color='green')
+        except Exception as e: 
+            raise NotImplementedError(f'{str(e)}')   
     
     
     def check_solution_name(self, user_solution_name): 
         solution_data = {
             "workspace_name": self.WORKSPACE_NAME, 
-            "only_public": ONLY_PUBLIC 
+            "only_public": ONLY_PUBLIC, 
+            "page_size": 100 
         }
         solution_name = requests.get(self.URI + AI_SOLUTION, params=solution_data, cookies=self.aic_cookie)
         solution_name_json = solution_name.json()
         # FIXME AIC 초기화시 solution_name이 존재 안할 수 있음 
         if 'solutions' not in solution_name_json.keys(): 
-            print_color("<< solutions >> key not found in AI Solution data.", color='yellow')
+            print_color("There is no solution in the AI solution list.", color='yellow')
             pass
         else: 
             solution_list = [sol['name'] for sol in solution_name_json['solutions']]
@@ -161,8 +167,7 @@ class RegisterUtils:
             raise NotImplementedError("Failed to get workspaces info.")
         ## workspace_name 의 ECR, S3 주소를 확인 합니다. 
         try: 
-            #print(self.workspaces.json())
-            for ws in self.workspaces.json():
+            for ws in self.workspaces.json()['workspaces']:
                 if self.WORKSPACE_NAME in ws['name']:
                     S3_BUCKET_NAME = ws['s3_bucket_name']
                     ECR_NAME = ws['ecr_base_path']       
@@ -178,6 +183,7 @@ class RegisterUtils:
         print_color(f"- private: {ECR_NAME['private']}", color='cyan') 
 
         # workspace로부터 받아온 ecr, s3 정보를 내부 변수화 
+        self.icon_bucket = S3_BUCKET_NAME['public']
         try:
             self.bucket_name = S3_BUCKET_NAME[self.access_scope] # bucket_scope: private, public
             self.ecr = ECR_NAME[self.access_scope]
@@ -187,7 +193,32 @@ class RegisterUtils:
         print_color(f"\n[INFO] AWS ECR URI received: \n {self.ecr}", color='green') 
         print_color(f"\n[INFO] AWS S3 BUCKET NAME received: \n {self.bucket_name}", color='green') 
         
-        
+       
+    def display_icon(self): 
+        """ 가지고 있는 icon 들을 디스플레이하고 파일명을 선택하게 한다. 
+        """
+        print_color("Display icon list", color='CYAN')
+
+        # 폴더 내의 모든 SVG 파일을 리스트로 가져오기
+        svg_files = [os.path.join(self.icon_path, file) for file in os.listdir(self.icon_path) if file.endswith('.svg')]
+
+        # HTML과 CSS를 사용하여 SVG 파일과 파일명을 그리드 형태로 표시
+        html_content = '<div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px;">'
+        icon_filenames = []
+        for file in svg_files:
+            file_name = os.path.basename(file)  # 파일 이름만 추출
+            file_name = file_name.replace(f"{self.icon_path}/", "")
+            icon_filenames.append(file_name)
+            file_name = file_name.replace(f".svg", "")
+            html_content += f'''<div>
+                                    <img src="{file}" style="width: 100px; height: 100px;">
+                                    <div style="word-wrap: break-word; word-break: break-all; width: 100px;">{file_name}</div>
+                                </div>'''
+        html_content += '</div>'
+        self.icon_filenames = icon_filenames
+        return html_content
+    
+    
     def save_yaml(self):
         # YAML 파일로 데이터 저장
         class NoAliasDumper(Dumper):
@@ -253,8 +284,8 @@ class RegisterUtils:
             self.sm_yaml['description']['title'] = self._check_parammeter(desc['title'])
             self.set_sm_name(self._check_parammeter(self.solution_name))
             self.sm_yaml['description']['overview'] = self._check_parammeter(desc['overview'])
-            self.sm_yaml['description']['input_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
-            self.sm_yaml['description']['output_data'] = self._check_parammeter(self.bucket_name + desc['input_data'])
+            self.sm_yaml['description']['input_data'] = self._check_parammeter(desc['input_data'])
+            self.sm_yaml['description']['output_data'] = self._check_parammeter(desc['input_data'])
             self.sm_yaml['description']['user_parameters'] = self._check_parammeter(desc['user_parameters'])
             self.sm_yaml['description']['algorithm'] = self._check_parammeter(desc['algorithm'])
             # FIXME icon 관련 하드코딩 변경필요 
@@ -265,12 +296,8 @@ class RegisterUtils:
             raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{e}")
             
 
-    def set_wrangler(self, wrangler_path = None):
-        
-        with open('example.py', 'r') as file:
-            python_content = file.read()
-        
-        self.sm_yaml['wrangler_code_uri'] = python_content
+    def set_wrangler(self):
+        self.sm_yaml['wrangler_code_uri'] = ''
         self.sm_yaml['wrangler_dataset_uri'] = ''
         self.save_yaml()
 
@@ -350,12 +377,12 @@ class RegisterUtils:
         self.save_yaml()
 
 
-    # def set_train_dataset_uri(self):
-    #     pass
+    def set_train_dataset_uri(self):
+        pass
 
 
-    # def set_train_artifact_uri(self):
-    #     pass
+    def set_train_artifact_uri(self):
+        pass
 
 
     def set_candidate_parameters(self):
@@ -365,36 +392,24 @@ class RegisterUtils:
             if old_key in d:
                 d[new_key] = d.pop(old_key)
         
-        ### candidate parameters setting
         if "train" in self.pipeline:
-            self.candidate_params = self.exp_yaml['user_parameters'][0]
-            rename_key(self.candidate_params, 'train_pipeline', 'candidate_parameters')
-            self.sm_yaml['pipeline'][0].update({'parameters' : self.candidate_params})
+            temp_dict = self.exp_yaml['user_parameters'][0]
+            rename_key(temp_dict, 'train_pipeline', 'candidate_parameters')
+            self.sm_yaml['pipeline'][0].update({'parameters' : temp_dict})
         elif "inference" in self.pipeline:
-            self.candidate_params = self.exp_yaml['user_parameters'][1]
-            rename_key(self.candidate_params, 'inference_pipeline', 'candidate_parameters')
-            self.sm_yaml['pipeline'][1].update({'parameters' : self.candidate_params})
-        #print(self.sm_yaml['pipeline'][0]['parameters'])
-        return self.candidate_params['candidate_parameters']
+            temp_dict = self.exp_yaml['user_parameters'][1]
+            rename_key(temp_dict, 'inference_pipeline', 'candidate_parameters')
+            self.sm_yaml['pipeline'][1].update({'parameters' : temp_dict})
     
-    
-    def set_user_parameters(self, _user_parameters=[]):
-        user_parameters = deepcopy(_user_parameters) # 안하면 jupyter의 user_parameters 리스트와 메모리 공유 돼서 꼬임 
-        ### user parameters setting 
         subkeys = {}
-        # 빈 user_parameters 생성 
-        if len(user_parameters) == 0: 
-            for step in self.candidate_params['candidate_parameters']:
-                output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
-                user_parameters.append(output_data)
+        user_parameters = []
+        for step in temp_dict['candidate_parameters']:
+            output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
+            user_parameters.append(output_data)
         subkeys['user_parameters'] = user_parameters
-        
-        # TODO EdgeCondcutor 인터페이스 테스트 필요
-        # selected user parameters는 UI에서 선택시 채워질것 이므로 args를 빈 dict로 채워 보냄
-        # 사용자가 미선택시 default로 user paramters에서 복사될 것임    
-        ### selected user parameters setting 
+
         selected_user_parameters = []
-        for step in self.candidate_params['candidate_parameters']:
+        for step in temp_dict['candidate_parameters']:
             output_data = {'step': step['step'], 'args': {}} # solution metadata v9 기준 args가 dict 
             selected_user_parameters.append(output_data)
         subkeys['selected_user_parameters'] = selected_user_parameters
@@ -404,34 +419,8 @@ class RegisterUtils:
         elif self.pipeline == 'inference':
             self.sm_yaml['pipeline'][1]['parameters'].update(subkeys)
             
-        print_color("\n[{self.pipeline}] Success updating << user_parameters >> in the solution_metadata.yaml", color='green')
+        print_color("\n[{self.pipeline}] Success updating << candidate_parameters >> in the solution_metadata.yaml", color='green')
         self.save_yaml()
-        
-        
-    # def set_user_parameters(self):
-    #     # user parameters setting 
-    #     # subkeys = {}
-    #     # user_parameters = []
-    #     # for step in self.candidate_dict['candidate_parameters']:
-    #     #     print(step)
-    #     #     print('----------')
-    #     #     output_data = {'step': step['step'], 'args': []} # solution metadata v9 기준 args가 list
-    #     #     user_parameters.append(output_data)
-    #     # subkeys['user_parameters'] = user_parameters
-    #     # return subkeys 
-    #     print(self.candidate_dict['candidate_parameters'])
-    #     data = [] #["data1", "data2", "data3", "data4"]
-    #     for step_info in self.candidate_dict['candidate_parameters']:
-    #         for k in step_info['args'][0].keys(): 
-    #             data.append(step_info['step'] + ' / ' + k)
-    #     checkboxes = [widgets.Checkbox(value=False, description=label) for label in data]
-    #     output = widgets.VBox(children=checkboxes)
-    #     display(output)
-    #     selected_data = []
-    #     for i in range(0, len(checkboxes)):
-    #         if checkboxes[i].value == True:
-    #             selected_data = selected_data + [checkboxes[i].description]
-    #     print(selected_data)
         
 
     def set_resource(self, resource = 'standard'):
@@ -476,34 +465,51 @@ class RegisterUtils:
           
         return isinstance(boto3.client('s3'), botocore.client.BaseClient)
     
-            
-    def s3_upload_icon(self):
-        # inner func.
-        def s3_process(s3, bucket_name, data_path, s3_path):
-            objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
-            if 'Contents' in objects_to_delete:
-                for obj in objects_to_delete['Contents']:
-                    self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                    print_color(f'[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
-            s3.delete_object(Bucket=bucket_name, Key=s3_path)
-            #s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
-            try:    
-                response = s3.upload_file(data_path, bucket_name, s3_path)
-            except NoCredentialsError as e:
-                raise NoCredentialsError(f"NoCredentialsError: \n{e}")
-            except ClientError as e:
-                print(f"ClientError: ", e)
-                return False
-            print_color(f"Success uploading into S3 path: {bucket_name + '/' + s3_path}", color='green')
-            return True
+    
+    def select_icon(self, name):  
+        if not ".svg" in name:
+            name = name + ".svg"
+        if name in self.icon_filenames:
+            print_color(f"[SUCCESS] Update icon name: {name}", color='green')
 
-        # FIXME hardcoding icon.png 솔루션 이름등으로 변경 필요 
-        data_path = f'./image/{self.ICON_FILE}'
-        s3_file_path = f'icons/{self.solution_name}/{self.ICON_FILE}'
-        s3_process(self.s3, self.bucket_name, data_path, s3_file_path)
-        self.icon_s3_uri = "s3://" + self.bucket_name + '/' + s3_file_path   # 값을 리스트로 감싸줍니다
-        self.sm_yaml['description']['icon'] = self.icon_s3_uri
-        self.save_yaml()
+            #self.icon_s3_uri = "s3://" + self.bucket_name + '/icons/' + name   # 값을 리스트로 감싸줍니다
+            # FIXME [중요] icons는 public bucket에만 존재 
+            self.icon_s3_uri = "s3://" + self.icon_bucket + '/icons/' + name
+            self.sm_yaml['description']['icon'] = self.icon_s3_uri
+            self.save_yaml()
+
+            print_color(f'[SYSTEM] Success updating solution_metadata.yaml:', color='green')
+            print(f'description: -icon: {self.icon_s3_uri} ')
+        else:
+            raise ValueError(f"[ERROR] Wrong icon name: {name}. \n(icon_list={self.icon_filenames}) ")
+            
+#     def s3_upload_icon(self):
+#         # inner func.
+#         def s3_process(s3, bucket_name, data_path, s3_path):
+#             objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
+#             if 'Contents' in objects_to_delete:
+#                 for obj in objects_to_delete['Contents']:
+#                     self.s3.delete_object(Bucket=bucket_name, Key=obj['Key'])
+#                     print_color(f'[INFO] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
+#             s3.delete_object(Bucket=bucket_name, Key=s3_path)
+#             #s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
+#             try:    
+#                 response = s3.upload_file(data_path, bucket_name, s3_path)
+#             except NoCredentialsError as e:
+#                 raise NoCredentialsError(f"NoCredentialsError: \n{e}")
+#             except ClientError as e:
+#                 print(f"ClientError: ", e)
+#                 return False
+#             print_color(f"Success uploading into S3 path: {bucket_name + '/' + s3_path}", color='green')
+#             return True
+
+#         # FIXME hardcoding icon.png 솔루션 이름등으로 변경 필요 
+#         data_path = f'./image/{self.ICON_FILE}'
+#         s3_file_path = f'icons/{self.solution_name}/{self.ICON_FILE}'
+#         s3_process(self.s3, self.bucket_name, data_path, s3_file_path)
+#         self.icon_s3_uri = "s3://" + self.bucket_name + '/' + s3_file_path   # 값을 리스트로 감싸줍니다
+#         self.sm_yaml['description']['icon'] = self.icon_s3_uri
+#         self.save_yaml()
         
 
     def s3_upload_data(self):
@@ -661,7 +667,7 @@ class RegisterUtils:
 
     def set_alo(self):
         alo_path = ALODIR
-        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib']
+        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git']
         work_path = WORKINGDIR + "alo/"
 
         if os.path.isdir(work_path):
@@ -682,11 +688,12 @@ class RegisterUtils:
 
     def set_docker_contatiner(self):
         try: 
+            origin_dockerfile = "TrainDockerfile" if self.pipeline == 'train' else "InferenceDockerfile"
             dockerfile = "Dockerfile"
             spm = 'ENV SOLUTION_PIPELINE_MODE='
             if os.path.isfile(WORKINGDIR + dockerfile):
                 os.remove(WORKINGDIR + dockerfile)
-            shutil.copy(WORKINGDIR + "origin/" + dockerfile, WORKINGDIR)
+            shutil.copy(WORKINGDIR + "origin/" + origin_dockerfile, WORKINGDIR + dockerfile)
             file_path = WORKINGDIR + dockerfile
             d_file = []
             with open(file_path, 'r') as file:
@@ -714,24 +721,24 @@ class RegisterUtils:
         # http://collab.lge.com/main/pages/viewpage.action?pageId=2126915782
         # [중요] container uri 는 magna-ws 말고 magna 같은 식으로 쓴다 (231207 임현수C)
         ecr_scope = self.URI_SCOPE.split('-')[0] # magna-ws --> magna
-        self.ecr_repo = self.ecr.split("/")[1] + '/' + ecr_scope + "/ai-solutions/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
+        self.ecr_repo = self.ecr.split("/")[1] + f"/{ecr_scope}/ai-solutions/"  + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
         self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
         if self.docker == True:
             run = 'docker'
         else:
             run = 'buildah'
 
-        print_color(f"[INFO] target AWS ECR url: \n{self.ecr_url}", color='blue')
-
         p1 = subprocess.Popen(
             ['aws', 'ecr', 'get-login-password', '--region', f'{self.region}'], stdout=subprocess.PIPE
         )
+        #print('p1: ', ['aws', 'ecr', 'get-login-password', '--region', f'{self.region}']) 
+        print_color(f"[INFO] target AWS ECR url: \n{self.ecr_url}", color='blue')
         p2 = subprocess.Popen(
-            [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
+            ['sudo', f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'], stdin=p1.stdout, stdout=subprocess.PIPE
         )
+        #print('p2: ', ['sudo',f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}'])
         p1.stdout.close()
         output = p2.communicate()[0]
-
         print_color(f"[INFO] AWS ECR | docker login result: \n {output.decode()}", color='cyan')
         print_color(f"[INFO] Target AWS ECR repository: \n{self.ecr_repo}", color='cyan')
 
@@ -754,12 +761,12 @@ class RegisterUtils:
             "--repository-name", self.ecr_repo,
             "--image-scanning-configuration", "scanOnPush=true",
             ]
-        # subprocess.run() 함수를 사용하여 명령을 실행합니다.
-        try:
+
+        try: 
             result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             print_color(f"\n[INFO] AWS ECR create-repository response: \n{result.stdout}", color='cyan')
         except subprocess.CalledProcessError as e:
-            raise NotImplementedError(f"Failed to AWS ECR create-repository:\n + {e}")
+            print_color(f"Failed to AWS ECR create-repository. \n If you already made the repository << {self.ecr_repo} >>, skip this step:\n Error Message: {str(e)}", color='yellow')
 
 
     # FIXME [임시] amd docker ecr 등록 실험용 
@@ -787,6 +794,7 @@ class RegisterUtils:
         if self.docker:
             subprocess.run(['docker', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
         else:
+            #print('debug: ', ['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
             subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
         if self.docker:
             subprocess.run(['docker', 'logout'])
@@ -814,7 +822,9 @@ class RegisterUtils:
         
         
     def register_solution_instance(self): 
-        solution_id = self.register_solution_response['version']['id']
+        # solution_id = self.register_solution_response['version']['id']
+        # FIXME 임시: alo 2.2 전 까지는 version은 0으로 고정 
+        solution_id = self.register_solution_response['versions'][0]['id']
         save_json = {"server_uri" : self.URI,
             "name" : self.solution_name,
             "version_id": solution_id,
@@ -834,13 +844,18 @@ class RegisterUtils:
         with open("./interface/solution_certification.json", 'r') as outfile:
             interface = json.load(outfile)
             
-        self.solution_instance_params = {"name": interface['name'],
-        "solution_version_id": interface['version_id'],
+        solution_instance_params = {
         "workspace_name": interface['workspace_name']
         }
-        print_color(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}", color='blue')
+        # metadata_json을 빈값으로 넘기면 solution 거랑 같은 metadata json 물고 instance 생성 (추후 AIC UI로 빠질 것임) 
+        solution_instance_data = {"name": interface['name'],
+        "solution_version_id": interface['version_id'],
+        "metadata_json": {}
+        }
+        self.solution_instance_data =json.dumps(solution_instance_data) # 중요 json dumps 
+        print_color(f"\n[INFO] AI solution interface information: \n {solution_instance_params}", color='blue')
         # solution instance 등록
-        solution_instance = requests.post(interface['server_uri'] + SOLUTION_INSTANCE, params=self.solution_instance_params, cookies=self.aic_cookie)
+        solution_instance = requests.post(interface['server_uri'] + SOLUTION_INSTANCE, params=solution_instance_params, data=self.solution_instance_data, cookies=self.aic_cookie)
         self.solution_instance = solution_instance.json()
         print_color(f"\n[INFO] AI solution instance register response: \n {self.solution_instance}", color='cyan')
     
@@ -849,13 +864,17 @@ class RegisterUtils:
     def register_stream(self): 
         # stream 등록 
         instance_params = {
+            "workspace_name": self.solution_instance['workspace_name']
+        }
+        instance_data = {
             "name": self.solution_instance['name'],
             "instance_id": self.solution_instance['id'],
-            "workspace_name": self.solution_instance['workspace_name']
         }
         with open("./interface/solution_certification.json", 'r') as outfile:
             interface = json.load(outfile)
-        stream = requests.post(interface['server_uri'] + STREAMS, params=instance_params, cookies=self.aic_cookie)
+            
+        self.instance_data =json.dumps(instance_data)
+        stream = requests.post(interface['server_uri'] + STREAMS, params=instance_params, data=self.instance_data, cookies=self.aic_cookie)
         self.stream = stream.json() 
         print_color(f"[INFO] AI solution stream register response: \n {self.stream}", color='cyan')
         
@@ -882,9 +901,9 @@ class RegisterUtils:
         }
         with open("./interface/solution_certification.json", 'r') as outfile:
             interface = json.load(outfile)
-        stream_history = requests.post(interface['server_uri'] + f"{STREAMS}/{self.stream['id']}/start", params=stream_params, data=data, cookies=self.aic_cookie)
+        stream_history = requests.post(interface['server_uri'] + f"{STREAM_HISTORIES}/{self.stream['id']}", params=stream_params, data=data, cookies=self.aic_cookie)
         self.stream_history = stream_history.json()
-        print_color(f"[INFO] Run pipeline << {self.pipeline} >> response: \n {self.stream_history}", color='cyan')
+        print_color(f"[INFO] Run pipeline << train >> response: \n {self.stream_history}", color='cyan')
 
 
     def get_stream_status(self):
@@ -896,7 +915,7 @@ class RegisterUtils:
         }
         with open("./interface/solution_certification.json", 'r') as outfile:
             interface = json.load(outfile)
-        info = requests.get(interface['server_uri'] + f"{STREAMS}/{self.stream_history['id']}/info", params=stream_history_parmas, cookies=self.aic_cookie)
+        info = requests.get(interface['server_uri'] + f"{STREAM_HISTORIES}/{self.stream_history['id']}/info", params=stream_history_parmas, cookies=self.aic_cookie)
         print_color(f"Stream status: {info.json()['status']}", color="cyan") 
 
 
@@ -993,119 +1012,18 @@ def _tar_dir(_path):
     
     return _save_path
 
-def is_float(string):
-    try:
-        float(string)
-        return True 
-    except ValueError:
-        return False 
-
-def is_int(string):
-    try:
-        int(string)
-        return True 
-    except ValueError:
-        return False 
-
-# FIXME bool check 어렵 (0이나 1로 입력하면?)
-def is_bool(string):
-    bool_list = ['True', 'False']
-    if string in bool_list: 
-        return True 
-    else: 
-        return False 
-    
-def is_str(string):
-    return isinstance(string, str)
-
-def split_comma(string):
-    return [i.strip() for i in string.split(',')]
-
-def convert_string(string_list: list): 
-    # string list 내 string들을 float 혹은 int 타입일 경우 해당 타입으로 바꿔줌 
-    output_list = [] 
-    for string in string_list: 
-        if is_int(string): 
-            output_list.append(int(string))
-        elif is_float(string):
-            output_list.append(float(string))
-        elif is_bool(string):
-            # FIXME 주의: bool(string)이 아니라 eval(string) 으로 해야 정상 작동 
-            output_list.append(eval(string)) 
-        else: # 무조건 string 
-            output_list.append(string)
-    return output_list 
-
-
-def convert_args_type(values: dict):
-    '''
-    << values smaple >> 
-    
-    {'name': 'num_hpo',
-    'description': 'test3',
-    'type': 'int',
-    'default': '2',
-    'range': '2,5'}
-    '''
-    output = deepcopy(values) # dict 
-    
-    arg_type = values['type']
-    for k, v in values.items(): 
-        if k in ['name', 'description', 'type']: 
-            assert type(v) == str 
-        elif k == 'selectable': # 전제: selectable은 2개이상 (ex. "1, 2")
-            # single 이든 multi 이든 yaml 에 list 형태로 표현  
-            assert type(v) == str 
-            string_list = split_comma(v)
-            assert len(string_list) > 1
-            # FIXME 각각의 value들은 type이 제각기 다를 수 있으므로 완벽한 type check는 어려움 
-            output[k] = convert_string(string_list) 
-        elif k == 'default':
-            # 주의: default 는 None이 될수도 있음 (혹은 사용자가 그냥 ""로 입력할 수도 있을듯)
-            if (v == None) or (v==""): 
-                output[k] = []
-                ## FIXME string 일땐 [""] 로 해야하나? 
-                if arg_type == 'string': 
-                    output[k] = [""] # 주의: EdgeCondcutor UI 에서 null 이 아닌 공백으로 표기 원하면 None 이 아닌 ""로 올려줘야함 
-                else: 
-                    # FIXME 일단 single(multi)-selection, int, float 일땐 default value가 무조건 있어야 한다고 판단했음 
-                    raise ValueError(f"Default value needed for arg. type: << {arg_type} >>")
-            else:  
-                # FIXME selection 일 때 float, str 같은거 섞여있으면..? 사용자가 1을 의도한건지 '1'을 의도한건지? 
-                string_list = split_comma(v)
-                if arg_type == 'single_selection': 
-                    assert len(string_list) == 1
-                elif arg_type == 'multi_selection':
-                    assert len(string_list) > 1
-                output[k] = convert_string(string_list) # list type     
-        elif k == 'range':
-            string_list = split_comma(v)
-            assert len(string_list) == 2 # range 이므로 [처음, 끝] 2개 
-            converted = convert_string(string_list)
-            if (arg_type == 'string') or (arg_type == 'int'):
-                for i in converted:
-                    if not is_int(i): # string type 일 땐 글자 수 range 의미 
-                        raise ValueError("<< range >> value must be int")
-            elif arg_type == 'float':
-                for i in converted:
-                    if not is_float(i): # string 글자 수 range 의미 
-                        raise ValueError("<< range >> value must be float")
-            output[k] = converted 
-            
-    return output
-        
 
 if __name__ == "__main__":
     user_input ={
         # 시스템 URI
-        'URI': "http://10.158.2.243:9999/", 
+        'URI': "https://aic-kic.aidxlge.com/", 
         
         # workspace 이름 
-        'WORKSPACE_NAME': "magna-ws", # "cism-ws"
+        'WORKSPACE_NAME': "cism-ws", 
         
         # 로그인 정보 
-        'LOGIN_ID': '', # "cism-dev"
-        'LOGIN_PW': '', # "cism-dev@com"
+        'LOGIN_ID': '', 
+        'LOGIN_PW': '', 
         
         
         # ECR에 올라갈 컨테이너 URI TAG 
@@ -1116,5 +1034,4 @@ if __name__ == "__main__":
         'ICON_FILE': 'icon.png'
     }
     registerer = RegisterUtils(user_input)
-
 
