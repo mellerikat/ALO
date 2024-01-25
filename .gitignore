@@ -15,3 +15,8 @@ scripts/creating_ai_solution/Dockerfile
 scripts/creating_ai_solution/solution_metadata.yaml
 alolib/
 solution_requirements.txt
+*/__pycache__/
+*/*/__pycache__/
+*/*/*/__pycache__/
+*/*/*/*/__pycache__/
+*/*/*/*/*/__pycache__/
