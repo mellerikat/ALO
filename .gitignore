@@ -4,7 +4,7 @@ assets/
 .history/
 .asset_interface/
 input/
-config/
+solution/
 __pycache__/
 .vscode/
 Dockerfile
