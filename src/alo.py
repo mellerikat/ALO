@@ -723,7 +723,7 @@ class ALO:
         ## from external.py
         self.ext_data.external_load_model(self.external_path, self.external_path_permission)
         
-    def _install_steps(self, pipeline, get_asset_source):
+    def _install_steps(self, pipeline, get_asset_source='once'):
         requirements_dict = dict() 
         for step, asset_config in enumerate(self.asset_source[pipeline]):
             # self.asset.setup_asset 기능 :
