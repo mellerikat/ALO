@@ -204,7 +204,7 @@ class ALO:
                 self.proc_logger.process_error("Failed to get external data. \n" + str(e)) 
             try:
                 # load sagemaker_config.yaml - (account_id, role, region, ecr_repository, s3_bucket_uri, train_instance_type)
-                sm_config = self.experimental_plan.get_yaml(PROJECT_HOME + 'config/sagemaker_config.yaml') 
+                sm_config = self.experimental_plan.get_yaml(SAGEMAKER_CONFIG) 
                 sm_handler = SagemakerHandler(sm_config)
                 sm_handler.init()
             except Exception as e:

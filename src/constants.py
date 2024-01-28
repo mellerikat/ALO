@@ -8,6 +8,7 @@ EXP_PLAN = SOLUTION_HOME + "experimental_plan.yaml"
 ALO_LIB = PROJECT_HOME + "alolib/"
 
 SOLUTION_META = PROJECT_HOME + "solution_metadata.yaml"
+SAGEMAKER_CONFIG = PROJECT_HOME + "setting/sagemaker_config.yaml"
 
 # interface mode support type 
 INTERFACE_TYPES = ['memory', 'file']

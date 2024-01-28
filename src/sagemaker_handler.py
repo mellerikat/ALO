@@ -68,7 +68,7 @@ class SagemakerHandler:
         # 새로운 폴더를 생성합니다.
         os.mkdir(self.sagemaker_dir)
         # 컨테이너 빌드에 필요한 파일들을 sagemaker dir로 복사 
-        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'input', 'requirements.txt']
+        alo_src = ['main.py', 'src', 'solution', 'assets', 'alolib', '.git', 'input', 'requirements.txt']
         for item in alo_src:
             src_path = PROJECT_HOME + item
             if os.path.isfile(src_path):
