@@ -1,6 +1,5 @@
 import json
 import subprocess
-from src.alo import ALO
 from src.utils import set_args, init_redis
 import os
 
@@ -24,6 +23,14 @@ if __name__ == "__main__":
         type=bool, default=False, help="On/off infinite loop: True, False"
     5) --computing
     """
+
+    ## TODO: yaml 설치 필요
+    result = subprocess.run(['pip', 'install', '-r', 'requirements.txt'])
+    if result.returncode == 0:
+        print(f"./requirements.txt 설치 완료. ({result.stdout})")
+        from src.alo import ALO
+    else:
+        print(f"./requirements.txt 설치 실패. ({result.stderr})")
     
     # ALO 실행 전 필요한 args를 받아옴
     args = set_args()
