@@ -20,3 +20,5 @@ solution_requirements.txt
 */*/*/__pycache__/
 */*/*/*/__pycache__/
 */*/*/*/*/__pycache__/
+.register_*/
+solution_metadata.yaml

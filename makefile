@@ -15,7 +15,7 @@ del :
 
 # "make clean" 명령을 실행할 때 실행되는 규칙
 clean : 
-	rm -rf $(FOLDER_PATH)* ./.history ./.asset_interface ./.inference_artifacts ./.temp_artifacts_dir ./.train_artifacts ./input/ ./assets/ ./alolib
+	rm -rf $(FOLDER_PATH)* ./.history ./.asset_interface ./.inference_artifacts ./.temp_artifacts_dir ./.train_artifacts ./input/ ./assets/ ./alolib ./.register_*
 
 clean-cache:
 	@find . -type d -name '__pycache__' -exec rm -r {} +

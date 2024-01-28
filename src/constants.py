@@ -36,3 +36,21 @@ artifacts_structure = {
     '.asset_interface': {},
     '.history': {}
 }
+
+
+###################################
+##### Register AI Solution 
+###################################
+### 삭제되어야 할 대상
+REGISTER_MODEL_PATH = PROJECT_HOME + ".register_model/"   ## AIC 에서 download 한 model.tar.gz 임시 저장
+REGISTER_ARTIFACT_PATH = PROJECT_HOME + ".register_artifacts/"
+REGISTER_SOURCE_PATH = PROJECT_HOME + ".register_source/"
+
+
+INFRA_CONFIG = PROJECT_HOME + "setting/infra_config.yaml"
+
+REGISTER_WRANGLER_PATH = PROJECT_HOME + "wrangler/wrangler.py"
+REGISTER_INTERFACE_PATH = PROJECT_HOME + ".register_interface/"
+REGISTER_ICON_PATH = PROJECT_HOME + "src/icons/"
+REGISTER_DOCKER_PATH = PROJECT_HOME + "src/Dockerfiles/register/"
+REGISTER_EXPERIMENTAL_PLAN = REGISTER_SOURCE_PATH + "solution/experimental_plan.yaml"
