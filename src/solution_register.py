@@ -1104,9 +1104,14 @@ class SolutionRegister:
         p1 = subprocess.Popen(
             ['aws', 'ecr', 'get-login-password', '--region', f'{self.infra_setup["REGION"]}'], stdout=subprocess.PIPE
         )
-        p2 = subprocess.Popen(
-            ['sudo', f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE
-        )
+        if self.docker == True:
+            p2 = subprocess.Popen(
+                [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE
+            )
+        else:
+            p2 = subprocess.Popen(
+                ['sudo', f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE
+            )
 
         p1.stdout.close()
         output = p2.communicate()[0]
