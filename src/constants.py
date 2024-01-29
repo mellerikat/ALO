@@ -19,12 +19,14 @@ ASSET_HOME = PROJECT_HOME + "assets/"
 
 INPUT_DATA_HOME = PROJECT_HOME + "input/"
 
+
+TRAIN_LOG_PATH = PROJECT_HOME + ".train_artifacts/log/"
+
 artifacts_structure = {
     'input': {}, 
     '.train_artifacts': {
         'score': {},
         'output': {},
-        'extra_output': {},
         'log': {},
         'report': {},
         'models': {}
@@ -32,7 +34,6 @@ artifacts_structure = {
     '.inference_artifacts': {
         'score': {},
         'output': {},
-        'extra_output': {},
         'log': {}
     },
     '.asset_interface': {},
