@@ -129,6 +129,7 @@ class ALO:
         os.chdir(SOLUTION_HOME)
         subprocess.run(['git', 'clone', url, '.'])
 
+    
     #############################
     ####    Main Function    ####
     #############################
