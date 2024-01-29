@@ -117,35 +117,18 @@ class ALO:
 
         # artifacts home 초기화 (from src.utils)
         self.artifacts = self.artifact.set_artifacts()
+        
+        b = 0
     
     def _sparse_checkout_copy(self, url):
-        file_path = "config/experimental_plan.yaml"  # 복사할 파일 경로
-        target_dir = SOLUTION_HOME  # 파일을 복사할 대상 경로
 
-        # 저장소 이름 추출
-        repo_name = url.split('/')[-1]
-        if repo_name.endswith('.git'):
-            repo_name = repo_name[:-4]
-
+        if os.path.exists(SOLUTION_HOME):
+            shutil.rmtree(SOLUTION_HOME)
+            os.makedirs(SOLUTION_HOME)
         # 저장소 클론
-        subprocess.run(['git', 'clone', url])
+        os.chdir(SOLUTION_HOME)
+        subprocess.run(['git', 'clone', url, '.'])
 
-        # 파일이 존재하는지 확인
-        source_file_path = os.path.join(repo_name, file_path)
-        if not os.path.exists(source_file_path):
-            print("The specified file does not exist in the repository.")
-        else:
-            # 대상 디렉토리가 존재하는지 확인하고, 없으면 생성
-            if not os.path.exists(target_dir):
-                os.makedirs(target_dir)
-
-            # 파일 복사
-            target_file_path = os.path.join(target_dir, os.path.basename(file_path))
-            shutil.copyfile(source_file_path, target_file_path)
-            print(f"File copied successfully to {target_file_path}")
-
-            shutil.rmtree(PROJECT_HOME + repo_name)
-    
     #############################
     ####    Main Function    ####
     #############################
@@ -342,7 +325,7 @@ class ALO:
         """
 
         # 새 runs 시작 시 기존 log 폴더 삭제 
-        train_log_path = PROJECT_HOME + ".train_artifacts/log/"
+        train_log_path = TRAIN_LOG_PATH
         inference_log_path = PROJECT_HOME + ".inference_artifacts/log/"
         try: 
             if os.path.exists(train_log_path):
