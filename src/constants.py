@@ -24,6 +24,7 @@ artifacts_structure = {
     '.train_artifacts': {
         'score': {},
         'output': {},
+        'extra_output': {},
         'log': {},
         'report': {},
         'models': {}
@@ -31,6 +32,7 @@ artifacts_structure = {
     '.inference_artifacts': {
         'score': {},
         'output': {},
+        'extra_output': {},
         'log': {}
     },
     '.asset_interface': {},
