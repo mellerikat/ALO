@@ -142,17 +142,20 @@ class SolutionRegister:
     ################################################
     def update_aws_credentials(self, aws_access_key_path, profile_name='default'):
         """ AWS CLI 설정에 액세스 키와 비밀 키를 업데이트합니다. """
-
-        f = open(aws_access_key_path, "r")
-        keys = []
-        values = []
-        for line in f:
-            key = line.split(":")[0]
-            value = line.split(":")[1].rstrip()
-            keys.append(key)
-            values.append(value)
-        access_key = values[0]
-        secret_key = values[1]
+        try:
+            f = open(aws_access_key_path, "r")
+            keys = []
+            values = []
+            for line in f:
+                key = line.split(":")[0]
+                value = line.split(":")[1].rstrip()
+                keys.append(key)
+                values.append(value)
+            access_key = values[0]
+            secret_key = values[1]
+        except:
+            print_color("[SYSTEM] AWS 액세스 키 파일을 찾을 수 없습니다.", color="yellow")
+            return False
 
         # AWS credentials 파일 경로
         aws_credentials_file_path = os.path.expanduser('~/.aws/credentials')
