@@ -698,7 +698,7 @@ class ALO:
         return self._external_load_data(pipeline)
 
     def install_steps(self, pipeline, get_asset_source):
-        return self._install_steps(pipeline)
+        return self._install_steps(pipeline, get_asset_source)
     ########################################
     ####    Part4. Internal fuctions    ####
     ########################################
