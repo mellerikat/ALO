@@ -2000,18 +2000,18 @@ class SolutionRegister:
         self.print_step("Load AI solution instance list")
 
         ## file load 한다. 
-        try:
-            path = self.interface_path + self.solution_file
-            with open(path) as f:
-                response_solution = json.load(f)
+        # try:
+        #     path = self.interface_path + self.solution_file
+        #     with open(path) as f:
+        #         response_solution = json.load(f)
 
-            print_color(f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다.", color='green')
-            # pprint(response_solution)
-        except:
-            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+        #     print_color(f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다.", color='green')
+        #     # pprint(response_solution)
+        # except:
+        #     raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
 
         self.solution_instance_params = {
-            "workspace_name": response_solution['scope_ws']
+            "workspace_name": self.infra_setup['WORKSPACE_NAME']
         }
         print_color(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}", color='blue')
 
@@ -2054,6 +2054,67 @@ class SolutionRegister:
         else:
 
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+
+    def list_solution(self): 
+
+        self.print_step("Load AI solution instance list")
+
+        ## file load 한다. 
+        # try:
+        #     path = self.interface_path + self.solution_file
+        #     with open(path) as f:
+        #         response_solution = json.load(f)
+
+        #     print_color(f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다.", color='green')
+        #     # pprint(response_solution)
+        # except:
+        #     raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+
+        self.solution_instance_params = {
+            "workspace_name": self.infra_setup['WORKSPACE_NAME']
+        }
+        print_color(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}", color='blue')
+
+        # solution instance 등록
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["SOLUTION_INSTANCE"]
+        response = requests.get(aic+api, 
+                                 params=self.solution_instance_params, 
+                                 cookies=self.aic_cookie)
+        self.response_instance_list = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
+            pprint("[INFO] response: ")
+            for cnt, instance in enumerate(self.response_instance_list["instances"]):
+                id = instance["id"]
+                name = instance["name"]
+
+                max_name_len = len(max(name, key=len))
+                print(f"(idx: {cnt:{max_name_len}}), instance_name: {name:{max_name_len}}, instance_id: {id}")
+
+            # interface 용 폴더 생성.
+            try:
+                if not os.path.exists(self.interface_path):
+                    os.mkdir(self.interface_path)
+            except Exception as e:
+                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            path = self.interface_path + self.instance_list_file
+            with open(path, 'w') as f:
+              json.dump(self.response_instance_list, f, indent=4)
+              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.response_instance_list["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.response_instance_list["detail"])
+        else:
+
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+
 
 
 
