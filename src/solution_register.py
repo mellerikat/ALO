@@ -49,7 +49,7 @@ class SolutionRegister:
                 raise ValueError(e)
         else:
             self.infra_setup = infra_setup
-        print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
+        # print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
         pprint(self.infra_setup, depth=5)
 
         self.api_uri = {
@@ -67,7 +67,7 @@ class SolutionRegister:
             raise ValueError("solution infomation 을 입력해야 합니다.")
         else:
             self.solution_info = solution_info
-        print_color("[SYSTEM] solution_info. (max display: 5 line): ", color='green')
+        # print_color("[SYSTEM] solution_info. (max display: 5 line): ", color='green')
         pprint(self.solution_info, depth=5)
 
 
@@ -243,11 +243,22 @@ class SolutionRegister:
             self.register_solution()
 
 
-    def run_train(self, status_period=5):
+    def run_train(self, status_period=5, delete_instance=True, delete_solution=False):
         self.register_solution_instance()
         self.register_stream()
         self.request_run_stream()
         self.get_stream_status(status_period=status_period)
+
+        if delete_instance:
+            self.delete_stream_history()
+            self.delete_stream()
+            self.delete_instance()
+
+        if delete_solution:
+            if delete_instance:
+                self.delete_solution()
+            else:
+                raise Exception("delete_instance 옵션을 켜야 solution 삭제가 가능합니다.")
 
 
 
@@ -1942,25 +1953,62 @@ class SolutionRegister:
     ######    List Solution & Instance & Stream
     #####################################
 
+    def list_stream(self): 
 
-    def list_stream_history(self): 
+        self.print_step("List stream ")
+
+        self.stream_params = {
+            "workspace_name": self.infra_setup['WORKSPACE_NAME']
+        }
+        print_color(f"\n[INFO] AI solution interface information: \n {self.stream_params}", color='blue')
+
+        # solution instance 등록
+        aic = self.infra_setup["AIC_URI"]
+        api = self.api_uri["STREAMS"]
+        response = requests.get(aic+api, 
+                                 params=self.stream_params, 
+                                 cookies=self.aic_cookie)
+        self.stream_list = response.json()
+
+        if response.status_code == 200:
+            print_color("[SUCCESS] stream list 조회를 성공하였습니다. ", color='cyan')
+            pprint("[INFO] response: ")
+            for cnt, instance in enumerate(self.stream_list["streams"]):
+                id = instance["id"]
+                name = instance["name"]
+
+                max_name_len = len(max(name, key=len))
+                print(f"(idx: {cnt:{max_name_len}}), stream_name: {name:{max_name_len}}, stream_id: {id}")
+
+            # interface 용 폴더 생성.
+            try:
+                if not os.path.exists(self.interface_path):
+                    os.mkdir(self.interface_path)
+            except Exception as e:
+                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+
+            # JSON 데이터를 파일에 저장
+            path = self.interface_path + self.stream_list_file
+            with open(path, 'w') as f:
+              json.dump(self.stream_list, f, indent=4)
+              print_color(f"[SYSTEM] list 결과를 {path} 에 저장합니다.",  color='green')
+        elif response.status_code == 400:
+            print_color("[ERROR] stream list 조회를 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", self.stream_list["detail"])
+        elif response.status_code == 422:
+            print_color("[ERROR] stream list 조회를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", self.stream_list["detail"])
+        else:
+
+            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+
+    def list_stream_history(self, id=''): 
 
         self.print_step("List stream history")
 
-        ## file load 한다. 
-        try:
-            path = self.interface_path + self.stream_run_file
-            with open(path) as f:
-                response_stream_run = json.load(f)
-
-            print_color(f"[SYSTEM] Stream runs 등록 정보를 {path} 에서 확인합니다.", color='green')
-            # pprint(response_solution)
-        except:
-            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
-
         self.stream_run_params = {
-            "stream_id": response_stream_run["id"],
-            "workspace_name": response_stream_run['workspace_name']
+            "stream_id": id,
+            "workspace_name": self.infra_setup['WORKSPACE_NAME']
         }
         print_color(f"\n[INFO] AI solution interface information: \n {self.stream_run_params}", color='blue')
 
@@ -1980,7 +2028,7 @@ class SolutionRegister:
                 name = instance["name"]
 
                 max_name_len = len(max(name, key=len))
-                print(f"(idx: {cnt:{max_name_len}}), stream_name: {name:{max_name_len}}, stream_id: {id}")
+                print(f"(idx: {cnt:{max_name_len}}), history_name: {name:{max_name_len}}, history_id: {id}")
 
             # interface 용 폴더 생성.
             try:
@@ -1995,10 +2043,10 @@ class SolutionRegister:
               json.dump(self.stream_history_list, f, indent=4)
               print_color(f"[SYSTEM] list 결과를 {path} 에 저장합니다.",  color='green')
         elif response.status_code == 400:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print_color("[ERROR] stream history 조회를 실패하였습니다. 잘못된 요청입니다. ", color='red')
             print("Error message: ", self.stream_history_list["detail"])
         elif response.status_code == 422:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print_color("[ERROR] stream history 조회를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
             print("Error message: ", self.stream_history_list["detail"])
         else:
 
@@ -2100,7 +2148,7 @@ class SolutionRegister:
                 name = instance["name"]
 
                 max_name_len = len(max(name, key=len))
-                print(f"(idx: {cnt:{max_name_len}}), instance_name: {name:{max_name_len}}, instance_id: {id}")
+                print(f"(idx: {cnt:{max_name_len}}), solution_name: {name:{max_name_len}}, solution_id: {id}")
 
             # interface 용 폴더 생성.
             try:
