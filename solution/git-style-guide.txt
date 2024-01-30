@@ -1,0 +1,20 @@
+아래와 같은  형태로 solution git 을 제작되도록 함
+설치는 solution 폴더 내에서  git clone {solution git} . 으로 설치 합니다.
+Solutions should be created in the following format:
+
+./alo/solution
+    └ experimental_plan.yaml # Mandatory
+    └ experimental_plan_extra.yaml # Optional
+    └ sample_data/  # Madatory
+        └ train/
+             └ train_sample1.csv
+             └ train_sample2.csv
+             └ train_sample3.csv 
+        └ test/
+             └ test_sample.csv
+    └ guide/ # Optional
+        └ modeling_guide.ipynb
+
+The solution is installed within the solution folder by running:
+  - [solution/]  git clone {solution git} . 
+
