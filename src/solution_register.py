@@ -1305,16 +1305,20 @@ class SolutionRegister:
                             'args': []}
                 self.candidate_format[f'{pipe_name}_pipeline'].append(new_dict)
 
-                for key, value in step_dict['args'][0].items():
-                    item = [pipe_name, step_name, key, value]
-                    df.loc[table_idx] = item
+                try: 
+                    for key, value in step_dict['args'][0].items():
+                        item = [pipe_name, step_name, key, value]
+                        df.loc[table_idx] = item
 
-                    new_dict2 = {
-                        'name': key,
-                        'description': '',
-                        'type': '',
-                    }
-                    self.candidate_format[f'{pipe_name}_pipeline'][step_idx]['args'].append(new_dict2)
+                        new_dict2 = {
+                            'name': key,
+                            'description': '',
+                            'type': '',
+                        }
+                        self.candidate_format[f'{pipe_name}_pipeline'][step_idx]['args'].append(new_dict2)
+                        table_idx += 1
+                except:
+                    self.candidate_format[f'{pipe_name}_pipeline'][step_idx]['args'].append({})
                     table_idx += 1
                 step_idx += 1
 
