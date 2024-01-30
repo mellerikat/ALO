@@ -494,7 +494,7 @@ class ExternalHandler:
         elif ext_type == 'relative': 
             try:
                 base_dir = os.path.basename(os.path.normpath(ext_path))
-                rel_config_path = SOLUTION_HOME + ext_path
+                rel_config_path = PROJECT_HOME + ext_path
                 shutil.copytree(rel_config_path, input_data_dir + base_dir) 
             except: 
                 PROC_LOGGER.process_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong relative path (must be existing directory!) \n / or You do not have permission to access.')
