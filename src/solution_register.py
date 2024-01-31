@@ -244,15 +244,18 @@ class SolutionRegister:
 
 
     def run_train(self, status_period=5, delete_instance=True, delete_solution=False):
-        self.register_solution_instance()
-        self.register_stream()
-        self.request_run_stream()
-        self.get_stream_status(status_period=status_period)
+        if self.solution_info['inference_only']:
+            raise ValueError("inference_only=False 여야 합니다.")
+        else:
+            self.register_solution_instance()
+            self.register_stream()
+            self.request_run_stream()
+            self.get_stream_status(status_period=status_period)
 
         if delete_instance:
             self.delete_stream_history()
             self.delete_stream()
-            self.delete_instance()
+            self.delete_solution_instance()
 
         if delete_solution:
             if delete_instance:
