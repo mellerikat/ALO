@@ -649,7 +649,7 @@ class SolutionRegister:
         """
         version = str(int(self.infra_setup['VERSION']))
         if mode == "artifact":
-            prefix_uri = "/ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/artifacts/"
+            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/artifacts/"
             uri = {'artifact_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
         elif mode == "data":
             prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/data/"
@@ -971,14 +971,14 @@ class SolutionRegister:
                 s3.delete_object(Bucket=bucket_name, Key=s3_path)
             s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
             try:    
-                response = s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
+                response = s3.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
             except NoCredentialsError as e:
                 raise NoCredentialsError("NoCredentialsError: \n{e}")
             except ClientError as e:
                 print(f"ClientError: ", e)
                 return False
             # temp = s3_path + "/" + data_path[len(local_folder):]
-            uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
+            uploaded_path = bucket_name + s3_path + data_path[len(local_folder):]
             print_color(f"[SUSTEM] S3 object key (new): ", color='green')
             print(f"{uploaded_path }")
             return True
@@ -2387,10 +2387,12 @@ def _tar_dir(_path):
         _save_file_name = _path.strip('.') 
         _save_path = REGISTER_ARTIFACT_PATH +  f'{_save_file_name}.tar.gz' 
         last_dir = _path # ex. .train_artifacts/
+
     tar = tarfile.open(_save_path, 'w:gz')
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):
         base_dir = root.split(last_dir)[-1] + '/'
         for file_name in files:
+            # print("SSH@@@@@@@@@@@", file_name, base_dir, file_name)
             #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
             tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 .train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
     tar.close()
