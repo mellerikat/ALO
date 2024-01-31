@@ -57,7 +57,7 @@ REGISTER_SOURCE_PATH = PROJECT_HOME + ".register_source/"
 
 INFRA_CONFIG = PROJECT_HOME + "setting/infra_config.yaml"
 
-REGISTER_WRANGLER_PATH = PROJECT_HOME + "solution/wrangler/wrangler.py"
+REGISTER_WRANGLER_PATH = SOLUTION_HOME + "wrangler/wrangler.py"
 REGISTER_INTERFACE_PATH = PROJECT_HOME + ".register_interface/"
 REGISTER_ICON_PATH = PROJECT_HOME + "src/icons/"
 REGISTER_DOCKER_PATH = PROJECT_HOME + "src/Dockerfiles/register/"
