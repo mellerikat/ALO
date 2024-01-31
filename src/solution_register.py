@@ -39,23 +39,23 @@ class SolutionRegister:
         self.print_step("Initiate ALO operation mode")
         print_color("[SYSTEM] Solutoin 등록에 필요한 setup file 들을 load 합니다. ", color="green")
 
-        if not infra_setup:
-            infra_setup = INFRA_CONFIG
+        if infra_setup == None :
             print(f"Infra setup 파일이 존재 하지 않으므로, Default 파일을 load 합니다. (path: {infra_setup})")
+            infra_setup = INFRA_CONFIG
+        else:
+            print(f"Infra setup 파일을 load 합니다. (path: {infra_setup})")
             try:    
                 with open(infra_setup) as f:
                     self.infra_setup = yaml.safe_load(f)
             except Exception as e : 
                 raise ValueError(e)
-        else:
-            self.infra_setup = infra_setup
         # print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
         pprint(self.infra_setup, depth=5)
 
         self.api_uri = {
             'STATIC_LOGIN': 'api/v1/auth/static/login',  # POST
             'LDAP_LOGIN': 'api/v1/auth/ldap/login',
-            'SYSTEM_INFO': 'api/v1/workspaces',  # GET, 1. 시스템 정보 획득
+            'SYSTEM_INFO': 'api/v1/workspaces/info',  # GET, 1. 시스템 정보 획득
             'SOLUTION_LIST': 'api/v1/solutions/workspace', # 이름 설정 시 GET, 등록 시 POST, 2. AI Solution 이름 설정 / 3. AI Solution 등록
             'REGISTER_SOLUTION': 'api/v1/solutions', # 등록 시 POST, AI Solution 등록
             'SOLUTION_INSTANCE': 'api/v1/instances', # POST, AI Solution Instance 등록
@@ -70,6 +70,8 @@ class SolutionRegister:
         # print_color("[SYSTEM] solution_info. (max display: 5 line): ", color='green')
         pprint(self.solution_info, depth=5)
 
+        ## 임시 (version 개발 전까지 ) 
+        self.infra_setup["ECR_TAG"] = 'latest'
 
         ####################################
         ########### Configuration ##########
@@ -119,7 +121,6 @@ class SolutionRegister:
         self._read_experimentalplan_yaml(self.exp_yaml_path_file, type='experimental_plan')  ## set exp_yaml
 
         self.pipeline = None 
-        self.workspaces = None
         self.aic_cookie = None
         self.solution_name = None
         self.icon_filenames = []
@@ -262,6 +263,10 @@ class SolutionRegister:
                 self.delete_solution()
             else:
                 raise Exception("delete_instance 옵션을 켜야 solution 삭제가 가능합니다.")
+
+    def delete_solution(self):
+        self.delete_solution()
+
 
 
 
@@ -522,22 +527,26 @@ class SolutionRegister:
         """
         self.print_step(f"Display {self.pipeline} Resource List")
 
+        params = {
+            "workspace_name": self.infra_setup["WORKSPACE_NAME"],
+            "page_size": 100
+
+        }
+
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["SYSTEM_INFO"]
         try: 
-            self.workspaces = requests.get(aic+api, cookies=self.aic_cookie)
+            response = requests.get(aic+api, params=params, cookies=self.aic_cookie)
+            response_json = response.json()
         except: 
             raise NotImplementedError("[ERROR] Failed to get workspaces info.")
 
 
         resource_list = []
         try: 
-            for ws in self.workspaces.json()["workspaces"]:
-                if self.infra_setup["WORKSPACE_NAME"] in ws['name']:
-                    df = pd.DataFrame(ws['execution_specs'])
-
-                    for spec in ws['execution_specs']:
-                        resource_list.append(spec["name"])
+            df = pd.DataFrame(response_json["specs"])
+            for spec in response_json["specs"]:
+                resource_list.append(spec["name"])
         except: 
             raise ValueError("Got wrong workspace info.")
 
@@ -589,41 +598,38 @@ class SolutionRegister:
         """
         self.print_step("Check ECR & S3 Resource")
 
+        params = {
+            "workspace_name": self.infra_setup["WORKSPACE_NAME"],
+            "page_size": 100
+
+        }
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["SYSTEM_INFO"]
 
         try: 
-            self.workspaces = requests.get(aic+api, cookies=self.aic_cookie)
+            response = requests.get(aic+api, params=params, cookies=self.aic_cookie)
+            response_json = response.json()
         except: 
             raise NotImplementedError("Failed to get workspaces info.")
 
-        ## workspace_name 의 ECR, S3 주소를 확인 합니다. 
-        try: 
-            # print(self.workspaces.json()['workspaces'])
-            for ws in self.workspaces.json()['workspaces']:
-                # print(ws.items())
-                if self.infra_setup["WORKSPACE_NAME"] in ws['name']:
-                    S3_BUCKET_NAME = ws['s3_bucket_name']
-                    ECR_NAME = ws['ecr_base_path']       
-        except: 
-            raise ValueError("Got wrong workspace info.")
-        
-        if self.debugging:
-            print_color(f"\n[INFO] S3_BUCUKET_URI:", color='green') 
-            print_color(f"- public: {S3_BUCKET_NAME['public']}", color='cyan') 
-            print_color(f"- private: {S3_BUCKET_NAME['private']}", color='cyan') 
-
-            print_color(f"\n[INFO] ECR_URI:", color='green') 
-            print_color(f"- public: {ECR_NAME['public']}", color='cyan') 
-            print_color(f"- private: {ECR_NAME['private']}", color='cyan') 
-
         # workspace로부터 받아온 ecr, s3 정보를 내부 변수화 
         try:
-            self.bucket_name = S3_BUCKET_NAME[self.solution_info["solution_type"]] # bucket_scope: private, public
-            self.bucket_name_icon = S3_BUCKET_NAME["public"] # icon 은 공용 저장소에만 존재. = public
-            self.ecr_name = ECR_NAME[self.solution_info["solution_type"]]
+            solution_type = self.solution_info["solution_type"]
+            self.bucket_name = response_json["s3_bucket_name"][solution_type] # bucket_scope: private, public
+            self.bucket_name_icon = response_json["s3_bucket_name"]["public"] # icon 은 공용 저장소에만 존재. = public
+            self.ecr_name = response_json["ecr_base_path"][solution_type]
         except Exception as e:
             raise ValueError(f"Wrong format of << workspaces >> received from REST API:\n {e}")
+
+        if self.debugging:
+            print_color(f"\n[INFO] S3_BUCUKET_URI:", color='green') 
+            print_color(f'- public: {response_json["s3_bucket_name"]["public"]}', color='cyan') 
+            print_color(f'- private: {response_json["s3_bucket_name"]["public"]}', color='cyan') 
+
+            print_color(f"\n[INFO] ECR_URI:", color='green') 
+            print_color(f'- public: {response_json["ecr_base_path"]["public"]}', color='cyan') 
+            print_color(f'- private: {response_json["ecr_base_path"]["public"]}', color='cyan') 
+
             
         print_color(f"[SYSTEM] AWS ECR:  ", color='green') 
         print(f"{self.ecr_name}") 
@@ -1171,6 +1177,7 @@ class SolutionRegister:
 
     # FIXME 그냥 무조건 latest로 박히나? 
     def _build_docker(self):
+
         if self.docker:
             subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:{self.infra_setup["ECR_TAG"]}'])
         else:
@@ -2130,23 +2137,25 @@ class SolutionRegister:
         # except:
         #     raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
 
-        self.solution_instance_params = {
-            "workspace_name": self.infra_setup['WORKSPACE_NAME']
+        params = {
+            "workspace_name": self.infra_setup['WORKSPACE_NAME'],
+            "with_pulic": 1, 
+            "page_size": 100
         }
-        print_color(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}", color='blue')
+        print_color(f"\n[INFO] AI solution interface information: \n {params}", color='blue')
 
         # solution instance 등록
         aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["SOLUTION_INSTANCE"]
+        api = self.api_uri["SOLUTION_LIST"]
         response = requests.get(aic+api, 
-                                 params=self.solution_instance_params, 
+                                 params=params, 
                                  cookies=self.aic_cookie)
-        self.response_instance_list = response.json()
+        response_json = response.json()
 
         if response.status_code == 200:
-            print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
+            print_color("[SUCCESS] solution list 조회를 성공하였습니다. ", color='cyan')
             pprint("[INFO] response: ")
-            for cnt, instance in enumerate(self.response_instance_list["instances"]):
+            for cnt, instance in enumerate(response_json["solutions"]):
                 id = instance["id"]
                 name = instance["name"]
 
@@ -2161,16 +2170,16 @@ class SolutionRegister:
                 raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
 
             # JSON 데이터를 파일에 저장
-            path = self.interface_path + self.instance_list_file
+            path = self.interface_path + self.solution_list_file
             with open(path, 'w') as f:
-              json.dump(self.response_instance_list, f, indent=4)
+              json.dump(response_json, f, indent=4)
               print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
         elif response.status_code == 400:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.response_instance_list["detail"])
+            print_color("[ERROR] solution list 조회를 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", response_json["detail"])
         elif response.status_code == 422:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.response_instance_list["detail"])
+            print_color("[ERROR] solution list 조회를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", response_json["detail"])
         else:
 
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')

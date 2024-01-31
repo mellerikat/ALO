@@ -1,12 +1,11 @@
-### system info. 
-'AIC_URI': "https://web.aic-dev.lgebigdata.com/"  ## 실 서버 
+'AIC_URI': "https://aic-kic.aidxlge.com/"  
 "REGION": "ap-northeast-2"
-"WORKSPACE_NAME": "cism-ws"  ## magna-ws, cism-ws
-"BUILD_METHOD": "docker"  ## docker, buildah 
+"WORKSPACE_NAME": "cism-ws"  
+"BUILD_METHOD": "buildah"  ## docker, buildah 
 
 'VERSION': 1.0
-"LOGIN_MODE": "static" ## ldap, static
-"ECR_TAG": "latest"   ## 없어질 사항
+"LOGIN_MODE": "ldap" 
+"SOLUTION_TYPE": "private" 
 "REPOSITORY_TAGS": 
   - "Key=Company,Value=LGE"
   - "Key=Owner,Value=IC360"
@@ -18,4 +17,4 @@
   - "Key=Project,Value=CIS"
   - "Key=Sub Project,Value=CISM"
   - "Key=System,Value=AIDX"
-"AWS_KEY_FILE": "../aws.key"
+"AWS_KEY_FILE": ""
