@@ -38,7 +38,8 @@ class ExperimentalPlan:
 
             # solution metadata yaml --> exp plan yaml overwrite 
             if self.sol_meta is not None:
-                self._update_yaml(system_envs=system_envs) 
+                # 주의: _update_yaml에서 self.exp_plan의 내용이 바뀜 
+                system_envs = self._update_yaml(system_envs=system_envs) 
                 PROC_LOGGER.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
             
             def get_yaml_data(key): # inner func.
@@ -47,7 +48,7 @@ class ExperimentalPlan:
                     data_dict.update(data)
                 return data_dict
 
-            # 각 key 별 value 클래스 self 변수화 
+            # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
             values = {}
             for key, value in self.exp_plan.items():
                 setattr(self, key, get_yaml_data(key))

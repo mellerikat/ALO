@@ -63,6 +63,7 @@ class ALO:
 
         # 필요한 전역변수 선언
         self.exp_plan = None
+        self.computing = computing 
         self.proc_logger = None
         self.package_list = []
 
@@ -70,7 +71,9 @@ class ALO:
             self.exp_plan_file = EXP_PLAN
         else:
             self.exp_plan_file = exp_plan_file
+
         self.pipeline_type = pipeline_type
+            
         self.boot_on = boot_on
 
         # logger 초기화
@@ -79,6 +82,7 @@ class ALO:
         # init solution metadata
         self.sol_meta = json.loads(solution_metadata) if solution_metadata != None else None # None or dict from json 
 
+    
     def init(self, url = None):
         '''
         git clone --no-checkout http://mod.lge.com/hub/dxadvtech/aicontents/tcr.git
@@ -100,14 +104,13 @@ class ALO:
             else:
                 print("experimental_plan 이 없습니다. alo.init을 통해 yaml을 설치해주세요. alo.init(git_url)")
         
-        system_envs = {}
-
+        system_envs = {} 
         self.experimental_plan = ExperimentalPlan(self.exp_plan_file, self.sol_meta)
+        # solution_metadata 존재 시 self.experimental_plan의 self 변수들 및 system_envs는 _update_yaml에서 업데이트 된다. 
         self.exp_plan_file, system_envs = self.experimental_plan.read_yaml(system_envs)
-
+        # self.experimental_plan의 내용 (solution metadata 존재 시 self 변수들 업데이트 완료된)을 ALO 클래스 내부 변수화 
         self._set_attr()
-
-        self.system_envs = self._set_system_envs(self.pipeline_type, self.boot_on, system_envs) 
+        self.system_envs = self._set_system_envs(self.pipeline_type, self.boot_on, system_envs)
 
         # 현재 ALO 버전
         self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
@@ -246,7 +249,7 @@ class ALO:
             self.external_path['save_train_artifacts_path'] = environment.Environment().model_dir
         self.is_always_on = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
             and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
-
+        print('######################################################',self.is_always_on, (self.sol_meta is not None),  (self.system_envs['redis_host'] is not None), (self.system_envs['boot_on'] == False), (pipeline == 'inference_pipeline'))
         if pipeline not in ['train_pipeline', 'inference_pipeline']:
             self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
         ###################################
@@ -340,20 +343,18 @@ class ALO:
 
     def _set_system_envs(self, pipeline_type, boot_on, _system_envs):
         system_envs = _system_envs
-        # solution meta 버전 
-        system_envs['solution_metadata_version'] = None 
-        # edgeapp interface 관련 
-        system_envs['q_inference_summary'] = None 
-        system_envs['q_inference_artifacts'] = None 
-        system_envs['redis_host'] = None
-        system_envs['redis_port'] = None
-        # 'init': initial status / 'summary': success until 'q_inference_summary'/ 'artifacts': success until 'q_inference_artifacts'
-        system_envs['runs_status'] = 'init'
-        # edgeconductor interface 관련 
-        system_envs['inference_result_datatype'] = None 
-        system_envs['train_datatype'] = None 
+        # 아래 solution metadata 관련 key들은 이미 yaml.py의 _update_yaml에서 setting 돼서 넘어왔으므로, key가 없을때만 None으로 셋팅
+        solution_metadata_keys = ['solution_metadata_version', 'q_inference_summary', \
+                'q_inference_artifacts', 'q_inference_artifacts', 'redis_host', 'redis_port', \
+                'inference_result_datatype', 'train_datatype']
+        for k in solution_metadata_keys: 
+            if k not in system_envs.keys(): 
+                system_envs[k] = None
+        if 'pipeline_mode' not in system_envs.keys():
+            system_envs['pipeline_mode'] = pipeline_type
 
-        system_envs['pipeline_mode'] = pipeline_type 
+        # 'init': initial status / 'summary': success until 'q_inference_summary'/ 'artifacts': success until 'q_inference_artifacts'
+        system_envs['runs_status'] = 'init'         
         system_envs['boot_on'] = boot_on
         system_envs['start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
 
@@ -361,16 +362,19 @@ class ALO:
             system_envs['pipeline_list'] = [*self.user_parameters]
         else:
             system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
-        # FIXME sagemaker train 을 위해 덮어쓰기 추가 
-        try:
-            sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
-            if sol_pipe_mode is not None: 
-                system_envs['pipeline_mode'] = sol_pipe_mode
-                system_envs['pipeline_list'] = ["train_pipeline"]
-            else:   
-                raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
-        except:
-            pass
+
+        # sagemaker 시엔 train만 지원하므로 pipeline mode 덮어쓰기 try (--mode train 인자 안줬을 시 SOLUTION_PIPELINE_MODE 체크)
+        if self.computing == 'sagemaker':
+            try:
+                sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
+                if sol_pipe_mode is not None: 
+                    system_envs['pipeline_mode'] = sol_pipe_mode
+                    system_envs['pipeline_list'] = ["train_pipeline"]
+                else:   
+                    raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
+            except:
+                pass
+            
         return system_envs
 
     def _alo_info(self):
@@ -530,146 +534,6 @@ class ALO:
         except: 
             self.proc_logger.process_error(f"Failed to empty & re-make << .{pipe_prefix}_artifacts >>")
             
-            
-    #############################################
-    ####    Part3. Edit experimental_plan    ####
-    #############################################
-    def _update_yaml(self):  
-        '''
-        sol_meta's << dataset_uri, artifact_uri, selected_user_parameters ... >> into exp_plan 
-        '''
-        # [중요] SOLUTION_PIPELINE_MODE라는 환경 변수는 ecr build 시 생성하게 되며 (ex. train, inference, all) 이를 ALO mode에 덮어쓰기 한다. 
-        sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
-        if sol_pipe_mode is not None: 
-            self.system_envs['pipeline_mode'] = sol_pipe_mode
-        else:   
-            raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
-        # solution metadata version 가져오기 --> inference summary yaml의 version도 이걸로 통일 
-        self.system_envs['solution_metadata_version'] = self.sol_meta['version']
-        # solution metadata yaml에 pipeline key 있는지 체크 
-        if 'pipeline' not in self.sol_meta.keys(): # key check 
-            self.proc_logger.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
-        
-        # EdgeConductor Interface
-        self.system_envs['inference_result_datatype'] = self.sol_meta['edgeconductor_interface']['inference_result_datatype']
-        self.system_envs['train_datatype'] =  self.sol_meta['edgeconductor_interface']['train_datatype']
-        if (self.system_envs['inference_result_datatype'] not in ['image', 'table']) or (self.system_envs['train_datatype'] not in ['image', 'table']):
-            self.proc_logger.process_error(f"Only << image >> or << table >> is supported for \n \
-                train_datatype & inference_result_datatype of edge-conductor interface.")
-        
-        # EdgeAPP Interface : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
-        def _check_edgeapp_interface(): # inner func.
-            if 'edgeapp_interface' not in self.sol_meta.keys():
-                return False 
-            if 'redis_server_uri' not in self.sol_meta['edgeapp_interface'].keys():
-                return False 
-            if self.sol_meta['edgeapp_interface']['redis_server_uri'] == None:
-                return False
-            if self.sol_meta['edgeapp_interface']['redis_server_uri'] == "":
-                return False 
-            return True 
-        
-        if _check_edgeapp_interface() == True: 
-            try: 
-                # get redis server host, port 
-                self.system_envs['redis_host'], _redis_port = self.sol_meta['edgeapp_interface']['redis_server_uri'].split(':')
-                self.system_envs['redis_port'] = int(_redis_port)
-                if (self.system_envs['redis_host'] == None) or (self.system_envs['redis_port'] == None): 
-                    self.proc_logger.process_error("Missing host or port of << redis_server_uri >> in solution metadata.")
-                # set redis queues
-                self.system_envs['q_inference_summary'] = RedisQueue('inference_summary', host=self.system_envs['redis_host'], port=self.system_envs['redis_port'], db=0)
-                self.system_envs['q_inference_artifacts'] = RedisQueue('inference_artifacts', host=self.system_envs['redis_host'], port=self.system_envs['redis_port'], db=0)
-            except: 
-                self.proc_logger.process_error(f"Failed to parse << redis_server_uri >>") 
-
-        def _convert_sol_args(_args): # inner func.
-            # TODO user parameters 의 type check 해서 selected_user_paramters type 다 체크할 것인가? 
-            '''
-            # _args: dict 
-            # selected user parameters args 중 값이 비어있는 arg는 delete  
-            # string type의 comma split은 list로 변환 * 
-            '''
-            if type(_args) != dict: 
-                self.proc_logger.process_error(f"selected_user_parameters args. in solution_medata must have << dict >> type.") 
-            if _args == {}:
-                return _args
-            # multi selection은 비어서 올 때 key는 온다. 
-            # 가령, args : { "key" : [] }
-            _args_copy = deepcopy(_args)
-            for k, v in _args_copy.items():
-                # FIXME dict type은 없긴할테지만 혹시 모르니..? (아마 str로 dict 표현해야한다면 할 수 있지 않을까..?)
-                if (type(v) == list) or (type(v) == dict): # single(multi) selection 
-                     if len(v) == 0: 
-                        del _args[k]
-                elif isinstance(v, str):
-                    if (v == None) or (v == ""): 
-                        del _args[k]
-                    else:  
-                        converted_string = [i.strip() for i in v.split(',')] # 'a, b' --> ['a', 'b']
-                        if len(converted_string) == 1: 
-                            _args[k] = converted_string[0] # ['a'] --> 'a'
-                        elif len(converted_string) > 1:
-                            _args[k] = converted_string # ['a', 'b']
-                else: # int, float 
-                    if v == None: 
-                        del _args[k]
-            return _args
-                         
-        # TODO: multi (list), single (str) 일때 모두 실험 필요 
-        for sol_pipe in self.sol_meta['pipeline']: 
-            pipe_type = sol_pipe['type'] # train, inference 
-            artifact_uri = sol_pipe['artifact_uri']
-            dataset_uri = sol_pipe['dataset_uri']
-            selected_params = sol_pipe['parameters']['selected_user_parameters']  
-            # plan yaml에서 현재 sol meta pipe type의 index 찾기 
-            cur_pipe_idx = None 
-            for idx, plan_pipe in enumerate(self.exp_plan['user_parameters']):
-                # pipeline key가 하나이고, 해당 pipeline에 대응되는 plan yaml pipe가 존재할 시 
-                if (len(plan_pipe.keys()) == 1) and (f'{pipe_type}_pipeline' in plan_pipe.keys()): 
-                    cur_pipe_idx = idx 
-            # selected params를 exp plan으로 덮어 쓰기 
-            init_exp_plan = self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'].copy()
-            for sol_step_dict in selected_params: 
-                sol_step = sol_step_dict['step']
-                sol_args = sol_step_dict['args'] #[주의] solution meta v9 기준 elected user params의 args는 list아니고 dict
-                # sol_args None 이거나 []이면 패스 
-                # FIXME (231202 == [] 체크추가) 종원선임님처럼 마지막에 custom step 붙일 때 - args: null
-                # 라는 식으로 args가 필요없는 step이면 업데이트를 시도하는거 자체가 잘못된거고 스킵되는게 맞다 
-                sol_args = _convert_sol_args(sol_args) # 값이 비어있는 arg는 지우고 반환 
-                # 어짜피 sol_args가 비어있는 dict {} 라면 plan yaml args에 update 해도 그대로이므로 괜찮다. 하지만 시간 절약을 위해 그냥 continue
-                if sol_args == {}: 
-                    continue 
-                for idx, plan_step_dict in enumerate(init_exp_plan):  
-                    if sol_step == plan_step_dict['step']:
-                        self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args) #dict update
-                        # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. (그냥 s3에서 다운받으면 그 밑에있는거 다사용하도록) 
-                        if sol_step == 'input':
-                            self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
-              
-            # external path 덮어 쓰기 
-            if pipe_type == 'train': 
-                for idx, ext_dict in enumerate(self.exp_plan['external_path']):
-                    if 'load_train_data_path' in ext_dict.keys(): 
-                        self.exp_plan['external_path'][idx]['load_train_data_path'] = dataset_uri 
-                    if 'save_train_artifacts_path' in ext_dict.keys(): 
-                        self.exp_plan['external_path'][idx]['save_train_artifacts_path'] = artifact_uri          
-            elif pipe_type == 'inference':
-                for idx, ext_dict in enumerate(self.exp_plan['external_path']):
-                    if 'load_inference_data_path' in ext_dict.keys():
-                        self.exp_plan['external_path'][idx]['load_inference_data_path'] = dataset_uri  
-                    if 'save_inference_artifacts_path' in ext_dict.keys():  
-                        self.exp_plan['external_path'][idx]['save_inference_artifacts_path'] = artifact_uri 
-                    # inference type인 경우 model_uri를 plan yaml의 external_path의 load_model_path로 덮어쓰기
-                    if 'load_model_path' in ext_dict.keys():
-                        self.exp_plan['external_path'][idx]['load_model_path'] = sol_pipe['model_uri']
-            else: 
-                self.proc_logger.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
-
-            if self.external_path[f"save_inference_artifacts_path"] is None:  
-                self.proc_logger.process_error(f"You did not enter the << save_inference_artifacts_path >> in the experimental_plan.yaml") 
-
-        # [중요] system 인자가 존재해서 _update_yaml이 실행될 때는 항상 get_external_data를 every로한다. every로 하면 항상 input/train (or input/inference)를 비우고 새로 데이터 가져온다.
-        self.exp_plan['control'][0]['get_external_data'] = 'every'
 
     def external_load_data(self, pipeline):
         return self._external_load_data(pipeline)
@@ -677,7 +541,7 @@ class ALO:
     def install_steps(self, pipeline, get_asset_source):
         return self._install_steps(pipeline, get_asset_source)
     ########################################
-    ####    Part4. Internal fuctions    ####
+    ####    Part3. Internal fuctions    ####
     ########################################
         
     def _external_load_data(self, pipeline):
@@ -762,7 +626,7 @@ class ALO:
     
 
     ##########################################
-    ####    Part5. Use external method    ####
+    ####    Part4. Use external method    ####
     ##########################################
     # def run_import(self, pipeline):
     #     # setup asset (asset을 git clone (or local) 및 requirements 설치)

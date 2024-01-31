@@ -50,7 +50,7 @@ if __name__ == "__main__":
                 subprocess.Popen(['pip','list', '--format=freeze'], stdout=file_).communicate()
     elif args.loop == True: 
         # EdgeApp 과의 통신을 위한 redis 초기화
-        q = init_redis()
+        q = init_redis(args)
 
         ################################### 
         ##### Step1. Boot-on sequence #####
