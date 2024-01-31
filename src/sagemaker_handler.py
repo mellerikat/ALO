@@ -85,7 +85,7 @@ class SagemakerHandler:
         docker build, ecr push, create s3 bucket 
         """
         # Dockefile setting
-        sagemaker_dockerfile = PROJECT_HOME + 'src/Dockerfiles/SagemakerDockerfile'
+        sagemaker_dockerfile = SAGEMKAER_DOCKERFILE
         # Dockerfile이 이미 존재하는 경우 삭제합니다. 
         if os.path.isfile(PROJECT_HOME + 'Dockerfile'):
             os.remove(PROJECT_HOME + 'Dockerfile')

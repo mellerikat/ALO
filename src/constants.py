@@ -8,7 +8,6 @@ EXP_PLAN = SOLUTION_HOME + "experimental_plan.yaml"
 ALO_LIB = PROJECT_HOME + "alolib/"
 
 SOLUTION_META = PROJECT_HOME + "solution_metadata.yaml"
-SAGEMAKER_CONFIG = PROJECT_HOME + "setting/sagemaker_config.yaml"
 
 # interface mode support type 
 INTERFACE_TYPES = ['memory', 'file']
@@ -39,6 +38,12 @@ artifacts_structure = {
     '.asset_interface': {},
     '.history': {}
 }
+
+###################################
+##### Set sagemaker 
+###################################
+SAGEMAKER_CONFIG = PROJECT_HOME + "setting/sagemaker_config.yaml"
+SAGEMKAER_DOCKERFILE = PROJECT_HOME + 'src/Dockerfiles/SagemakerDockerfile'
 
 
 ###################################
