@@ -621,38 +621,6 @@ class ALO:
         
         return asset_structure
     
-
-    ##########################################
-    ####    Part4. Use external method    ####
-    ##########################################
-    # def run_import(self, pipeline):
-    #     # setup asset (asset을 git clone (or local) 및 requirements 설치)
-    #     get_asset_source = self.control["get_asset_source"]  # once, every
-
-    #     # TODO 현재 pipeline에서 중복된 step 이 있는지 확인
-    #     step_values = [item['step'] for item in self.asset_source[pipeline]]
-    #     step_counts = Counter(step_values)
-    #     for value, count in step_counts.items():
-    #         if count > 1:
-    #             self.proc_logger.process_error(f"Duplicate step exists: {value}")
-
-    #     # 운영 무한 루프 구조일 땐 boot_on 시 에만 install 하고 이후에는 skip 
-    #     if (self.system_envs['boot_on'] == False) and (self.system_envs['redis_host'] is not None):
-    #         pass 
-    #     else: 
-    #         self._install_steps(pipeline, get_asset_source)
-        
-    #     # AssetStructure instance 생성 
-    #     self.set_asset_structure()
-
-    #     for step, asset_config in enumerate(self.asset_source[pipeline]):    
-    #         self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
-    #         # 외부에서 arg를 가져와서 수정이 가능한 구조를 위한 구조
-    #         self.asset_structure.args = self.get_args(pipeline, step)
-    #         try: 
-    #             self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
-    #         except: 
-    #             self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
                 
     
                 
