@@ -49,7 +49,7 @@ class SolutionRegister:
                     self.infra_setup = yaml.safe_load(f)
             except Exception as e : 
                 raise ValueError(e)
-        # print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
+        print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
         pprint(self.infra_setup, depth=5)
 
         self.api_uri = {
@@ -67,10 +67,8 @@ class SolutionRegister:
             raise ValueError("solution infomation 을 입력해야 합니다.")
         else:
             self.solution_info = solution_info
-        # print_color("[SYSTEM] solution_info. (max display: 5 line): ", color='green')
-        pprint(self.solution_info, depth=5)
 
-        ## 임시 (version 개발 전까지 ) 
+        ## TODO: 임시 (version 개발 전까지 ) 
         self.infra_setup["ECR_TAG"] = 'latest'
 
         ####################################
@@ -101,19 +99,9 @@ class SolutionRegister:
         ## name 
         self.prefix_name = "alo-test-"
 
-        # # TODO aws login 방법 고민필요
-        # if self.infra_setup["AIC_URI"] == "https://web.aic-dev.lgebigdata.com/": ## 실계정
-        #     # self.aws_access_key_path = "/nas001/users/ruci.sung/aws.key"  ##  
-        #     self.aws_access_key_path = "/nas001/users/sehyun.song/aws.key"    ##
-        # else:  ## 현수 kube
-        #     self.aws_access_key_path = "/nas001/users/sehyun.song/aws.key"    ##
-
         self.aws_access_key_path = self.infra_setup["AWS_KEY_FILE"]
         print_color(f"[SYSTEM] S3 key 파일을 로드 합니다. (file: {self.aws_access_key_path})", color="green")
         self.update_aws_credentials(self.aws_access_key_path)
-
-
-
 
         ## internal variables
         self.sm_yaml = {}  ## core
@@ -137,8 +125,7 @@ class SolutionRegister:
         ## debugging 용 변수
         self.debugging = False 
         self.skip_generation_docker = False
-        
-    
+            
     ################################################
     ################################################
     def update_aws_credentials(self, aws_access_key_path, profile_name='default'):
