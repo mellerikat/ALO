@@ -363,7 +363,7 @@ class ALO:
             system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
 
         # sagemaker 시엔 train만 지원하므로 pipeline mode 덮어쓰기 try (--mode train 인자 안줬을 시 SOLUTION_PIPELINE_MODE 체크)
-        if self.computing == 'sagemaker':
+        if os.getenv('COMPUTING') == 'sagemaker':
             try:
                 sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
                 if sol_pipe_mode is not None: 
