@@ -23,6 +23,10 @@ ASSET_HOME = PROJECT_HOME + "assets/"
 INPUT_DATA_HOME = PROJECT_HOME + "input/"
 
 TRAIN_LOG_PATH = PROJECT_HOME + ".train_artifacts/log/"
+INFERENCE_SCORE_PATH = PROJECT_HOME + ".inference_artifacts/score/" 
+INFERENCE_OUTPUT_PATH = PROJECT_HOME + ".inference_artifacts/output/" 
+TABULAR_OUTPUT_FORMATS = [".csv"]
+IMAGE_OUTPUT_FORMATS = [".jpg", ".jpeg", ".png", ".svg"]
 
 artifacts_structure = {
     'input': {}, 

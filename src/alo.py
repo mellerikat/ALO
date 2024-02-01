@@ -15,7 +15,7 @@ from src.install import Packages
 # 이름을 한번 다시 생각
 from src.assets import Assets
 
-from src.external import ExternalHandler #external_load_data, external_load_model, external_save_artifacts
+from src.external import ExternalHandler 
 from src.redisqueue import RedisQueue
 from src.logger import ProcessLogger  
 # s3를 옮김
@@ -299,15 +299,22 @@ class ALO:
         
         if self.is_always_on:
             self.system_envs['success_str'] = self.send_summary()
-            
+
         ###################################
-        ## Step7: Artifacts 저장   
+        ## Step7: summary yaml, output 정상 생성 체크    
+        ###################################    
+        
+        if pipeline == 'inference_pipeline':
+            self._check_output()
+        
+        ###################################
+        ## Step8: Artifacts 저장   
         ###################################
 
         self.save_artifacts(pipeline)
 
         ###################################
-        ## Step8: Artifacts 를 history 에 backup 
+        ## Step9: Artifacts 를 history 에 backup 
         ###################################
         if self.control['backup_artifacts'] == True:
             try:
@@ -533,15 +540,39 @@ class ALO:
             self.proc_logger.process_error(f"Failed to empty & re-make << .{pipe_prefix}_artifacts >>")
             
 
-    def external_load_data(self, pipeline):
-        return self._external_load_data(pipeline)
-
-    def install_steps(self, pipeline, get_asset_source):
-        return self._install_steps(pipeline, get_asset_source)
     ########################################
     ####    Part3. Internal fuctions    ####
     ########################################
-        
+    
+    def _check_output(self):
+        """inference_summary.yaml 및 output csv / image 파일 (jpg, png, svg) 정상 생성 체크 
+            csv 및 image 파일이 각각 1개씩만 존재해야 한다. 
+        Args:
+          -
+        """   
+        # check inference summary 
+        if "inference_summary.yaml" in os.listdir(INFERENCE_SCORE_PATH): 
+            self.proc_logger.process_info(f"[Success] << inference_summary.yaml >> exists in the inference score path: << {INFERENCE_SCORE_PATH} >>")
+        else: 
+            self.proc_logger.process_error(f"[Failed] << inference_summary.yaml >> does not exist in the inference score path: << {INFERENCE_SCORE_PATH} >>")
+        # check output files  
+        output_files = [] 
+        for file_path in os.listdir(INFERENCE_OUTPUT_PATH):
+        # check if current file_path is a file
+            if os.path.isfile(os.path.join(INFERENCE_OUTPUT_PATH, file_path)):
+                # add filename to list
+                output_files.append(file_path)
+        if len(output_files) == 1: 
+            if os.path.splitext(output_files[0])[-1] not in TABULAR_OUTPUT_FORMATS + IMAGE_OUTPUT_FORMATS: 
+                self.proc_logger.process_error(f"[Failed] output file extension must be one of << {TABULAR_OUTPUT_FORMATS + IMAGE_OUTPUT_FORMATS} >>. \n Your output: {output_files}")
+        elif len(output_files) == 2:  
+            output_extension = set([os.path.splitext(i)[-1] for i in output_files]) # must be {'.csv', '.jpg' (or other image ext)}
+            allowed_extensions = [set(TABULAR_OUTPUT_FORMATS + [i]) for i in IMAGE_OUTPUT_FORMATS]
+            if output_extension not in allowed_extensions: 
+                self.proc_logger.process_error(f"[Failed] output files extension must be one of << {allowed_extensions} >>. \n Your output: {output_files}") 
+        else: 
+            self.proc_logger.process_error(f"[Failed] the number of output files must be 1 or 2. \n Your output: {output_files}")
+            
     def _external_load_data(self, pipeline):
         """외부 데이터를 가져 옴 (local storage, S3)
 
