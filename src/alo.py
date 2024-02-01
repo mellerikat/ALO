@@ -304,7 +304,7 @@ class ALO:
         ## Step7: summary yaml, output 정상 생성 체크    
         ###################################    
         
-        if pipeline == 'inference_pipeline':
+        if pipeline == 'inference_pipeline' and self.boot_on == False:
             self._check_output()
         
         ###################################
