@@ -38,6 +38,7 @@ class AssetStructure:
         self.args = {}
         self.data = {} 
         self.config = {}
+        
 class ALO:
     def __init__(self, exp_plan_file = None, solution_metadata = None, pipeline_type = 'all', boot_on = False, computing = 'local'):
         """실험 계획 (experimental_plan.yaml), 운영 계획(solution_metadata), 
@@ -65,7 +66,6 @@ class ALO:
         self.exp_plan = None
         self.computing = computing 
         self.proc_logger = None
-        self.package_list = []
 
         if exp_plan_file == "" or exp_plan_file == None:
             self.exp_plan_file = EXP_PLAN
@@ -121,7 +121,6 @@ class ALO:
         # artifacts home 초기화 (from src.utils)
         self.artifacts = self.artifact.set_artifacts()
         
-        b = 0
     
     def _sparse_checkout_copy(self, url):
 
@@ -181,7 +180,6 @@ class ALO:
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
         
             
-
     def sagemaker_runs(self): 
         try:
             try: 
@@ -189,6 +187,7 @@ class ALO:
                 self._external_load_data('train_pipeline')
             except Exception as e:
                 self.proc_logger.process_error("Failed to get external data. \n" + str(e)) 
+                
             try:
                 # load sagemaker_config.yaml - (account_id, role, region, ecr_repository, s3_bucket_uri, train_instance_type)
                 sm_config = self.experimental_plan.get_yaml(SAGEMAKER_CONFIG) 
@@ -249,7 +248,6 @@ class ALO:
             self.external_path['save_train_artifacts_path'] = environment.Environment().model_dir
         self.is_always_on = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
             and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
-        print('######################################################',self.is_always_on, (self.sol_meta is not None),  (self.system_envs['redis_host'] is not None), (self.system_envs['boot_on'] == False), (pipeline == 'inference_pipeline'))
         if pipeline not in ['train_pipeline', 'inference_pipeline']:
             self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
         ###################################
@@ -318,7 +316,6 @@ class ALO:
         self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
 
-        self.package_list.extend(list(packages.items()))
 
     #####################################
     ####    Part1. Initialization    ####
