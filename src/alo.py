@@ -294,24 +294,26 @@ class ALO:
             self.proc_logger.process_error(f"Failed to run import: {pipeline}")
 
         ###################################
-        ## Step6: Artifacts 저장   
+        ## Step6: 추론 완료 send summary (운영 추론 모드일 때만 실행)
         ###################################
-        success_str, ext_saved_path = self.save_artifacts(pipeline)
+        
+        if self.is_always_on:
+            self.system_envs['success_str'] = self.send_summary()
+            
+        ###################################
+        ## Step7: Artifacts 저장   
+        ###################################
+
+        self.save_artifacts(pipeline)
 
         ###################################
-        ## Step7: Artifacts 를 history 에 backup 
+        ## Step8: Artifacts 를 history 에 backup 
         ###################################
         if self.control['backup_artifacts'] == True:
             try:
                 self.artifact.backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
             except: 
                 self.proc_logger.process_error("Failed to backup artifacts into << .history >>")
-
-        ###################################
-        ## Step7-2 : artifacts 저장 완료를 EdgeApp 에 전송
-        ###################################
-        if self.is_always_on:
-            self.send_summary(success_str, ext_saved_path)
 
         self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
@@ -467,7 +469,7 @@ class ALO:
             except: 
                 self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
 
-    def send_summary(self, success_str, ext_saved_path):
+    def send_summary(self):
         """save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료  
         solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
         외부 경로로 잘 artifacts 복사 됐나 체크 (edge app에선 고유한 경로로 항상 줄것임)
@@ -476,41 +478,40 @@ class ALO:
           - success_str(str): 완료 메시지 
           - ext_saved_path(str): 외부 경로 
         """
-
-        if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
-            self.system_envs['q_inference_artifacts'].rput(success_str) # summary yaml을 다시 한번 전송 
-            self.proc_logger.process_info("Completes putting artifacts creation << success >> signal into redis queue.")
-            self.system_envs['runs_status'] = 'artifacts'
+        success_str = None
+        summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
+        if 'inference_summary.yaml' in os.listdir(summary_dir):
+            summary_dict = self.experimental_plan.get_yaml(summary_dir + 'inference_summary.yaml')
+            success_str = json.dumps({'status':'success', 'message': summary_dict})
+            self.system_envs['q_inference_summary'].rput(success_str)
+            self.proc_logger.process_info("Successfully completes putting inference summary into redis queue.")
+            self.system_envs['runs_status'] = 'summary'
         else: 
-            self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
+            self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
+        return success_str
 
     def save_artifacts(self, pipeline):
         """파이프라인 실행 시 생성된 결과물(artifacts) 를 ./*_artifacts/ 에 저장한다. 
         always-on 모드에서는 redis 로 inference_summary 결과를 Edge App 으로 전송한다. 
 
         만약, 외부로 결과물 저장 설정이 되있다면, local storage 또는 S3 로 결과값 저장한다. 
-        """
-        success_str = None
-
-        if self.is_always_on:
-            summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
-            if 'inference_summary.yaml' in os.listdir(summary_dir):
-                summary_dict = self.experimental_plan.get_yaml(summary_dir + 'inference_summary.yaml')
-                success_str = json.dumps({'status':'success', 'message': summary_dict})
-                self.system_envs['q_inference_summary'].rput(success_str)
-                self.proc_logger.process_info("Successfully completes putting inference summary into redis queue.")
-                self.system_envs['runs_status'] = 'summary'
-            else: 
-                self.proc_logger.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
-        
-            
+        """        
         # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)
         try:      
             ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
         except:
             self.proc_logger.process_error("Failed to save artifacts into external path.") 
+        # 운영 추론 모드일 때는 redis로 edgeapp에 artifacts 생성 완료 전달 
+        if self.is_always_on:
+            if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
+                # send_summary에서 생성된 summary yaml을 다시 한번 전송
+                self.system_envs['q_inference_artifacts'].rput(self.system_envs['success_str'])  
+                self.proc_logger.process_info("Completes putting artifacts creation << success >> signal into redis queue.")
+                self.system_envs['runs_status'] = 'artifacts'
+            else: 
+                self.proc_logger.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
 
-        return success_str, ext_saved_path
+        return ext_saved_path
 
               
     def _empty_artifacts(self, pipeline): 
@@ -622,9 +623,3 @@ class ALO:
         return asset_structure
     
                 
-    
-                
-
-
-
-        
