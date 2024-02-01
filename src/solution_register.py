@@ -616,9 +616,9 @@ class SolutionRegister:
 
         # workspace로부터 받아온 ecr, s3 정보를 내부 변수화 
         try:
-            self.bucket_name = S3_BUCKET_NAME[self.infra_setup["SOLUTION_TYPE"]] # bucket_scope: private, public
+            self.bucket_name = S3_BUCKET_NAME[self.solution_info["solution_type"]] # bucket_scope: private, public
             self.bucket_name_icon = S3_BUCKET_NAME["public"] # icon 은 공용 저장소에만 존재. = public
-            self.ecr_name = ECR_NAME[self.infra_setup["SOLUTION_TYPE"]]
+            self.ecr_name = ECR_NAME[self.solution_info["solution_type"]]
         except Exception as e:
             raise ValueError(f"Wrong format of << workspaces >> received from REST API:\n {e}")
             
