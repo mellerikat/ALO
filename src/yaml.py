@@ -130,7 +130,8 @@ class ExperimentalPlan:
         else:   
             raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
         # solution metadata version 가져오기 --> inference summary yaml의 version도 이걸로 통일 
-        system_envs['solution_metadata_version'] = self.sol_meta['version']
+        # key 명 바뀜 version -> metadata_version (24.02.02)
+        system_envs['solution_metadata_version'] = self.sol_meta['metadata_version']
         # solution metadata yaml에 pipeline key 있는지 체크 
         if 'pipeline' not in self.sol_meta.keys(): # key check 
             PROC_LOGGER.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
