@@ -369,17 +369,18 @@ class ALO:
         else:
             system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
 
-        # sagemaker 시엔 train만 지원하므로 pipeline mode 덮어쓰기 try (--mode train 인자 안줬을 시 SOLUTION_PIPELINE_MODE 체크)
-        if os.getenv('COMPUTING') == 'sagemaker':
-            try:
-                sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
-                if sol_pipe_mode is not None: 
-                    system_envs['pipeline_mode'] = sol_pipe_mode
-                    system_envs['pipeline_list'] = ["train_pipeline"]
-                else:   
-                    raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
-            except:
-                pass
+        # SOLUTION_PIPELINE_MODE 존재 시 (AIC, Sagemaker 등 운영 환경) 해당 pipline만 돌리기가 우선권 
+        try:
+            sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
+            if (sol_pipe_mode is not None) and (sol_pipe_mode not in ['train', 'inference']): 
+                self.proc_logger.process_error(f"<< SOLUTION_PIPELINE_MODE >> must be << train >> or << inference >>")
+            if sol_pipe_mode is not None:
+                system_envs['pipeline_mode'] = sol_pipe_mode
+                system_envs['pipeline_list'] = [f"{sol_pipe_mode}_pipeline"]
+            else:
+                self.proc_logger.process_info("<< SOLUTION_PIPELINE_MODE >> is None")
+        except Exception as e:
+            self.proc_logger.process_error(f"While setting environmental variable << SOLUTION_PIPELINE_MODE >>, error occurs: \n {str(e)}")
             
         return system_envs
 
