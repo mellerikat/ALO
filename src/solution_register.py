@@ -1924,7 +1924,7 @@ class SolutionRegister:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
             raise NotImplementedError(f"Failed to delete stream: \n {response_delete_instance}")
 
-    def delete_solution(self): 
+    def delete_solution(self, delete_all=False): 
 
         self.print_step("Delete AI solution")
 
@@ -1941,11 +1941,12 @@ class SolutionRegister:
 
         # stream 등록 
         if self.solution_info["solution_update"]:
+            version_id = response_solution['versions'][0]['id']
             solutin_params = {
-                "solution_version_id": response_solution['id'],
+                "solution_version_id": version_id,
                 "workspace_name": response_solution['scope_ws']
             }
-            api = self.api_uri["REGISTER_SOLUTION"] + f"/{response_solution['id']}"
+            api = self.api_uri["REGISTER_SOLUTION"] + f"/{version_id}/version"
         else:
             solutin_params = {
                 "solution_id": response_solution['id'],
