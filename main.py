@@ -50,7 +50,7 @@ if __name__ == "__main__":
                 subprocess.Popen(['pip','list', '--format=freeze'], stdout=file_).communicate()
     elif args.loop == True: 
         # EdgeApp 과의 통신을 위한 redis 초기화
-        q = init_redis()
+        q = init_redis(args)
 
         ################################### 
         ##### Step1. Boot-on sequence #####
@@ -80,7 +80,6 @@ if __name__ == "__main__":
                     msg_dict = json.loads(start_msg.decode('utf-8')) # dict 
                     ## 운영시에만 사용되는 solution_metadata 는 string 으로 입력 받는다. 
                     solution_metadata = msg_dict['solution_metadata']
-
                     kwargs = {'solution_metadata': args.system, 'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': False}
                     alo = ALO(**kwargs)
                     alo.init()
@@ -92,7 +91,6 @@ if __name__ == "__main__":
             else:
                 msg = "Empty message recevied for EdgeApp inference request."
                 print("\033[91m" + "Error: " + str(msg) + "\033[0m") # print red 
-
     else: 
         raise ValueError("Invalid << loop >> arguments. It must be True or False.")
 

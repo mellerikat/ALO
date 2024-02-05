@@ -1,6 +1,6 @@
 'AIC_URI': "https://aic-kic.aidxlge.com/"  
 "REGION": "ap-northeast-2"
-"WORKSPACE_NAME": "cism-ws"  
+"WORKSPACE_NAME": "magna-ws"  
 "BUILD_METHOD": "buildah"  ## docker, buildah 
 
 'VERSION': 1.0

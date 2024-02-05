@@ -38,7 +38,8 @@ class ExperimentalPlan:
 
             # solution metadata yaml --> exp plan yaml overwrite 
             if self.sol_meta is not None:
-                self._update_yaml(system_envs=system_envs) 
+                # 주의: _update_yaml에서 self.exp_plan의 내용이 바뀜 
+                system_envs = self._update_yaml(system_envs=system_envs) 
                 PROC_LOGGER.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
             
             def get_yaml_data(key): # inner func.
@@ -47,7 +48,7 @@ class ExperimentalPlan:
                     data_dict.update(data)
                 return data_dict
 
-            # 각 key 별 value 클래스 self 변수화 
+            # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
             values = {}
             for key, value in self.exp_plan.items():
                 setattr(self, key, get_yaml_data(key))
@@ -129,7 +130,8 @@ class ExperimentalPlan:
         else:   
             raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
         # solution metadata version 가져오기 --> inference summary yaml의 version도 이걸로 통일 
-        system_envs['solution_metadata_version'] = self.sol_meta['version']
+        # key 명 바뀜 version -> metadata_version (24.02.02)
+        system_envs['solution_metadata_version'] = self.sol_meta['metadata_version']
         # solution metadata yaml에 pipeline key 있는지 체크 
         if 'pipeline' not in self.sol_meta.keys(): # key check 
             PROC_LOGGER.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
