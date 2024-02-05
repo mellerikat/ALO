@@ -51,7 +51,9 @@ class SolutionRegister:
                 raise ValueError(e)
         print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
         pprint(self.infra_setup, depth=5)
-
+        # FIXME hard-fixed 
+        self.ECR_TAG = 'latest' 
+        
         self.api_uri = {
             'STATIC_LOGIN': 'api/v1/auth/static/login',  # POST
             'LDAP_LOGIN': 'api/v1/auth/ldap/login',
@@ -1169,16 +1171,16 @@ class SolutionRegister:
     # FIXME 그냥 무조건 latest로 박히나? 
     def _build_docker(self):
         if self.docker:
-            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:{self.infra_setup["ECR_TAG"]}'])
+            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:{self.ECR_TAG}'])
         else:
-            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:{self.infra_setup["ECR_TAG"]}'])
+            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:{self.ECR_TAG}'])
 
 
     def _docker_push(self):
         if self.infra_setup['BUILD_METHOD'] == 'docker':
-            subprocess.run(['docker', 'push', f'{self.ecr_full_url}:{self.infra_setup["ECR_TAG"]}'])
+            subprocess.run(['docker', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
         else:
-            subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{self.infra_setup["ECR_TAG"]}'])
+            subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
 
         if self.infra_setup['BUILD_METHOD'] == 'docker':
             subprocess.run(['docker', 'logout'])
