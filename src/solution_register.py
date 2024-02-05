@@ -254,7 +254,7 @@ class SolutionRegister:
         if delete_instance:
             self.delete_stream_history()
             self.delete_stream()
-            self.delete_instance()
+            self.delete_solution_instance()
 
         if delete_solution:
             if delete_instance:
