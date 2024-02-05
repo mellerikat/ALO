@@ -372,13 +372,13 @@ class ALO:
         # SOLUTION_PIPELINE_MODE 존재 시 (AIC, Sagemaker 등 운영 환경) 해당 pipline만 돌리기가 우선권 
         try:
             sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
-            if (sol_pipe_mode is not None) and (sol_pipe_mode not in ['train', 'inference']): 
-                self.proc_logger.process_error(f"<< SOLUTION_PIPELINE_MODE >> must be << train >> or << inference >>")
-            if sol_pipe_mode is not None:
+            if (sol_pipe_mode is not None) and (sol_pipe_mode not in ['', 'train', 'inference']): 
+                self.proc_logger.process_error(f"<< SOLUTION_PIPELINE_MODE >> must be << '' >> or << train >> or << inference >>")
+            if sol_pipe_mode in ['train', 'inference']:
                 system_envs['pipeline_mode'] = sol_pipe_mode
                 system_envs['pipeline_list'] = [f"{sol_pipe_mode}_pipeline"]
             else:
-                self.proc_logger.process_info("<< SOLUTION_PIPELINE_MODE >> is None")
+                self.proc_logger.process_info("<< SOLUTION_PIPELINE_MODE >> is now: {sol_pipe_mode} ")
         except Exception as e:
             self.proc_logger.process_error(f"While setting environmental variable << SOLUTION_PIPELINE_MODE >>, error occurs: \n {str(e)}")
             
