@@ -1962,9 +1962,9 @@ class SolutionRegister:
         response = requests.delete(aic+api, 
                                  params=solutin_params, 
                                  cookies=self.aic_cookie)
-        response_delete_solution = response.json()
 
         if response.status_code == 200:
+            response_delete_solution = response.json()
             print_color("[SUCCESS] AI solution 삭제를 성공하였습니다. ", color='cyan')
             print(f"[INFO] response: \n {response_delete_solution}")
 
@@ -1981,12 +1981,16 @@ class SolutionRegister:
             #   json.dump(response_delete_solution, f, indent=4)
             #   print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
         elif response.status_code == 400:
+            response_delete_solution = response.json()
             print_color("[ERROR] AI solution 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
             print("Error message: ", response_delete_solution["detail"])
         elif response.status_code == 422:
+            response_delete_solution = response.json()
             print_color("[ERROR] AI solution 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
             print("Error message: ", response_delete_solution["detail"])
             raise NotImplementedError(f"Failed to delete stream: \n {response_delete_solution}")
+        elif response.status_code == 500:
+            print_color("[ERROR] AI solution 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
             raise NotImplementedError(f"Failed to delete stream: \n {response_delete_solution}")
