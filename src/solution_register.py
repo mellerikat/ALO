@@ -39,17 +39,17 @@ class SolutionRegister:
         self.print_step("Initiate ALO operation mode")
         print_color("[SYSTEM] Solutoin 등록에 필요한 setup file 들을 load 합니다. ", color="green")
 
-        if not infra_setup:
-            infra_setup = INFRA_CONFIG
+        if infra_setup == None :
             print(f"Infra setup 파일이 존재 하지 않으므로, Default 파일을 load 합니다. (path: {infra_setup})")
+            infra_setup = INFRA_CONFIG
+        else:
+            print(f"Infra setup 파일을 load 합니다. (path: {infra_setup})")
             try:    
                 with open(infra_setup) as f:
                     self.infra_setup = yaml.safe_load(f)
             except Exception as e : 
                 raise ValueError(e)
-        else:
-            self.infra_setup = infra_setup
-        # print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
+        print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
         pprint(self.infra_setup, depth=5)
 
         self.api_uri = {
