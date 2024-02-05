@@ -238,12 +238,17 @@ class SolutionRegister:
         if not self.debugging:
             self.register_solution()
 
+        if not self.infra_setup["SUPPORT_TRAINING"]: # training 지원하지 않을 경우, instance 까지 생성
+            self.register_solution_instance()
+
+
 
     def run_train(self, status_period=5, delete_instance=True, delete_solution=False):
         if self.solution_info['inference_only']:
             raise ValueError("inference_only=False 여야 합니다.")
         else:
-            self.register_solution_instance()
+            if self.infra_setup["SUPPORT_TRAINING"]:  ## training 지원할 경우, test 로만 instance 생성
+                self.register_solution_instance()
             self.register_stream()
             self.request_run_stream()
             self.get_stream_status(status_period=status_period)

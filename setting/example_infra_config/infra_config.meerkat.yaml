@@ -7,3 +7,4 @@
 "SOLUTION_TYPE": "private"
 "REPOSITORY_TAGS": [] ## TAG 구분은 정의되지 않았음
 "AWS_KEY_FILE": "../aws-meerkat.key"
+"SUPPORT_TRAINING": False   ## True, False
