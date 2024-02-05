@@ -58,9 +58,7 @@ class ALO:
         self.asset = Assets(ASSET_HOME)
         self.artifact = Aritifacts()
         # alolib을 설치
-        alolib = self.install.set_alolib()
-        if not alolib:
-            raise ValueError("ALOLIB이 설치 되지 않아 프로그램을 종료합니다.")
+        self.install.set_alolib()
 
         # 필요한 전역변수 선언
         self.exp_plan = None
