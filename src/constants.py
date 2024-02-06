@@ -68,4 +68,4 @@ REGISTER_ICON_PATH = PROJECT_HOME + "src/icons/"
 REGISTER_DOCKER_PATH = PROJECT_HOME + "src/Dockerfiles/register/"
 REGISTER_EXPERIMENTAL_PLAN = REGISTER_SOURCE_PATH + "solution/experimental_plan.yaml"
 
-REGISTER_PREFIX_NAME = "alo-instance-"
+REGISTER_PREFIX_NAME = "-instance-"
