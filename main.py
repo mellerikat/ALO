@@ -80,7 +80,7 @@ if __name__ == "__main__":
                     msg_dict = json.loads(start_msg.decode('utf-8')) # dict 
                     ## 운영시에만 사용되는 solution_metadata 는 string 으로 입력 받는다. 
                     solution_metadata = msg_dict['solution_metadata']
-                    kwargs = {'solution_metadata': args.system, 'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': False}
+                    kwargs = {'solution_metadata': solution_metadata, 'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': False}
                     alo = ALO(**kwargs)
                     alo.init()
                     alo.runs()
