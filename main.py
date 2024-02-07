@@ -88,6 +88,8 @@ if __name__ == "__main__":
                     ## always-on 모드에서는 Error 가 발생해도 종료되지 않도록 한다. 
                     print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
                     continue  
+                if os.getenv("DEBUG_EXIT_LOOP"):
+                    break 
             else:
                 msg = "Empty message recevied for EdgeApp inference request."
                 print("\033[91m" + "Error: " + str(msg) + "\033[0m") # print red 
