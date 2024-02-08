@@ -1433,7 +1433,7 @@ class SolutionRegister:
         with open(self.sm_yaml_path_file, 'r') as file:
             yaml_data = yaml.safe_load(file)
         data = {
-            "name": response_solution['name'] + self.prefix_name +  f'-v{response_solution["versions"][0]["version"]}' ,
+            "name": response_solution['name'] + self.prefix_name +  f'v{response_solution["versions"][0]["version"]}' ,
             "solution_version_id": response_solution['versions'][0]['id'],  ## latest 만 봐야 하기 때문에 [0] 번째로 고정
             "metadata_json": yaml_data,
         }
