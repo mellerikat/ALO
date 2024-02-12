@@ -2301,6 +2301,10 @@ class SolutionRegister:
 
         if exp_plan_dict['control'][0]['get_asset_source'] == 'every':
             exp_plan_dict['control'][0]['get_asset_source'] = 'once'
+
+        if exp_plan_dict['control'][0]['get_external_data'] == 'once':
+            exp_plan_dict['control'][0]['get_external_data'] = 'every'
+
         with open(REGISTER_EXPERIMENTAL_PLAN, 'w') as file:
             yaml.safe_dump(self.exp_yaml, file)
 
