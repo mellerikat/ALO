@@ -298,11 +298,11 @@ class ExternalHandler:
         ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
 
         # temp model dir 생성 
-        if os.path.exists(TEMP_MODEL_DIR):
-            shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
-            os.makedirs(TEMP_MODEL_DIR)
+        if os.path.exists(TEMP_MODEL_PATH):
+            shutil.rmtree(TEMP_MODEL_PATH, ignore_errors=True)
+            os.makedirs(TEMP_MODEL_PATH)
         else: 
-            os.makedirs(TEMP_MODEL_DIR)
+            os.makedirs(TEMP_MODEL_PATH)
             
         if (ext_type  == 'absolute') or (ext_type  == 'relative'):
             ext_path = PROJECT_HOME + ext_path if ext_type == 'relative' else ext_path 
@@ -311,31 +311,31 @@ class ExternalHandler:
                 PROC_LOGGER.process_error(f'External load model path should be different from base models_path: \n - external load model path: {ext_path} \n - base model path: {models_path}')
             try: 
                 if COMPRESSED_MODEL_FILE in os.listdir(ext_path):
-                    shutil.copy(ext_path + COMPRESSED_MODEL_FILE, TEMP_MODEL_DIR)  
-                    tar = tarfile.open(TEMP_MODEL_DIR + COMPRESSED_MODEL_FILE) # model.tar.gz은 models 폴더를 통째로 압축한것 
+                    shutil.copy(ext_path + COMPRESSED_MODEL_FILE, TEMP_MODEL_PATH)  
+                    tar = tarfile.open(TEMP_MODEL_PATH + COMPRESSED_MODEL_FILE) # model.tar.gz은 models 폴더를 통째로 압축한것 
                     # FIXME [주의] 만약 models를 통째로 압축한 model.tar.gz 이 아니고 내부 구조가 다르면 이후 진행과정 에러날 것임 
                     #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 압축해지 필요   
-                    tar.extractall(models_path) # TEMP_MODEL_DIR) 본인경로에 풀면안되는듯 
+                    tar.extractall(models_path) # TEMP_MODEL_PATH) 본인경로에 풀면안되는듯 
                     tar.close() 
                 else: # model.tar.gz 이 없을때 대응 코드  
                     base_norm_path = os.path.basename(os.path.normpath(ext_path)) + '/' # ex. 'aa/bb/' --> bb/
-                    os.makedirs(TEMP_MODEL_DIR + base_norm_path)
-                    shutil.copytree(ext_path, TEMP_MODEL_DIR + base_norm_path, dirs_exist_ok=True)
-                    for i in os.listdir(TEMP_MODEL_DIR + base_norm_path):
-                        shutil.move(TEMP_MODEL_DIR + base_norm_path + i, models_path + i) 
+                    os.makedirs(TEMP_MODEL_PATH + base_norm_path)
+                    shutil.copytree(ext_path, TEMP_MODEL_PATH + base_norm_path, dirs_exist_ok=True)
+                    for i in os.listdir(TEMP_MODEL_PATH + base_norm_path):
+                        shutil.move(TEMP_MODEL_PATH + base_norm_path + i, models_path + i) 
                 PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>')
             except:
                 PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
             finally:
-                # TEMP_MODEL_DIR는 삭제 
-                shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+                # TEMP_MODEL_PATH는 삭제 
+                shutil.rmtree(TEMP_MODEL_PATH, ignore_errors=True)
                 
         elif ext_type  == 's3':
             try: 
                 s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
-                model_existence = s3_downloader.download_model(TEMP_MODEL_DIR) # 해당 s3 경로에 model.tar.gz 미존재 시 False, 존재 시 다운로드 후 True 반환
-                if model_existence: # TEMP_MODEL_DIR로 model.tar.gz 이 다운로드 된 상태 
-                    tar = tarfile.open(TEMP_MODEL_DIR + COMPRESSED_MODEL_FILE)
+                model_existence = s3_downloader.download_model(TEMP_MODEL_PATH) # 해당 s3 경로에 model.tar.gz 미존재 시 False, 존재 시 다운로드 후 True 반환
+                if model_existence: # TEMP_MODEL_PATH로 model.tar.gz 이 다운로드 된 상태 
+                    tar = tarfile.open(TEMP_MODEL_PATH + COMPRESSED_MODEL_FILE)
                     #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 옮기기 필요  
                     tar.extractall(models_path)
                     tar.close()
@@ -346,8 +346,8 @@ class ExternalHandler:
             except:
                 PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
             finally:
-                # TEMP_MODEL_DIR는 삭제 
-                shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+                # TEMP_MODEL_PATH는 삭제 
+                shutil.rmtree(TEMP_MODEL_PATH, ignore_errors=True)
             
             
     def external_save_artifacts(self, pipe_mode, external_path, external_path_permission):
@@ -421,10 +421,10 @@ class ExternalHandler:
                 PROC_LOGGER.process_error(f'Failed to copy compressed artifacts from << {artifacts_tar_path} >> & << {model_tar_path} >> into << {ext_path} >>.')
             finally: 
                 os.remove(artifacts_tar_path)
-                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+                shutil.rmtree(TEMP_ARTIFACTS_PATH , ignore_errors=True)
                 if model_tar_path is not None: 
                     os.remove(model_tar_path)
-                    shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+                    shutil.rmtree(TEMP_MODEL_PATH, ignore_errors=True)
                 
         elif ext_type  == 's3':  
             try: 
@@ -439,11 +439,11 @@ class ExternalHandler:
                 PROC_LOGGER.process_error(f'Failed to upload << {artifacts_tar_path} >> & << {model_tar_path} >> onto << {ext_path} >>')
             finally: 
                 os.remove(artifacts_tar_path)
-                # [중요] 압축 파일 업로드 끝나면 TEMP_ARTIFACTS_DIR 삭제 
-                shutil.rmtree(TEMP_ARTIFACTS_DIR , ignore_errors=True)
+                # [중요] 압축 파일 업로드 끝나면 TEMP_ARTIFACTS_PATH 삭제 
+                shutil.rmtree(TEMP_ARTIFACTS_PATH , ignore_errors=True)
                 if model_tar_path is not None: 
                     os.remove(model_tar_path)
-                    shutil.rmtree(TEMP_MODEL_DIR, ignore_errors=True)
+                    shutil.rmtree(TEMP_MODEL_PATH, ignore_errors=True)
         else: 
             # 미지원 external data storage type
             PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
@@ -536,15 +536,15 @@ class ExternalHandler:
                 
     def _tar_dir(self, _path): 
         ## _path: .train_artifacts / .inference_artifacts     
-        os.makedirs(TEMP_ARTIFACTS_DIR , exist_ok=True)
-        os.makedirs(TEMP_MODEL_DIR, exist_ok=True)
+        os.makedirs(TEMP_ARTIFACTS_PATH , exist_ok=True)
+        os.makedirs(TEMP_MODEL_PATH, exist_ok=True)
         last_dir = None
         if 'models' in _path: 
-            _save_path = TEMP_MODEL_DIR + COMPRESSED_MODEL_FILE
+            _save_path = TEMP_MODEL_PATH + COMPRESSED_MODEL_FILE
             last_dir = 'models/'
         else: 
             _save_file_name = _path.strip('.') 
-            _save_path = TEMP_ARTIFACTS_DIR +  f'{_save_file_name}.tar.gz' 
+            _save_path = TEMP_ARTIFACTS_PATH +  f'{_save_file_name}.tar.gz' 
             last_dir = _path # ex. .train_artifacts/
         tar = tarfile.open(_save_path, 'w:gz')
         for root, dirs, files in os.walk(PROJECT_HOME  + _path):
