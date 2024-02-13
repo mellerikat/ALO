@@ -305,7 +305,10 @@ class ExternalHandler:
             os.makedirs(TEMP_MODEL_DIR)
             
         if (ext_type  == 'absolute') or (ext_type  == 'relative'):
-            ext_path = SOLUTION_HOME + ext_path if ext_type == 'relative' else ext_path 
+            ext_path = PROJECT_HOME + ext_path if ext_type == 'relative' else ext_path 
+            # ext path는 기본 model path와 달라야함을 체크 
+            if os.path.samefile(ext_path, models_path):
+                PROC_LOGGER.process_error(f'External load model path should be different from base models_path: \n - external load model path: {ext_path} \n - base model path: {models_path}')
             try: 
                 if COMPRESSED_MODEL_FILE in os.listdir(ext_path):
                     shutil.copy(ext_path + COMPRESSED_MODEL_FILE, TEMP_MODEL_DIR)  
