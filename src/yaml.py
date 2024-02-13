@@ -234,30 +234,33 @@ class ExperimentalPlan:
               
             # external path 덮어 쓰기 
             if pipe_type == 'train': 
+                check_train_keys = []
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
                     if 'load_train_data_path' in ext_dict.keys(): 
-                        self.exp_plan['external_path'][idx]['load_train_data_path'] = dataset_uri 
-                    else:
-                        PROC_LOGGER.process_error(f"<< load_train_data_path >> key does not exist in experimental plan yaml.")
+                        self.exp_plan['external_path'][idx]['load_train_data_path'] = dataset_uri
+                        check_train_keys.append('load_train_data_path') 
                     if 'save_train_artifacts_path' in ext_dict.keys(): 
-                        self.exp_plan['external_path'][idx]['save_train_artifacts_path'] = artifact_uri          
-                    else: 
-                        PROC_LOGGER.process_error(f"<< save_train_artifacts_path >> key does not exist in experimental plan yaml.")
+                        self.exp_plan['external_path'][idx]['save_train_artifacts_path'] = artifact_uri   
+                        check_train_keys.append('save_train_artifacts_path') 
+                diff_keys = set(['load_train_data_path', 'save_train_artifacts_path']) - set(check_train_keys)
+                if len(diff_keys) != 0:
+                    PROC_LOGGER.process_error(f"<< {diff_keys} >> key does not exist in experimental plan yaml.")
             elif pipe_type == 'inference':
+                check_inference_keys = []
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
                     if 'load_inference_data_path' in ext_dict.keys():
                         self.exp_plan['external_path'][idx]['load_inference_data_path'] = dataset_uri  
-                    else: 
-                        PROC_LOGGER.process_error(f"<< load_inference_data_path >> key does not exist in experimental plan yaml.")
+                        check_inference_keys.append('load_inference_data_path')
                     if 'save_inference_artifacts_path' in ext_dict.keys():  
                         self.exp_plan['external_path'][idx]['save_inference_artifacts_path'] = artifact_uri 
-                    else: 
-                        PROC_LOGGER.process_error(f"<< save_inference_artifacts_path >> key does not exist in experimental plan yaml.")
+                        check_inference_keys.append('save_inference_artifacts_path')
                     # inference type인 경우 model_uri를 plan yaml의 external_path의 load_model_path로 덮어쓰기
                     if 'load_model_path' in ext_dict.keys():
                         self.exp_plan['external_path'][idx]['load_model_path'] = sol_pipe['model_uri']
-                    else: 
-                        PROC_LOGGER.process_error(f"<< load_model_path >> key does not exist in experimental plan yaml.")
+                        check_inference_keys.append('load_model_path')
+                diff_keys = set(['load_inference_data_path', 'save_inference_artifacts_path', 'load_model_path']) - set(check_inference_keys)
+                if len(diff_keys) != 0:
+                    PROC_LOGGER.process_error(f"<< {diff_keys} >> key does not exist in experimental plan yaml.")
             else: 
                 PROC_LOGGER.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
 
