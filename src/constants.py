@@ -28,6 +28,7 @@ TRAIN_MODEL_PATH = PROJECT_HOME + ".train_artifacts/models/"
 TEMP_ARTIFACTS_DIR = PROJECT_HOME + ".temp_artifacts_dir/"
 # 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
 TEMP_MODEL_DIR = PROJECT_HOME + ".temp_model_dir/"
+HISTORY_DIR = PROJECT_HOME + ".history/"
 COMPRESSED_MODEL_FILE = "model.tar.gz"
 
 INFERENCE_SCORE_PATH = PROJECT_HOME + ".inference_artifacts/score/" 
