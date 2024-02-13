@@ -411,7 +411,7 @@ class ExternalHandler:
             
         # FIXME external save path 를 지우고 다시 만드는게 맞는가 ? (로컬이든 s3든)
         if (ext_type  == 'absolute') or (ext_type  == 'relative'):
-            ext_path = SOLUTION_HOME + ext_path if ext_type == 'relative' else ext_path
+            ext_path = PROJECT_HOME + ext_path if ext_type == 'relative' else ext_path
             try: 
                 os.makedirs(ext_path, exist_ok=True) 
                 shutil.copy(artifacts_tar_path, ext_path)
