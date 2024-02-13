@@ -18,10 +18,6 @@ import csv
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
-# artifacts.tar.gz  압축 파일을 외부 업로드하기 전 로컬 임시 저장 경로 
-TEMP_ARTIFACTS_DIR = PROJECT_HOME + '.temp_artifacts_dir/'
-# 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
-TEMP_MODEL_DIR = PROJECT_HOME + '.temp_model_dir/'
 #--------------------------------------------------------------------------------------------------------------------------
 
 class S3Handler:
@@ -145,7 +141,7 @@ class S3Handler:
             if 'Contents' in dir_list:  # 폴더가 아니라 파일이 있으면
                 for i, each_file in enumerate(dir_list['Contents']):  # 파일을 iteration한다.
                     sub_folder, filename = each_file['Key'].split('/')[-2:]
-                    if (sub_folder == s3_basename) and (filename == 'model.tar.gz'): 
+                    if (sub_folder == s3_basename) and (filename == COMPRESSED_MODEL_FILE): 
                             self.download_file_from_s3(each_file['Key'], target + filename)
                             exist_flag = True 
         return exist_flag
@@ -231,7 +227,7 @@ class ExternalHandler:
             ################################################################################################################
             # eexternal path 미기입 시 에러
             if len(external_data_path) == 0: 
-                PROC_LOGGER.process_warning(f'External path - << load_inference_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
+                PROC_LOGGER.process_warning(f'External path - << load_inference_data_path >> in experimental_plan.yaml is not written. You must fill the path.') 
                 return
             else: 
                 external_base_dirs = self._check_duplicated_basedir(external_data_path)
@@ -245,7 +241,8 @@ class ExternalHandler:
         # external base 폴더 이름들과 현재 input 폴더 내 구성의 일치여부 확인 후 once, every에 따른 동작 분기 
         if get_external_data == 'once':
             if external_base_dirs == os.listdir(input_data_dir): # 외부 경로와 input 폴더 내 구성이 완전히 동등하면 데이터 새로 가져오지 않고 return 
-                PROC_LOGGER.process_info(f"Skip loading external data. All the data in the external load data path already exist in << {INPUT_DATA_HOME} >> equally. \n : << external_base_dirs >>")
+                # FIXME 폴더 구성만 같고 파일 구성, 내용 다른건 걸러주지 못함 
+                PROC_LOGGER.process_info(f"Skip loading external data. All the data in the external load data path already exist in << {INPUT_DATA_HOME} >> equally. \n : << {external_base_dirs} >>")
                 return # 외부 데이터 가져오지 않고 return 
             else: 
                 get_external_data = 'every' # external과 input 폴더 내 구성이 갖지 않으면 once라도 every처럼 동작
@@ -274,7 +271,7 @@ class ExternalHandler:
         # model.tar.gz이 없으면 그냥 external_path 밑에 있는 파일(or 서브폴더)들 전부 .train_artifacts/models/ 로 copy
         '''
         ####################################################################################################
-        models_path = PROJECT_HOME + '.train_artifacts/models/'
+        models_path = TRAIN_MODEL_PATH
         # .train_artifacts/models 폴더 비우기
         try: 
             if os.path.exists(models_path) == False: 
@@ -310,9 +307,9 @@ class ExternalHandler:
         if (ext_type  == 'absolute') or (ext_type  == 'relative'):
             ext_path = SOLUTION_HOME + ext_path if ext_type == 'relative' else ext_path 
             try: 
-                if 'model.tar.gz' in os.listdir(ext_path):
-                    shutil.copy(ext_path + 'model.tar.gz', TEMP_MODEL_DIR)  
-                    tar = tarfile.open(TEMP_MODEL_DIR + 'model.tar.gz') # model.tar.gz은 models 폴더를 통째로 압축한것 
+                if COMPRESSED_MODEL_FILE in os.listdir(ext_path):
+                    shutil.copy(ext_path + COMPRESSED_MODEL_FILE, TEMP_MODEL_DIR)  
+                    tar = tarfile.open(TEMP_MODEL_DIR + COMPRESSED_MODEL_FILE) # model.tar.gz은 models 폴더를 통째로 압축한것 
                     # FIXME [주의] 만약 models를 통째로 압축한 model.tar.gz 이 아니고 내부 구조가 다르면 이후 진행과정 에러날 것임 
                     #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 압축해지 필요   
                     tar.extractall(models_path) # TEMP_MODEL_DIR) 본인경로에 풀면안되는듯 
@@ -335,7 +332,7 @@ class ExternalHandler:
                 s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
                 model_existence = s3_downloader.download_model(TEMP_MODEL_DIR) # 해당 s3 경로에 model.tar.gz 미존재 시 False, 존재 시 다운로드 후 True 반환
                 if model_existence: # TEMP_MODEL_DIR로 model.tar.gz 이 다운로드 된 상태 
-                    tar = tarfile.open(TEMP_MODEL_DIR + 'model.tar.gz')
+                    tar = tarfile.open(TEMP_MODEL_DIR + COMPRESSED_MODEL_FILE)
                     #압축시에 절대경로로 /home/~ ~/models/ 경로 전부 다 저장됐다가 여기서 해제되므로 models/ 경로 이후 것만 옮기기 필요  
                     tar.extractall(models_path)
                     tar.close()
@@ -509,7 +506,7 @@ class ExternalHandler:
             except:
                 PROC_LOGGER.process_error(f'Failed to download s3 data folder from << {ext_path} >>')
 
-        PROC_LOGGER.process_info(f'==================== Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}') 
+        PROC_LOGGER.process_info(f'Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}') 
         
         return 
 
@@ -520,12 +517,13 @@ class ExternalHandler:
         elif os.path.isabs(_ext_path) == True: # 절대경로. nas, local 둘다 가능 
             return 'absolute'
         elif os.path.isabs(_ext_path) == False: # file이름으로 쓰면 에러날 것임 
-            PROC_LOGGER.process_info(f'<< {_ext_path} >> may be relative path. The reference folder of relative path is << config/ >>. \n If this is not appropriate relative path, Loading external data process would raise error.')
+            PROC_LOGGER.process_info(f'<< {_ext_path} >> may be relative path. The reference folder of relative path is << {PROJECT_HOME} >>. \n If this is not appropriate relative path, Loading external data process would raise error.')
             # [중요] 외부 데이터를 ALO main.py와 같은 경로에 두면 에러 
             base_dir = os.path.basename(os.path.normpath(_ext_path)) 
             parent_dir = _ext_path.split(base_dir)[0] # base dir 바로 위 parent dir 
             # 외부 데이터 폴더는 main.py랑 같은 경로에 두면 안된다. 물론 절대경로로도 alo/ 포함 시키는 등 뚫릴 수 있는 방법은 많지만, 사용자 가이드 목적의 에러이다. 
-            if parent_dir == '../':
+            # './folder' --> './'  ,  'folder' --> '' 
+            if parent_dir == './' or parent_dir == '': 
                 PROC_LOGGER.process_error(f'Placing the external data in the same path as << {PROJECT_HOME} >> is not allowed.')
             if parent_dir == '~/':
                 PROC_LOGGER.process_error(f'External path starting with << ~/ >> is not allowed.')
@@ -539,7 +537,7 @@ class ExternalHandler:
         os.makedirs(TEMP_MODEL_DIR, exist_ok=True)
         last_dir = None
         if 'models' in _path: 
-            _save_path = TEMP_MODEL_DIR + 'model.tar.gz'
+            _save_path = TEMP_MODEL_DIR + COMPRESSED_MODEL_FILE
             last_dir = 'models/'
         else: 
             _save_file_name = _path.strip('.') 
