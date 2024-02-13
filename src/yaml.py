@@ -5,9 +5,12 @@ from src.constants import *
 from src.logger import ProcessLogger
 from src.redisqueue import RedisQueue
 from copy import deepcopy 
-# from src.compare_yamls import compare_yaml
 
+#--------------------------------------------------------------------------------------------------------------------------
+#    GLOBAL VARIABLE
+#--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
+#--------------------------------------------------------------------------------------------------------------------------
 
 class ExperimentalPlan:
     def __init__(self, exp_plan_file, sol_meta):

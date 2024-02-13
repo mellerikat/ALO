@@ -58,6 +58,8 @@ artifacts_structure = {
 ###################################
 ##### Set sagemaker 
 ###################################
+# FIXME sagemaker version hard-fixed
+SAGEMAKER_PACKAGE = "sagemaker==2.203.1"
 SAGEMAKER_CONFIG = PROJECT_HOME + "setting/sagemaker_config.yaml"
 SAGEMKAER_DOCKERFILE = PROJECT_HOME + "src/Dockerfiles/SagemakerDockerfile"
 SAGEMAKER_PATH = PROJECT_HOME + ".sagemaker/"

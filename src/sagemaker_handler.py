@@ -11,8 +11,6 @@ from src.logger import ProcessLogger
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
-# FIXME sagemaker version hard-fixed
-SAGEMAKER_PACKAGE = "sagemaker==2.203.1"
 #--------------------------------------------------------------------------------------------------------------------------
 
 class SagemakerHandler:

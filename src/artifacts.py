@@ -5,9 +5,12 @@ from datetime import timedelta
 
 from src.constants import *
 from src.logger import ProcessLogger
-PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
-OUTPUT_IMAGE_EXTENSIONS = ["*.jpg", "*.jpeg", "*.png"]
+#--------------------------------------------------------------------------------------------------------------------------
+#    GLOBAL VARIABLE
+#--------------------------------------------------------------------------------------------------------------------------
+PROC_LOGGER = ProcessLogger(PROJECT_HOME)
+#--------------------------------------------------------------------------------------------------------------------------
 
 class Aritifacts:
     def __init__(self):
