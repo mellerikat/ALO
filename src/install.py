@@ -33,11 +33,11 @@ class Packages:
             destination_directory = ALO_LIB
             result = subprocess.run(['git', 'clone', '-b', ALOVER, repository_url, destination_directory], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             if result.returncode == 0:
-                print("alolib git pull success.")
+                PROC_LOGGER.process_info("alolib git pull success.")
             else:
                 raise NotImplementedError("alolib git pull failed.")
         else: 
-            print("alolib already exists in local path.")
+            PROC_LOGGER.process_info("alolib already exists in local path.")
             pass
         alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
         sys.path.append(alolib_path)
@@ -45,13 +45,11 @@ class Packages:
         req = os.path.join(alolib_path, "requirements.txt")
         result = subprocess.run(['pip', 'install', '-r', req], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if result.returncode == 0:
-            print("패키지 설치 성공")
-            print(result.stdout)
-            return True
+            PROC_LOGGER.process_info("Success installing alolib requirements.txt")
+            PROC_LOGGER.process_info(result.stdout)
         else:
-            print("패키지 설치 실패")
-            print(result.stderr)
-            return False
+            PROC_LOGGER.process_error(f"Failed installing alolib requirements.txt : \n {result.stderr}")
+
 
     def extract_requirements_txt(self, step_name): 
         """ Description

@@ -244,12 +244,19 @@ class SolutionRegister:
         if not self.debugging:
             self.register_solution()
 
+        if not self.infra_setup["SUPPORT_TRAINING"]: # training 지원하지 않을 경우, instance 까지 생성
+            self.register_solution_instance()
 
     def run_train(self, status_period=5, delete_instance=True, delete_solution=False):
-        self.register_solution_instance()
-        self.register_stream()
-        self.request_run_stream()
-        self.get_stream_status(status_period=status_period)
+
+        if self.solution_info['inference_only']:
+            raise ValueError("inference_only=False 여야 합니다.")
+        else:
+            if self.infra_setup["SUPPORT_TRAINING"]:  ## training 지원할 경우, test 로만 instance 생성
+                self.register_solution_instance()
+            self.register_stream()
+            self.request_run_stream()
+            self.get_stream_status(status_period=status_period)
 
         if delete_instance:
             self.delete_stream_history()
@@ -642,7 +649,7 @@ class SolutionRegister:
         """
         version = str(int(self.infra_setup['VERSION']))
         if mode == "artifact":
-            prefix_uri = "/ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/artifacts/"
+            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/artifacts/"
             uri = {'artifact_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
         elif mode == "data":
             prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/data/"
@@ -1401,8 +1408,8 @@ class SolutionRegister:
         with open(self.sm_yaml_path_file, 'r') as file:
             yaml_data = yaml.safe_load(file)
         data = {
-            "name": self.prefix_name + response_solution['name'],
-            "solution_version_id": response_solution['versions'][0]['id'],
+            "name": response_solution['name'] + self.prefix_name +  f'v{response_solution["versions"][0]["version"]}' ,
+            "solution_version_id": response_solution['versions'][0]['id'],  ## latest 만 봐야 하기 때문에 [0] 번째로 고정
             "metadata_json": yaml_data,
         }
         data =json.dumps(data) # json 화
@@ -1922,9 +1929,9 @@ class SolutionRegister:
         response = requests.delete(aic+api, 
                                  params=solutin_params, 
                                  cookies=self.aic_cookie)
-        response_delete_solution = response.json()
 
         if response.status_code == 200:
+            response_delete_solution = response.json()
             print_color("[SUCCESS] AI solution 삭제를 성공하였습니다. ", color='cyan')
             print(f"[INFO] response: \n {response_delete_solution}")
 
@@ -1941,12 +1948,16 @@ class SolutionRegister:
             #   json.dump(response_delete_solution, f, indent=4)
             #   print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
         elif response.status_code == 400:
+            response_delete_solution = response.json()
             print_color("[ERROR] AI solution 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
             print("Error message: ", response_delete_solution["detail"])
         elif response.status_code == 422:
+            response_delete_solution = response.json()
             print_color("[ERROR] AI solution 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
             print("Error message: ", response_delete_solution["detail"])
             raise NotImplementedError(f"Failed to delete stream: \n {response_delete_solution}")
+        elif response.status_code == 500:
+            print_color("[ERROR] AI solution 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
             raise NotImplementedError(f"Failed to delete stream: \n {response_delete_solution}")

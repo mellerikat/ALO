@@ -71,6 +71,8 @@ if __name__ == "__main__":
         ################################ 
         ##### Step2. Infinite loop ##### 
         ################################ 
+        kwargs = {'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': False}
+        alo = ALO(**kwargs)
         while True: 
             ## EdgeApp 이 추론 요청을 대기 (waiting 상태 유지)
             start_msg = q.lget(isBlocking=True) # 큐가 비어있을 때 대기 / lget, rput으로 통일 
@@ -80,7 +82,7 @@ if __name__ == "__main__":
                     msg_dict = json.loads(start_msg.decode('utf-8')) # dict 
                     ## 운영시에만 사용되는 solution_metadata 는 string 으로 입력 받는다. 
                     solution_metadata = msg_dict['solution_metadata']
-                    kwargs = {'solution_metadata': solution_metadata, 'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': False}
+                    alo.sol_meta = json.loads(solution_metadata)
                     alo = ALO(**kwargs)
                     alo.init()
                     alo.runs()
@@ -88,6 +90,8 @@ if __name__ == "__main__":
                     ## always-on 모드에서는 Error 가 발생해도 종료되지 않도록 한다. 
                     print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
                     continue  
+                if os.getenv("DEBUG_EXIT_LOOP")==True:
+                    break 
             else:
                 msg = "Empty message recevied for EdgeApp inference request."
                 print("\033[91m" + "Error: " + str(msg) + "\033[0m") # print red 

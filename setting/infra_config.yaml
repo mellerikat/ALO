@@ -18,3 +18,4 @@
   - "Key=Sub Project,Value=CISM"
   - "Key=System,Value=AIDX"
 "AWS_KEY_FILE": ""
+"SUPPORT_TRAINING": True   ## True, False
