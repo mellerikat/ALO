@@ -32,6 +32,7 @@ TEMP_MODEL_PATH = PROJECT_HOME + ".TEMP_MODEL_PATH/"
 HISTORY_PATH = PROJECT_HOME + ".history/"
 COMPRESSED_MODEL_FILE = "model.tar.gz"
 COMPRESSED_TRAIN_ARTIFACTS_FILE = "train_artifacts.tar.gz"
+INFERENCE_LOG_PATH = PROJECT_HOME + ".inference_artifacts/log/"
 INFERENCE_SCORE_PATH = PROJECT_HOME + ".inference_artifacts/score/" 
 INFERENCE_OUTPUT_PATH = PROJECT_HOME + ".inference_artifacts/output/" 
 TABULAR_OUTPUT_FORMATS = [".csv"]

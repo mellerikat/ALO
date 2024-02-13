@@ -334,7 +334,7 @@ class ALO:
 
         # 새 runs 시작 시 기존 log 폴더 삭제 
         train_log_path = TRAIN_LOG_PATH
-        inference_log_path = PROJECT_HOME + ".inference_artifacts/log/"
+        inference_log_path = INFERENCE_LOG_PATH
         try: 
             if os.path.exists(train_log_path):
                 shutil.rmtree(train_log_path, ignore_errors=True)
@@ -485,7 +485,7 @@ class ALO:
           - ext_saved_path(str): 외부 경로 
         """
         success_str = None
-        summary_dir = PROJECT_HOME + '.inference_artifacts/score/'
+        summary_dir = INFERENCE_SCORE_PATH
         if 'inference_summary.yaml' in os.listdir(summary_dir):
             summary_dict = self.experimental_plan.get_yaml(summary_dir + 'inference_summary.yaml')
             success_str = json.dumps({'status':'success', 'message': summary_dict})
