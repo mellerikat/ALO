@@ -237,17 +237,27 @@ class ExperimentalPlan:
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
                     if 'load_train_data_path' in ext_dict.keys(): 
                         self.exp_plan['external_path'][idx]['load_train_data_path'] = dataset_uri 
+                    else:
+                        PROC_LOGGER.process_error(f"<< load_train_data_path >> key does not exist in experimental plan yaml.")
                     if 'save_train_artifacts_path' in ext_dict.keys(): 
                         self.exp_plan['external_path'][idx]['save_train_artifacts_path'] = artifact_uri          
+                    else: 
+                        PROC_LOGGER.process_error(f"<< save_train_artifacts_path >> key does not exist in experimental plan yaml.")
             elif pipe_type == 'inference':
                 for idx, ext_dict in enumerate(self.exp_plan['external_path']):
                     if 'load_inference_data_path' in ext_dict.keys():
                         self.exp_plan['external_path'][idx]['load_inference_data_path'] = dataset_uri  
+                    else: 
+                        PROC_LOGGER.process_error(f"<< load_inference_data_path >> key does not exist in experimental plan yaml.")
                     if 'save_inference_artifacts_path' in ext_dict.keys():  
                         self.exp_plan['external_path'][idx]['save_inference_artifacts_path'] = artifact_uri 
+                    else: 
+                        PROC_LOGGER.process_error(f"<< save_inference_artifacts_path >> key does not exist in experimental plan yaml.")
                     # inference type인 경우 model_uri를 plan yaml의 external_path의 load_model_path로 덮어쓰기
                     if 'load_model_path' in ext_dict.keys():
                         self.exp_plan['external_path'][idx]['load_model_path'] = sol_pipe['model_uri']
+                    else: 
+                        PROC_LOGGER.process_error(f"<< load_model_path >> key does not exist in experimental plan yaml.")
             else: 
                 PROC_LOGGER.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
 
