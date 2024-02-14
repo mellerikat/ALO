@@ -11,16 +11,13 @@ from src.logger import ProcessLogger
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
-# FIXME sagemaker version hard-fixed
-SAGEMAKER_PACKAGE = "sagemaker==2.203.1"
 #--------------------------------------------------------------------------------------------------------------------------
 
 class SagemakerHandler:
     def __init__(self, sm_config):
         self.sm_config = sm_config
-        self.sagemaker_dir = PROJECT_HOME + '.sagemaker/'
-        self.temp_model_extract_dir = PROJECT_HOME + '.temp_sagemaker_model/'
-        
+        self.SAGEMAKER_PATH = SAGEMAKER_PATH
+        self.temp_model_extract_dir = TEMP_SAGEMAKER_MODEL_PATH
         
     def init(self):
         """
@@ -63,21 +60,21 @@ class SagemakerHandler:
         docker build 에 필요한 요소들을 sagemaker dir에 복사합니다.
         """
         # 폴더가 이미 존재하는 경우 삭제합니다.
-        if os.path.exists(self.sagemaker_dir):
-            shutil.rmtree(self.sagemaker_dir)
+        if os.path.exists(self.SAGEMAKER_PATH):
+            shutil.rmtree(self.SAGEMAKER_PATH)
         # 새로운 폴더를 생성합니다.
-        os.mkdir(self.sagemaker_dir)
+        os.mkdir(self.SAGEMAKER_PATH)
         # 컨테이너 빌드에 필요한 파일들을 sagemaker dir로 복사 
         alo_src = ['main.py', 'src', 'solution', 'assets', 'alolib', '.git', 'input', 'requirements.txt']
         for item in alo_src:
             src_path = PROJECT_HOME + item
             if os.path.isfile(src_path):
-                shutil.copy2(src_path, self.sagemaker_dir)
-                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.sagemaker_dir} >> ')
+                shutil.copy2(src_path, self.SAGEMAKER_PATH)
+                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.SAGEMAKER_PATH} >> ')
             elif os.path.isdir(src_path):
-                dst_path =  self.sagemaker_dir + os.path.basename(src_path)
+                dst_path =  self.SAGEMAKER_PATH + os.path.basename(src_path)
                 shutil.copytree(src_path, dst_path)
-                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.sagemaker_dir} >> ')
+                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.SAGEMAKER_PATH} >> ')
                 
 
     def build_solution(self): 
@@ -133,7 +130,7 @@ class SagemakerHandler:
             PROC_LOGGER.process_info(f'[OK] << {package} >> already exists')
         except: # 사용자 가상환경에 해당 package 설치가 아예 안 돼있는 경우 
             try: # nested try/except 
-                PROC_LOGGER.process_info(f'>>> Start installing package - {package}')
+                PROC_LOGGER.process_info(f'>> Start installing package - {package}')
                 subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
             except Exception as e:
                 PROC_LOGGER.process_error(f"Failed to install {package}: \n {str(e)}")
@@ -191,9 +188,9 @@ class SagemakerHandler:
                     #FIXME sagemaker 학습 시 일단 ecr tag 미지원 
                     # repository_uri = uri['repositoryUri'] + ":" + ecr_tag
                     repository_uri_without_tag = uri['repositoryUri']
-                    PROC_LOGGER.process_info(f"The ECR repository << {ecr_repository} >> already exists - repository_uri: {repository_uri_without_tag}")
+                    PROC_LOGGER.process_info(f"ECR repository << {ecr_repository} >> already exists - repository_uri: {repository_uri_without_tag}")
         else:
-            PROC_LOGGER.process_info(f"The repository << {ecr_repository} >> does not exist.")
+            PROC_LOGGER.process_info(f"ECR repository << {ecr_repository} >> does not exist.")
             # 리포지토리 생성
             # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecr/client/create_repository.html
             response = ecr.create_repository(repositoryName=ecr_repository, imageScanningConfiguration={'scanOnPush': True})
@@ -215,15 +212,15 @@ class SagemakerHandler:
                 ## object_summary.Object().key 예시 
                 # train-artifacts/sagemaker-test-240115-v2-2024-01-15-10-05-05-244/debug-output/training_job_end.ts
                 # train-artifacts/sagemaker-test-240115-v2-2024-01-15-10-05-05-244/output/model.tar.gz
-                if 'model.tar.gz' in object_summary.Object().key:
+                if COMPRESSED_MODEL_FILE in object_summary.Object().key:
                     model_path_list.append(object_summary.Object().key)
             # model.tar.gz 있는 것 중 최신날짜 포함하는 것만 다운로드 
             # 예시. train-artifacts/sagemaker-test-240115-v2-2024-01-15-10-05-05-244/output/model.tar.gz
             latest_model_path = sorted(model_path_list, reverse=True)[0]
             client = boto3.client('s3', region_name=self.region)
             # from, to / PROJECT HOME 에 model.tar.gz 를 s3에서 로컬로 다운로드
-            client.download_file(self.bucket, latest_model_path, PROJECT_HOME + 'model.tar.gz')  
-            PROC_LOGGER.process_info(f"Succes downloading {self.bucket}/{latest_model_path} --> {PROJECT_HOME}")
+            client.download_file(self.bucket, latest_model_path, PROJECT_HOME + COMPRESSED_MODEL_FILE)  
+            PROC_LOGGER.process_info(f"Success downloading << {self.bucket}/{latest_model_path} >> into << {PROJECT_HOME} >>")
             # model.tar.gz을 PROJECT HOME 에 바로 압축해제 후 삭제 
             def _create_dir(_dir):
                 # temp model dir 생성 
@@ -235,26 +232,26 @@ class SagemakerHandler:
             # model.tar.gz 압축 해제 할 임시 폴더 생성 
             _create_dir(self.temp_model_extract_dir)
             # 압축 해제 
-            if 'model.tar.gz' in os.listdir(PROJECT_HOME):
+            if COMPRESSED_MODEL_FILE in os.listdir(PROJECT_HOME):
                 # model.tar.gz은 train_artifacts 및 models 폴더를 통째로 압축한것들을 포함 (sagemaker에서 만드는 이름)
                 # [주의] 즉 alo에서 만드는 model.tar.gz이랑 다르다 (이름 중복)
-                tar = tarfile.open(PROJECT_HOME + 'model.tar.gz') 
+                tar = tarfile.open(PROJECT_HOME + COMPRESSED_MODEL_FILE) 
                 tar.extractall(self.temp_model_extract_dir) # 본인경로에 풀면안되는듯 
                 tar.close() 
             # alo에서 생성했던 'train_artifacts.tar.gz'과 'model.tar.gz' 중 train_artifacts 만 PROJECT HOME에 압축해제 (--> log, models, output,..)
             # FIXME 이미 .train_artifacts 존재해도 에러 안나고 덮어쓰기 되는지 ? 
-            if 'train_artifacts.tar.gz' in os.listdir(self.temp_model_extract_dir): 
-                tar = tarfile.open(self.temp_model_extract_dir + 'train_artifacts.tar.gz')
+            if COMPRESSED_TRAIN_ARTIFACTS_FILE in os.listdir(self.temp_model_extract_dir): 
+                tar = tarfile.open(self.temp_model_extract_dir + COMPRESSED_TRAIN_ARTIFACTS_FILE)
                 # .train_artifacts 폴더 없으면 생성 
-                _create_dir(PROJECT_HOME + '.train_artifacts')
-                tar.extractall(PROJECT_HOME + '.train_artifacts/')
+                _create_dir(TRAIN_ARTIFACTS_PATH)
+                tar.extractall(TRAIN_ARTIFACTS_PATH)
                 tar.close() 
         except: 
             PROC_LOGGER.process_error(f"Failed to download latest sagemaker created model from s3 : \n << {self.s3_uri} >>")
         finally: 
             # PROJECT_HOME 상의 model.tar.gz (s3로 부터 받은) 제거 및 temp dir 제거 
-            if os.path.exists(PROJECT_HOME + 'model.tar.gz'): 
-                os.remove(PROJECT_HOME + 'model.tar.gz')
+            if os.path.exists(PROJECT_HOME + COMPRESSED_MODEL_FILE): 
+                os.remove(PROJECT_HOME + COMPRESSED_MODEL_FILE)
             shutil.rmtree(self.temp_model_extract_dir, ignore_errors=True)
 
 

@@ -5,13 +5,7 @@ from src.logger import ProcessLogger
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
-OUTPUT_IMAGE_EXTENSIONS = ["*.jpg", "*.jpeg", "*.png"]
 #--------------------------------------------------------------------------------------------------------------------------
-
-        
-
-    
-
 
 def set_args():
     parser = argparse.ArgumentParser(description="Enter the options: << config, system, mode, loop >>")

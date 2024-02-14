@@ -22,7 +22,17 @@ ASSET_HOME = PROJECT_HOME + "assets/"
 
 INPUT_DATA_HOME = PROJECT_HOME + "input/"
 
+TRAIN_ARTIFACTS_PATH = PROJECT_HOME + ".train_artifacts/"
 TRAIN_LOG_PATH = PROJECT_HOME + ".train_artifacts/log/"
+TRAIN_MODEL_PATH = PROJECT_HOME + ".train_artifacts/models/"
+# artifacts.tar.gz  압축 파일을 외부 업로드하기 전 로컬 임시 저장 경로 
+TEMP_ARTIFACTS_PATH = PROJECT_HOME + ".TEMP_ARTIFACTS_PATH/"
+# 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 .train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
+TEMP_MODEL_PATH = PROJECT_HOME + ".TEMP_MODEL_PATH/"
+HISTORY_PATH = PROJECT_HOME + ".history/"
+COMPRESSED_MODEL_FILE = "model.tar.gz"
+COMPRESSED_TRAIN_ARTIFACTS_FILE = "train_artifacts.tar.gz"
+INFERENCE_LOG_PATH = PROJECT_HOME + ".inference_artifacts/log/"
 INFERENCE_SCORE_PATH = PROJECT_HOME + ".inference_artifacts/score/" 
 INFERENCE_OUTPUT_PATH = PROJECT_HOME + ".inference_artifacts/output/" 
 TABULAR_OUTPUT_FORMATS = [".csv"]
@@ -49,9 +59,12 @@ artifacts_structure = {
 ###################################
 ##### Set sagemaker 
 ###################################
+# FIXME sagemaker version hard-fixed
+SAGEMAKER_PACKAGE = "sagemaker==2.203.1"
 SAGEMAKER_CONFIG = PROJECT_HOME + "setting/sagemaker_config.yaml"
-SAGEMKAER_DOCKERFILE = PROJECT_HOME + 'src/Dockerfiles/SagemakerDockerfile'
-
+SAGEMKAER_DOCKERFILE = PROJECT_HOME + "src/Dockerfiles/SagemakerDockerfile"
+SAGEMAKER_PATH = PROJECT_HOME + ".sagemaker/"
+TEMP_SAGEMAKER_MODEL_PATH = PROJECT_HOME + ".temp_sagemaker_model/"
 ###################################
 ##### Register AI Solution 
 ###################################

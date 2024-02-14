@@ -5,9 +5,12 @@ from datetime import timedelta
 
 from src.constants import *
 from src.logger import ProcessLogger
-PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
-OUTPUT_IMAGE_EXTENSIONS = ["*.jpg", "*.jpeg", "*.png"]
+#--------------------------------------------------------------------------------------------------------------------------
+#    GLOBAL VARIABLE
+#--------------------------------------------------------------------------------------------------------------------------
+PROC_LOGGER = ProcessLogger(PROJECT_HOME)
+#--------------------------------------------------------------------------------------------------------------------------
 
 class Aritifacts:
     def __init__(self):
@@ -52,10 +55,10 @@ class Aritifacts:
 
         size_limit = size * 1024 * 1024
 
-        backup_size = self._get_folder_size(PROJECT_HOME + ".history/")
+        backup_size = self._get_folder_size(HISTORY_PATH)
         
         if backup_size > size_limit:
-            self._delete_old_files(PROJECT_HOME + ".history/", 10)
+            self._delete_old_files(HISTORY_PATH, 10)
 
         current_pipeline = pipelines.split("_pipelines")[0]
         # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
@@ -96,12 +99,12 @@ class Aritifacts:
         
         # backup artifacts를 .history로 이동 
         try: 
-            shutil.move(temp_backup_artifacts_dir, PROJECT_HOME + ".history/")
+            shutil.move(temp_backup_artifacts_dir, HISTORY_PATH)
         except: 
             shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
-            PROC_LOGGER.process_error(f"Failed to move {temp_backup_artifacts_dir} into {PROJECT_HOME}/.history/")
+            PROC_LOGGER.process_error(f"Failed to move << {temp_backup_artifacts_dir} >> into << {HISTORY_PATH} >>")
         # 잘 move 됐는 지 확인  
-        if os.path.exists(PROJECT_HOME + ".history/" + backup_folder):
+        if os.path.exists(HISTORY_PATH + backup_folder):
             if error == False: 
                 PROC_LOGGER.process_info("Successfully completes << .history >> backup (experimental_plan.yaml & artifacts)")
             elif error == True: 
