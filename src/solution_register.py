@@ -51,13 +51,11 @@ class SolutionRegister:
                 raise ValueError(e)
         print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
         pprint(self.infra_setup, depth=5)
-        # FIXME hard-fixed 
-        self.ECR_TAG = 'latest' 
-        
+
         self.api_uri = {
             'STATIC_LOGIN': 'api/v1/auth/static/login',  # POST
             'LDAP_LOGIN': 'api/v1/auth/ldap/login',
-            'SYSTEM_INFO': 'api/v1/workspaces',  # GET, 1. 시스템 정보 획득
+            'SYSTEM_INFO': 'api/v1/workspaces/info',  # GET, 1. 시스템 정보 획득
             'SOLUTION_LIST': 'api/v1/solutions/workspace', # 이름 설정 시 GET, 등록 시 POST, 2. AI Solution 이름 설정 / 3. AI Solution 등록
             'REGISTER_SOLUTION': 'api/v1/solutions', # 등록 시 POST, AI Solution 등록
             'SOLUTION_INSTANCE': 'api/v1/instances', # POST, AI Solution Instance 등록
@@ -69,8 +67,6 @@ class SolutionRegister:
             raise ValueError("solution infomation 을 입력해야 합니다.")
         else:
             self.solution_info = solution_info
-        # print_color("[SYSTEM] solution_info. (max display: 5 line): ", color='green')
-        pprint(self.solution_info, depth=5)
 
 
         ####################################
@@ -99,21 +95,11 @@ class SolutionRegister:
         self.solution_list_file = '.response_solution_list.json'
 
         ## name 
-        self.prefix_name = "alo-test-"
-
-        # # TODO aws login 방법 고민필요
-        # if self.infra_setup["AIC_URI"] == "https://web.aic-dev.lgebigdata.com/": ## 실계정
-        #     # self.aws_access_key_path = "/nas001/users/ruci.sung/aws.key"  ##  
-        #     self.aws_access_key_path = "/nas001/users/sehyun.song/aws.key"    ##
-        # else:  ## 현수 kube
-        #     self.aws_access_key_path = "/nas001/users/sehyun.song/aws.key"    ##
+        self.prefix_name = REGISTER_PREFIX_NAME
 
         self.aws_access_key_path = self.infra_setup["AWS_KEY_FILE"]
         print_color(f"[SYSTEM] S3 key 파일을 로드 합니다. (file: {self.aws_access_key_path})", color="green")
         self.update_aws_credentials(self.aws_access_key_path)
-
-
-
 
         ## internal variables
         self.sm_yaml = {}  ## core
@@ -121,7 +107,6 @@ class SolutionRegister:
         self._read_experimentalplan_yaml(self.exp_yaml_path_file, type='experimental_plan')  ## set exp_yaml
 
         self.pipeline = None 
-        self.workspaces = None
         self.aic_cookie = None
         self.solution_name = None
         self.icon_filenames = []
@@ -131,6 +116,8 @@ class SolutionRegister:
         self.bucket_name = None
         self.bucket_name_icon = None 
         self.ecr_name= None
+        self.solution_version_new = 1   # New 가 1 부터 이다. 
+        self.solution_version_id = None  # solution update 에서만 사용
 
         self.candidate_params = dict()
         self.candidate_params_df = pd.DataFrame()
@@ -138,8 +125,7 @@ class SolutionRegister:
         ## debugging 용 변수
         self.debugging = False 
         self.skip_generation_docker = False
-        
-    
+            
     ################################################
     ################################################
     def update_aws_credentials(self, aws_access_key_path, profile_name='default'):
@@ -228,7 +214,11 @@ class SolutionRegister:
             self.s3_upload_data()
             self.s3_upload_artifacts()
             if (not self.debugging) and (not self.skip_generation_docker):
-                self.make_docker_container()
+                skip_build=False
+            else:
+                skip_build=True
+
+            self.make_docker_container(skip_build)
         
         ############################
         ### Inference pipeline 설정
@@ -239,7 +229,11 @@ class SolutionRegister:
         self.s3_upload_data()
         self.s3_upload_artifacts()  ## inference 시, upload model 도 진행
         if (not self.debugging) and (not self.skip_generation_docker):
-            self.make_docker_container()
+            skip_build=False
+        else:
+            skip_build=True
+
+        self.make_docker_container(skip_build)
 
         if not self.debugging:
             self.register_solution()
@@ -247,8 +241,9 @@ class SolutionRegister:
         if not self.infra_setup["SUPPORT_TRAINING"]: # training 지원하지 않을 경우, instance 까지 생성
             self.register_solution_instance()
 
-    def run_train(self, status_period=5, delete_instance=True, delete_solution=False):
 
+
+    def run_train(self, status_period=5, delete_instance=True, delete_solution=False):
         if self.solution_info['inference_only']:
             raise ValueError("inference_only=False 여야 합니다.")
         else:
@@ -268,6 +263,9 @@ class SolutionRegister:
                 self.delete_solution()
             else:
                 raise Exception("delete_instance 옵션을 켜야 solution 삭제가 가능합니다.")
+
+    def delete_solution(self):
+        self.delete_solution()
 
 
 
@@ -349,7 +347,7 @@ class SolutionRegister:
         """사용자가 등록할 솔루션 이름이 사용가능한지를 체크 한다. 
 
         중복된 이름이 존재 하지 않으면, 신규 솔루션으로 인식한다. 
-        만약, 동일 이름 존재하면 업데이트 모드로 전환하여 솔루션 업데이트를 실행한다. (TBD) 
+        만약, 동일 이름 존재하면 업데이트 모드로 전환하여 솔루션 업데이트를 실행한다. 
 
         Attributes:
             - name (str): solution name
@@ -380,28 +378,50 @@ class SolutionRegister:
         print(solution_name)
         solution_name_json = solution_name.json()
 
+        solution_list = []
         if 'solutions' in solution_name_json.keys(): 
-            solution_list = [sol['name'] for sol in solution_name_json['solutions']]
+            for sol in solution_name_json['solutions']: 
+                # print(name)
+                # print(sol)
+                solution_list.append(sol['name'])
+
+                ### 솔루션 업데이트 
+                if self.solution_info['solution_update']:
+                    if name in sol['name']: 
+                        txt = f"[SUCCESS] The Solution Name you entered ({name}) already exists and can be upgraded. " 
+                        self.solution_name = name
+                        self.solution_version_new = int(sol['versions'][0]['version']) + 1  ## latest 확인 때문에 [0] 번째 확인
+                        self.solution_version_id = sol['id']
+                        print_color(txt, color='green')
+        else: 
+            msg = f" 'solutions' key not found in AI Solution data. API_URI={aic+api}"
+            raise ValueError(msg)
+
+        ## 업데이트  에러 처리 및 신규 등록 처리 (모든 solution list 검수 후 진행 가능)
+        if self.solution_info['solution_update']:
+            if not name in solution_list:
+                txt = f"[ERROR] If solution_type is True, the same solution name cannot exist.(name: {name})"
+                print_color(txt, color='red')
+                raise ValueError("Not find solution name.")
+        else:
             # 기존 solution 존재하면 에러 나게 하기 
-            ## TODO: 업데이트가 되도록 하기 
             ## TODO: 특수기호가 사용되면 에러나게 하기
-            if name in solution_list: 
+            if name in solution_list:
                 txt = f"[SYSTEM] The name ({name}) already exists in the AI solution list. Please enter another name !!"
                 print_color(txt, color='red')
                 raise ValueError("Not allowed solution name.")
             else:  ## NEW solutions
-                txt = f"[SUCCESS] 입력하신 Solution Name ({name})은 사용 가능합니다. " 
+                txt = f"[SUCCESS] The Solution Name you entered ({name}) is available." 
                 self.solution_name = name
+                self.solution_version_new = 1
+                self.solution_version_id = None
                 print_color(txt, color='green')
-
-        else: 
-            msg = f" 'solutions' key not found in AI Solution data. API_URI={aic+api}"
-            raise ValueError(msg)
 
         msg = f"[SYSTEM] Solution Name List (in-use):"
         print_color(msg, color='green')
         # 이미 존재하는 solutino list 리스트업 
         pre_existences = pd.DataFrame(solution_list, columns=["AI solutions"])
+        pre_existences = pre_existences.head(100)
         print_color(pre_existences.to_markdown(tablefmt='fancy_grid'), color='cyan')
 
         return self.solution_name
@@ -528,22 +548,26 @@ class SolutionRegister:
         """
         self.print_step(f"Display {self.pipeline} Resource List")
 
+        params = {
+            "workspace_name": self.infra_setup["WORKSPACE_NAME"],
+            "page_size": 100
+
+        }
+
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["SYSTEM_INFO"]
         try: 
-            self.workspaces = requests.get(aic+api, cookies=self.aic_cookie)
+            response = requests.get(aic+api, params=params, cookies=self.aic_cookie)
+            response_json = response.json()
         except: 
             raise NotImplementedError("[ERROR] Failed to get workspaces info.")
 
 
         resource_list = []
         try: 
-            for ws in self.workspaces.json()["workspaces"]:
-                if self.infra_setup["WORKSPACE_NAME"] in ws['name']:
-                    df = pd.DataFrame(ws['execution_specs'])
-
-                    for spec in ws['execution_specs']:
-                        resource_list.append(spec["name"])
+            df = pd.DataFrame(response_json["specs"])
+            for spec in response_json["specs"]:
+                resource_list.append(spec["name"])
         except: 
             raise ValueError("Got wrong workspace info.")
 
@@ -595,41 +619,38 @@ class SolutionRegister:
         """
         self.print_step("Check ECR & S3 Resource")
 
+        params = {
+            "workspace_name": self.infra_setup["WORKSPACE_NAME"],
+            "page_size": 100
+
+        }
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["SYSTEM_INFO"]
 
         try: 
-            self.workspaces = requests.get(aic+api, cookies=self.aic_cookie)
+            response = requests.get(aic+api, params=params, cookies=self.aic_cookie)
+            response_json = response.json()
         except: 
             raise NotImplementedError("Failed to get workspaces info.")
 
-        ## workspace_name 의 ECR, S3 주소를 확인 합니다. 
-        try: 
-            # print(self.workspaces.json()['workspaces'])
-            for ws in self.workspaces.json()['workspaces']:
-                # print(ws.items())
-                if self.infra_setup["WORKSPACE_NAME"] in ws['name']:
-                    S3_BUCKET_NAME = ws['s3_bucket_name']
-                    ECR_NAME = ws['ecr_base_path']       
-        except: 
-            raise ValueError("Got wrong workspace info.")
-        
-        if self.debugging:
-            print_color(f"\n[INFO] S3_BUCUKET_URI:", color='green') 
-            print_color(f"- public: {S3_BUCKET_NAME['public']}", color='cyan') 
-            print_color(f"- private: {S3_BUCKET_NAME['private']}", color='cyan') 
-
-            print_color(f"\n[INFO] ECR_URI:", color='green') 
-            print_color(f"- public: {ECR_NAME['public']}", color='cyan') 
-            print_color(f"- private: {ECR_NAME['private']}", color='cyan') 
-
         # workspace로부터 받아온 ecr, s3 정보를 내부 변수화 
         try:
-            self.bucket_name = S3_BUCKET_NAME[self.solution_info["solution_type"]] # bucket_scope: private, public
-            self.bucket_name_icon = S3_BUCKET_NAME["public"] # icon 은 공용 저장소에만 존재. = public
-            self.ecr_name = ECR_NAME[self.solution_info["solution_type"]]
+            solution_type = self.solution_info["solution_type"]
+            self.bucket_name = response_json["s3_bucket_name"][solution_type] # bucket_scope: private, public
+            self.bucket_name_icon = response_json["s3_bucket_name"]["public"] # icon 은 공용 저장소에만 존재. = public
+            self.ecr_name = response_json["ecr_base_path"][solution_type]
         except Exception as e:
             raise ValueError(f"Wrong format of << workspaces >> received from REST API:\n {e}")
+
+        if self.debugging:
+            print_color(f"\n[INFO] S3_BUCUKET_URI:", color='green') 
+            print_color(f'- public: {response_json["s3_bucket_name"]["public"]}', color='cyan') 
+            print_color(f'- private: {response_json["s3_bucket_name"]["public"]}', color='cyan') 
+
+            print_color(f"\n[INFO] ECR_URI:", color='green') 
+            print_color(f'- public: {response_json["ecr_base_path"]["public"]}', color='cyan') 
+            print_color(f'- private: {response_json["ecr_base_path"]["public"]}', color='cyan') 
+
             
         print_color(f"[SYSTEM] AWS ECR:  ", color='green') 
         print(f"{self.ecr_name}") 
@@ -647,12 +668,11 @@ class SolutionRegister:
         Returns:
           - uri (str): s3 uri 를 string 타입으로 반환 함 
         """
-        version = str(int(self.infra_setup['VERSION']))
         if mode == "artifact":
-            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/artifacts/"
+            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{self.solution_version_new}/" + self.pipeline  + "/artifacts/"
             uri = {'artifact_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
         elif mode == "data":
-            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + self.pipeline  + "/data/"
+            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{self.solution_version_new}/" + self.pipeline  + "/data/"
             if len(data_paths) ==0 :
                 uri = {'dataset_uri': ["s3://" + self.bucket_name + "/" + prefix_uri]}
             else:
@@ -662,7 +682,7 @@ class SolutionRegister:
                     uri['dataset_uri'].append(data_path_base + data_path_sub)
 
         elif mode == "model":  ## model
-            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{version}/" + 'train'  + "/artifacts/"
+            prefix_uri = "ai-solutions/" + self.solution_name + f"/v{self.solution_version_new}/" + 'train'  + "/artifacts/"
             uri = {'model_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
         else:
             raise ValueError("mode must be one of [dataset, artifacts, model]")
@@ -700,6 +720,9 @@ class SolutionRegister:
 
 
     def register_solution(self): 
+        ''' 일반 등록과 솔루션 업데이트 으로 구분 됨 
+        solution_info["solution_update]=True 이면, 업데이트 과정을 진행함
+        '''
 
         self.print_step("Register AI solution")
 
@@ -710,13 +733,21 @@ class SolutionRegister:
             "metadata_json": self.sm_yaml
             }
             data =json.dumps(data)
-            solution_params = {
-                "workspace_name": self.infra_setup["WORKSPACE_NAME"]
 
-            }
-            # AI 솔루션 등록
             aic = self.infra_setup["AIC_URI"]
-            api = self.api_uri["REGISTER_SOLUTION"]
+            if self.solution_info["solution_update"]:
+                solution_params = {
+                    "solution_id": self.solution_version_id,
+                    "workspace_name": self.infra_setup["WORKSPACE_NAME"]
+                }
+                api = self.api_uri["REGISTER_SOLUTION"] + f"/{self.solution_version_id}/version"
+            else:
+                solution_params = {
+                    "workspace_name": self.infra_setup["WORKSPACE_NAME"]
+                }
+                api = self.api_uri["REGISTER_SOLUTION"]
+
+            # AI 솔루션 등록
             response = requests.post(aic+api, params=solution_params, data=data, cookies=self.aic_cookie)
             self.response_solution = response.json()
         except Exception as e: 
@@ -747,6 +778,7 @@ class SolutionRegister:
             print("Error message: ", self.response_solution["detail"])
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            print(aic+api)
     
 
     
@@ -971,14 +1003,14 @@ class SolutionRegister:
                 s3.delete_object(Bucket=bucket_name, Key=s3_path)
             s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
             try:    
-                response = s3.upload_file(data_path, bucket_name, s3_path + "/" + data_path[len(local_folder):])
+                response = s3.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
             except NoCredentialsError as e:
                 raise NoCredentialsError("NoCredentialsError: \n{e}")
             except ClientError as e:
                 print(f"ClientError: ", e)
                 return False
             # temp = s3_path + "/" + data_path[len(local_folder):]
-            uploaded_path = bucket_name + '/' + s3_path + '/' + data_path[len(local_folder):]
+            uploaded_path = bucket_name + s3_path + data_path[len(local_folder):]
             print_color(f"[SUSTEM] S3 object key (new): ", color='green')
             print(f"{uploaded_path }")
             return True
@@ -1010,8 +1042,7 @@ class SolutionRegister:
 
             ## model tar gz 업로드 
             # [중요] model_uri는 inference type 밑에 넣어야되는데, 경로는 inference 대신 train이라고 pipeline 들어가야함 (train artifacts 경로에 저장)
-            version = str(int(self.infra_setup['VERSION']))
-            train_artifacts_s3_path = s3_prefix_uri.replace(f'v{version}/inference', f'v{version}/train')
+            train_artifacts_s3_path = s3_prefix_uri.replace(f'v{self.solution_version_new}/inference', f'v{self.solution_version_new}/train')
             model_path = _tar_dir(".train_artifacts/models")  # model tar.gz이 저장된 local 경로 return 
             local_folder = os.path.split(model_path)[0] + '/'
             print_color(f'\n[SYSTEM] Start uploading << model >> into S3 from local folder:', color='cyan')
@@ -1034,7 +1065,7 @@ class SolutionRegister:
     ######    STEP3. Dcoker Container Control
     ################################
 
-    def make_docker_container(self):
+    def make_docker_container(self, skip_build=False):
         """ECR 에 업로드 할 docker 를 제작 한다. 
         1) experimental_plan 에 사용된 source code 를 임시 폴더로 copy 한다. 
         2) Dockerfile 을 작성 한다. 
@@ -1043,23 +1074,43 @@ class SolutionRegister:
         5) 컨테이너 uri 를 solution_metadata.yaml 에 저장 한다. 
         
         """
+        if not skip_build:
+            self._set_alo()  # copy alo folders
+            ##TODO : ARM/AMD 에 따라 다른 dockerfile 설정
+            self._set_docker_contatiner()  ## set docerfile
 
-        self._set_alo()  # copy alo folders
-        ##TODO : ARM/AMD 에 따라 다른 dockerfile 설정
-        self._set_docker_contatiner()  ## set docerfile
+            self.print_step("Set AWS ECR")
+            if self.infra_setup["BUILD_METHOD"] == 'docker':
+                ## docker login 실행 
+                self._set_aws_ecr(docker=True)
+            else:  ##buildah
+                self._set_aws_ecr(docker=False, tags=self.infra_setup["REPOSITORY_TAGS"]) 
 
-        self.print_step("Set AWS ECR")
-        if self.infra_setup["BUILD_METHOD"] == 'docker':
-            ## docker login 실행 
-            self._set_aws_ecr(docker=True)
-        else:  ##buildah
-            self._set_aws_ecr(docker=False, tags=self.infra_setup["REPOSITORY_TAGS"]) 
+            self.print_step("Upload Docker Container")
 
-        self.print_step("Upload Docker Container")
+            self._build_docker()
+            self._docker_push()
+        else:
+            if self.infra_setup["BUILD_METHOD"] == 'docker':
+                self._set_aws_ecr_skipbuild(docker=True)
+            else:  ##buildah
+                self._set_aws_ecr_skipbuild(docker=False, tags=self.infra_setup["REPOSITORY_TAGS"]) 
 
-        self._build_docker()
-        self._docker_push()
         self._set_container_uri()
+
+
+    def _set_aws_ecr_skipbuild(self, docker = True, tags = []):
+        self.docker = docker
+        self.ecr_url = self.ecr_name.split("/")[0]
+        # FIXME 마지막에 붙는 container 이름은 solution_name 과 같게 
+        # http://collab.lge.com/main/pages/viewpage.action?pageId=2126915782
+        # [중요] container uri 는 magna-ws 말고 magna 같은 식으로 쓴다 (231207 임현수C)
+        ecr_scope = self.infra_setup["WORKSPACE_NAME"].split('-')[0] # magna-ws --> magna
+        self.ecr_repo = self.ecr_name.split("/")[1] + '/' + ecr_scope + "/ai-solutions/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
+        self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
+
+        print_color(f"[SYSTEM] Target AWS ECR repository:", color='cyan')
+        print(f"{self.ecr_repo}")
 
 
     def _set_aws_ecr(self, docker = True, tags = []):
@@ -1093,19 +1144,7 @@ class SolutionRegister:
         except:
             print_color(f"[INFO] Start s3 access check without key file.", color="blue")
             ecr_client = boto3.client('ecr')
-        
         self.ecr_clinet = ecr_client
-
-
-        ## Spec-out : 고객지수는 모든 ecr 를 불러 올 수 있는 권한이 없다. 
-        # repos = ecr_client.describe_repositories(
-        #     maxResults=600  ## 갯수가 작아서 찾지 못하는 Issue 있었음 (24.01)
-        #     )
-        # for repo in repos['repositories']:
-        #     # print(repo['repositoryName'])
-        #     if repo['repositoryName'] == self.ecr_repo:
-        #         print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
-        #         ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
 
         try:
             ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
@@ -1177,17 +1216,18 @@ class SolutionRegister:
 
     # FIXME 그냥 무조건 latest로 박히나? 
     def _build_docker(self):
+
         if self.docker:
-            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:{self.ECR_TAG}'])
+            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:v{self.solution_version_new}'])
         else:
-            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:{self.ECR_TAG}'])
+            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:v{self.solution_version_new}'])
 
 
     def _docker_push(self):
         if self.infra_setup['BUILD_METHOD'] == 'docker':
-            subprocess.run(['docker', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
+            subprocess.run(['docker', 'push', f'{self.ecr_full_url}:v{self.solution_version_new}'])
         else:
-            subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:{self.ECR_TAG}'])
+            subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:v{self.solution_version_new}'])
 
         if self.infra_setup['BUILD_METHOD'] == 'docker':
             subprocess.run(['docker', 'logout'])
@@ -1196,8 +1236,7 @@ class SolutionRegister:
 
     def _set_container_uri(self):
         try: 
-            data = {'container_uri': self.ecr_full_url} # full url 는 tag 정보까지 포함 
-            data = {'container_uri': self.ecr_full_url}
+            data = {'container_uri': f'{self.ecr_full_url}:v{self.solution_version_new}'} # full url 는 tag 정보까지 포함 
             self.sm_yaml['pipeline'][self.sm_pipe_pointer].update(data)
             print_color(f"[SYSTEM] Completes setting << container_uri >> in solution_metadata.yaml:", color='green')
             print(f"pipeline: -container_uri: {data['container_uri']}")
@@ -1370,20 +1409,6 @@ class SolutionRegister:
                 shutil.rmtree(contents_path)  # 폴더 제거
             repo = git.Repo.clone_from(url, "./contents")
 
-
-    # FIXME [임시] amd docker ecr 등록 실험용 
-    def rename_docker(self, pre_existing_docker: str): 
-        try: 
-            if self.docker:
-                subprocess.run(['docker', 'tag', pre_existing_docker, f'{self.ecr_full_url}:{self.ECR_TAG}'])
-                print_color(f"[Success] done renaming docker: \n {pre_existing_docker} --> {self.ecr_full_url}:{self.ECR_TAG}", color='green')
-            ## FIXME buildah도 tag 명령어 있는지? 
-            # else:
-            #     subprocess.run(['sudo', 'buildah', 'tag', pre_existing_docker, f'{self.ecr_full_url}:{self.ECR_TAG}'])
-            
-        except: 
-            raise NotImplementedError("Failed to rename docker.")
-        
     def register_solution_instance(self): 
 
         self.print_step("Register AI solution instance")
@@ -1441,10 +1466,11 @@ class SolutionRegister:
               print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
         elif response.status_code == 400:
             print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.response_solution_instance["detail"])
+            raise ValueError("Error message: ", self.response_solution_instance["detail"])
+
         elif response.status_code == 422:
             print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.response_solution_instance["detail"])
+            raise ValueError("Error message: ", self.response_solution_instance["detail"])
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
 
@@ -1903,7 +1929,7 @@ class SolutionRegister:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
             raise NotImplementedError(f"Failed to delete stream: \n {response_delete_instance}")
 
-    def delete_solution(self): 
+    def delete_solution(self, delete_all=False): 
 
         self.print_step("Delete AI solution")
 
@@ -1919,13 +1945,20 @@ class SolutionRegister:
             raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
 
         # stream 등록 
-        solutin_params = {
-            "solution_id": response_solution['id'],
-            "workspace_name": response_solution['scope_ws']
-        }
-
+        if self.solution_info["solution_update"]:
+            version_id = response_solution['versions'][0]['id']
+            solutin_params = {
+                "solution_version_id": version_id,
+                "workspace_name": response_solution['scope_ws']
+            }
+            api = self.api_uri["REGISTER_SOLUTION"] + f"/{version_id}/version"
+        else:
+            solutin_params = {
+                "solution_id": response_solution['id'],
+                "workspace_name": response_solution['scope_ws']
+            }
+            api = self.api_uri["REGISTER_SOLUTION"] + f"/{response_solution['id']}"
         aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["REGISTER_SOLUTION"] + f"/{response_solution['id']}"
         response = requests.delete(aic+api, 
                                  params=solutin_params, 
                                  cookies=self.aic_cookie)
@@ -2140,28 +2173,31 @@ class SolutionRegister:
         # except:
         #     raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
 
-        self.solution_instance_params = {
-            "workspace_name": self.infra_setup['WORKSPACE_NAME']
+        params = {
+            "workspace_name": self.infra_setup['WORKSPACE_NAME'],
+            "with_pulic": 1, 
+            "page_size": 100
         }
-        print_color(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}", color='blue')
+        print_color(f"\n[INFO] AI solution interface information: \n {params}", color='blue')
 
         # solution instance 등록
         aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["SOLUTION_INSTANCE"]
+        api = self.api_uri["SOLUTION_LIST"]
         response = requests.get(aic+api, 
-                                 params=self.solution_instance_params, 
+                                 params=params, 
                                  cookies=self.aic_cookie)
-        self.response_instance_list = response.json()
+        response_json = response.json()
 
         if response.status_code == 200:
-            print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
+            print_color("[SUCCESS] solution list 조회를 성공하였습니다. ", color='cyan')
             pprint("[INFO] response: ")
-            for cnt, instance in enumerate(self.response_instance_list["instances"]):
+            for cnt, instance in enumerate(response_json["solutions"]):
                 id = instance["id"]
                 name = instance["name"]
+                latest_version = instance["versions"][0]["version"]
 
                 max_name_len = len(max(name, key=len))
-                print(f"(idx: {cnt:{max_name_len}}), solution_name: {name:{max_name_len}}, solution_id: {id}")
+                print(f"(idx: {cnt:{max_name_len}}), solution_name: {name:{max_name_len}}, solution_id: {id}, latest_version: {latest_version}")
 
             # interface 용 폴더 생성.
             try:
@@ -2171,16 +2207,16 @@ class SolutionRegister:
                 raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
 
             # JSON 데이터를 파일에 저장
-            path = self.interface_path + self.instance_list_file
+            path = self.interface_path + self.solution_list_file
             with open(path, 'w') as f:
-              json.dump(self.response_instance_list, f, indent=4)
+              json.dump(response_json, f, indent=4)
               print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
         elif response.status_code == 400:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.response_instance_list["detail"])
+            print_color("[ERROR] solution list 조회를 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            print("Error message: ", response_json["detail"])
         elif response.status_code == 422:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.response_instance_list["detail"])
+            print_color("[ERROR] solution list 조회를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            print("Error message: ", response_json["detail"])
         else:
 
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
@@ -2201,7 +2237,7 @@ class SolutionRegister:
         if not type(self.infra_setup['VERSION']) == float:
             raise ValueError("solution_metadata 의 VERSION 은 float 타입이어야 합니다.")
 
-        self.sm_yaml['version'] = self.infra_setup['VERSION']
+        self.sm_yaml['metadata_version'] = self.infra_setup['VERSION']
         self.sm_yaml['name'] = self.solution_name
         self.sm_yaml['description'] = {}
         self.sm_yaml['pipeline'] = []
@@ -2392,10 +2428,12 @@ def _tar_dir(_path):
         _save_file_name = _path.strip('.') 
         _save_path = REGISTER_ARTIFACT_PATH +  f'{_save_file_name}.tar.gz' 
         last_dir = _path # ex. .train_artifacts/
+
     tar = tarfile.open(_save_path, 'w:gz')
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):
         base_dir = root.split(last_dir)[-1] + '/'
         for file_name in files:
+            # print("SSH@@@@@@@@@@@", file_name, base_dir, file_name)
             #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
             tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 .train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
     tar.close()
