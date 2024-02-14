@@ -99,7 +99,7 @@ class SolutionRegister:
 
         self.aws_access_key_path = self.infra_setup["AWS_KEY_FILE"]
         print_color(f"[SYSTEM] S3 key 파일을 로드 합니다. (file: {self.aws_access_key_path})", color="green")
-        self.update_aws_credentials(self.aws_access_key_path)
+        self.update_aws_credentials()
 
         ## internal variables
         self.sm_yaml = {}  ## core
@@ -128,20 +128,20 @@ class SolutionRegister:
             
     ################################################
     ################################################
-    def update_aws_credentials(self, aws_access_key_path, profile_name='default'):
+    def update_aws_credentials(self, profile_name='default'):
         """ AWS CLI 설정에 액세스 키와 비밀 키를 업데이트합니다. """
-        try:
-            f = open(aws_access_key_path, "r")
-            keys = []
-            values = []
-            for line in f:
-                key = line.split(":")[0]
-                value = line.split(":")[1].rstrip()
-                keys.append(key)
-                values.append(value)
-            access_key = values[0]
-            secret_key = values[1]
-        except:
+        if os.path.exists(self.aws_access_key_path):
+            with open(self.aws_access_key_path, "r") as f:
+                keys = []
+                values = []
+                for line in f:
+                    key = line.split(":")[0]
+                    value = line.split(":")[1].rstrip()
+                    keys.append(key)
+                    values.append(value)
+                access_key = values[0]
+                secret_key = values[1]
+        else:
             print_color("[SYSTEM] AWS 액세스 키 파일을 찾을 수 없습니다.", color="yellow")
             return False
 
@@ -868,34 +868,35 @@ class SolutionRegister:
         """
         self.print_step("Check to access S3")
 
-        try:
-            f = open(self.aws_access_key_path, "r")
-            keys = []
-            values = []
-            for line in f:
-                key = line.split(":")[0]
-                value = line.split(":")[1].rstrip()
-                keys.append(key)
-                values.append(value)
-            ACCESS_KEY = values[0]
-            SECRET_KEY = values[1]
-            self.s3_client = boto3.client('s3',
-                                aws_access_key_id=ACCESS_KEY,
-                                aws_secret_access_key=SECRET_KEY)
-        except:
+        if os.path.exists(self.aws_access_key_path):
+            with open(self.aws_access_key_path, "r") as f:            
+                keys = []
+                values = []
+                for line in f:
+                    key = line.split(":")[0]
+                    value = line.split(":")[1].rstrip()
+                    keys.append(key)
+                    values.append(value)
+                ACCESS_KEY = values[0]
+                SECRET_KEY = values[1]
+                self.s3_client = boto3.client('s3',
+                                    aws_access_key_id=ACCESS_KEY,
+                                    aws_secret_access_key=SECRET_KEY,
+                                    region_name=self.infra_setup['REGION'])
+        else:
             print_color(f"[INFO] Start s3 access check without key file.", color="blue")
-            self.s3_client = boto3.client('s3')
+            self.s3_client = boto3.client('s3', region_name=self.infra_setup['REGION'])
 
         # # FIXME 아래 region이 none으로 나옴 
         # my_session = boto3.session.Session()
         # self.region = my_session.region_name
         print(f"[INFO] AWS region: {self.infra_setup['REGION']}")
-        if isinstance(boto3.client('s3'), botocore.client.BaseClient) == True:       
+        if isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient) == True:       
             print_color(f"[INFO] AWS S3 access check: OK", color="green")
         else: 
             raise ValueError(f"[ERROR] AWS S3 access check: Fail")
 
-        return isinstance(boto3.client('s3'), botocore.client.BaseClient)
+        return isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient)
 
     def s3_upload_data(self):
         """input 폴더에 존재하는 데이터를 s3 에 업로드 합니다. 
@@ -1126,24 +1127,25 @@ class SolutionRegister:
         self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
 
         ## 동일 이름의 ECR 존재 시, 삭제하고 다시 생성한다. 
-        try:
-            f = open(self.aws_access_key_path, "r")
-            keys = []
-            values = []
-            for line in f:
-                key = line.split(":")[0]
-                value = line.split(":")[1].rstrip()
-                keys.append(key)
-                values.append(value)
-            ACCESS_KEY = values[0]
-            SECRET_KEY = values[1]
-            ecr_client = boto3.client('ecr',
-                                aws_access_key_id=ACCESS_KEY,
-                                aws_secret_access_key=SECRET_KEY,
-                                region_name=self.infra_setup['REGION'])
-        except:
+
+        if os.path.exists(self.aws_access_key_path):
+            with open(self.aws_access_key_path, "r") as f:
+                keys = []
+                values = []
+                for line in f:
+                    key = line.split(":")[0]
+                    value = line.split(":")[1].rstrip()
+                    keys.append(key)
+                    values.append(value)
+                ACCESS_KEY = values[0]
+                SECRET_KEY = values[1]
+                ecr_client = boto3.client('ecr',
+                                    aws_access_key_id=ACCESS_KEY,
+                                    aws_secret_access_key=SECRET_KEY,
+                                    region_name=self.infra_setup['REGION'])
+        else:
             print_color(f"[INFO] Start s3 access check without key file.", color="blue")
-            ecr_client = boto3.client('ecr')
+            ecr_client = boto3.client('ecr', region_name=self.infra_setup['REGION'])
         self.ecr_clinet = ecr_client
 
         try:
@@ -1721,24 +1723,25 @@ class SolutionRegister:
             return bucket, rest_of_the_path
 
         ## s3_client 생성
-        try:
-            f = open(self.aws_access_key_path, "r")
-            keys = []
-            values = []
-            for line in f:
-                key = line.split(":")[0]
-                value = line.split(":")[1].rstrip()
-                keys.append(key)
-                values.append(value)
-            ACCESS_KEY = values[0]
-            SECRET_KEY = values[1]
-            s3_client = boto3.client('s3',
-                                aws_access_key_id=ACCESS_KEY,
-                                aws_secret_access_key=SECRET_KEY,
-                                region_name=self.infra_setup['REGION'])
-        except:
+ 
+        if os.path.exists(self.aws_access_key_path):
+            with open(self.aws_access_key_path, "r") as f:
+                keys = []
+                values = []
+                for line in f:
+                    key = line.split(":")[0]
+                    value = line.split(":")[1].rstrip()
+                    keys.append(key)
+                    values.append(value)
+                ACCESS_KEY = values[0]
+                SECRET_KEY = values[1]
+                s3_client = boto3.client('s3',
+                                    aws_access_key_id=ACCESS_KEY,
+                                    aws_secret_access_key=SECRET_KEY,
+                                    region_name=self.infra_setup['REGION'])
+        else:
             print_color(f"[INFO] Start s3 access check without key file.", color="blue")
-            s3_client = boto3.client('s3')
+            s3_client = boto3.client('s3', region_name=self.infra_setup['REGION'])
 
 
         try: 
@@ -2298,13 +2301,15 @@ class SolutionRegister:
                 exp_plan_dict = yaml.safe_load(yaml_file)
         except FileNotFoundError:
             print(f'File {REGISTER_EXPERIMENTAL_PLAN} not found.')
-
-        if exp_plan_dict['control'][0]['get_asset_source'] == 'every':
-            exp_plan_dict['control'][0]['get_asset_source'] = 'once'
-
-        if exp_plan_dict['control'][0]['get_external_data'] == 'once':
-            exp_plan_dict['control'][0]['get_external_data'] = 'every'
-
+     
+        for idx, _dict in enumerate(exp_plan_dict['control']):
+            if list(map(str, _dict.keys()))[0] == 'get_asset_source':
+                if list(map(str, _dict.values()))[0] =='every':
+                    exp_plan_dict['control'][idx]['get_asset_source'] = 'once'
+            if list(map(str, _dict.keys()))[0] == 'get_external_data':
+                if list(map(str, _dict.values()))[0] == 'once':
+                    exp_plan_dict['control'][idx]['get_external_data'] = 'every'
+                    
         with open(REGISTER_EXPERIMENTAL_PLAN, 'w') as file:
             yaml.safe_dump(self.exp_yaml, file)
 
