@@ -65,10 +65,8 @@ class ALO:
         self.system_envs = {}
 
         # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
-        # if experimental_plan == "" or experimental_plan == None:
-        #     self.exp_plan_file = EXP_PLAN
-        # else:
-        #     self.exp_plan_file = experimental_plan
+        if experimental_plan == "" or experimental_plan == None:
+            experimental_plan = EXP_PLAN
 
         # 입력 받은 args를 전역변수로 변환
         # config, system, mode, loop, computing
@@ -84,11 +82,23 @@ class ALO:
         
         # artifacts home 초기화 (from src.utils)
         self.system_envs['artifacts'] = self.artifact.set_artifacts()
-        b = 0
 
     #############################
     ####    Main Function    ####
     #############################
+        
+    def main(self):
+        """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
+        실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
+        운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
+        """
+
+        # init solution metadata
+        if self.loop:
+            while self.loop:
+                print(self.loop)
+        else:
+            print(self.loop)
         
     def set_metadata(self, experimental_plan, pipeline_type):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
@@ -102,6 +112,7 @@ class ALO:
         self.system_envs['experimental_plan'] = experimental_plan
         self.load_experiment_plan(sol_meta, experimental_plan, self.system_envs)
         self._set_attr()
+        # loop 모드면 항상 boot 모드
         self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
 
         # 입력 받은 config(exp)가 없는 경우 default path에 있는 내용을 사용
@@ -374,7 +385,7 @@ class ALO:
         return json.loads(self.system) if self.system != None else None # None or dict from json 
     
     def load_experiment_plan(self, sol_meta, experimental_plan, system_envs):
-        self.experimental_plan.read_yaml(sol_me_file = sol_meta, exp_plan_file = experimental_plan, system_envs = system_envs)
+        return self.experimental_plan.read_yaml(sol_me_file = sol_meta, exp_plan_file = experimental_plan, system_envs = system_envs)
 
     ###################################
     ####    Part2. Runs fuction    ####
