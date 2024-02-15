@@ -58,7 +58,10 @@ class Metadata:
             PROC_LOGGER.process_error("Failed to read experimental plan yaml.")
 
         # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭 (from src.utils)
-        self._match_steps(exp_plan)
+        if self._match_steps(exp_plan):
+            pass
+        else:
+            PROC_LOGGER.process_error("match step failed.")
 
         return exp_plan, system_envs
 
