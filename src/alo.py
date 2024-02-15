@@ -40,7 +40,7 @@ class AssetStructure:
         
 class ALO:
     # def __init__(self, exp_plan_file = None, solution_metadata = None, pipeline_type = 'all', boot_on = False, computing = 'local'):
-    def __init__(self, kwargs):
+    def __init__(self, kwargs, experimental_plan = EXP_PLAN, pipeline_type = 'all'):
         """실험 계획 (experimental_plan.yaml), 운영 계획(solution_metadata), 
         파이프라인 종류(train, inference), 동작방식(always-on) 에 대한 설정을 완료함
 
@@ -64,13 +64,19 @@ class ALO:
 
         self.system_envs = {}
 
+        # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
+        # if experimental_plan == "" or experimental_plan == None:
+        #     self.exp_plan_file = EXP_PLAN
+        # else:
+        #     self.exp_plan_file = experimental_plan
+
         # 입력 받은 args를 전역변수로 변환
         # config, system, mode, loop, computing
         for key, value in kwargs.items():
             setattr(self, key, value)
 
         self._get_alo_version()
-        self.set_metadata()
+        self.set_metadata(experimental_plan, pipeline_type)
         # 현재 ALO 버전
 
         # solution_metadata 존재 시 self.experimental_plan의 self 변수들 및 system_envs는 _update_yaml에서 업데이트 된다. 
@@ -84,28 +90,22 @@ class ALO:
     ####    Main Function    ####
     #############################
         
-    def set_metadata(self):
+    def set_metadata(self, experimental_plan, pipeline_type):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
         
-        if self.config == "" or self.config == None:
-            self.exp_plan_file = EXP_PLAN
-        else:
-            self.exp_plan_file = self.config
-
-        
         # init solution metadata
         sol_meta = self.load_solution_metadata()
         self.system_envs['solution_metadata'] = sol_meta
-        self.load_experiment_plan(sol_meta, self.system_envs)
+        self.system_envs['experimental_plan'] = experimental_plan
+        self.load_experiment_plan(sol_meta, experimental_plan, self.system_envs)
         self._set_attr()
-        self.system_envs = self._set_system_envs(self.mode, self.loop, self.system_envs)
+        self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
 
         # 입력 받은 config(exp)가 없는 경우 default path에 있는 내용을 사용
         
-
         # metadata까지 완성되면 출력
         self._alo_info()
         # ALO 설정 완료 info 와 로깅
@@ -144,7 +144,7 @@ class ALO:
             finally:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
-                self.artifact.backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
+                self.artifact.backup_history(pipeline, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록        
                 ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
                 if self.is_always_on:
@@ -292,7 +292,7 @@ class ALO:
         ###################################
         if self.control['backup_artifacts'] == True:
             try:
-                self.artifact.backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
+                self.artifact.backup_history(pipeline, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
             except: 
                 self.proc_logger.process_error("Failed to backup artifacts into << .history >>")
 
@@ -373,8 +373,8 @@ class ALO:
         # system 은 입력받은 solution metadata
         return json.loads(self.system) if self.system != None else None # None or dict from json 
     
-    def load_experiment_plan(self, sol_meta, system_envs):
-        self.experimental_plan.read_yaml(exp_plan_file = self.exp_plan_file, system_envs = system_envs, sol_me_file = sol_meta)
+    def load_experiment_plan(self, sol_meta, experimental_plan, system_envs):
+        self.experimental_plan.read_yaml(sol_me_file = sol_meta, exp_plan_file = experimental_plan, system_envs = system_envs)
 
     ###################################
     ####    Part2. Runs fuction    ####
@@ -402,6 +402,7 @@ class ALO:
         self.asset_structure.envs['project_home'] = PROJECT_HOME
         
         self.asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
+        self.asset_structure.envs['artifacts'] = self.system_envs['artifacts']
         self.asset_structure.envs['alo_version'] = self.system_envs['alo_version']
         if self.control['interface_mode'] not in INTERFACE_TYPES:
             self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")

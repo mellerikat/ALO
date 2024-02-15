@@ -29,7 +29,7 @@ class Metadata:
         return yaml_dict 
 
 
-    def read_yaml(self, exp_plan_file, system_envs, sol_me_file = None):
+    def read_yaml(self, sol_me_file, exp_plan_file, system_envs):
         # exp_plan_file은 config 폴더로 복사해서 가져옴. 단, 외부 exp plan 파일 경로는 로컬 절대 경로만 지원 
         try:
             exp_plan_file = self.load_experimental_plan(exp_plan_file) 
