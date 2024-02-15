@@ -6,7 +6,6 @@ import traceback
 from datetime import datetime
 from collections import Counter
 from copy import deepcopy 
-import subprocess
 # local import
 from src.constants import *
 from src.artifacts import Aritifacts
@@ -20,7 +19,7 @@ from src.redisqueue import RedisQueue
 from src.logger import ProcessLogger  
 # s3를 옮김
 from src.sagemaker_handler import SagemakerHandler 
-from src.yaml import ExperimentalPlan
+from src.yaml import Metadata
 #######################################################################################
 
 class AssetStructure: 
@@ -40,7 +39,8 @@ class AssetStructure:
         self.config = {}
         
 class ALO:
-    def __init__(self, exp_plan_file = None, solution_metadata = None, pipeline_type = 'all', boot_on = False, computing = 'local'):
+    # def __init__(self, exp_plan_file = None, solution_metadata = None, pipeline_type = 'all', boot_on = False, computing = 'local'):
+    def __init__(self, kwargs):
         """실험 계획 (experimental_plan.yaml), 운영 계획(solution_metadata), 
         파이프라인 종류(train, inference), 동작방식(always-on) 에 대한 설정을 완료함
 
@@ -52,87 +52,66 @@ class ALO:
             computing: 학습하는 컴퓨팅 자원 (local, sagemaker)
         Returns:
         """
+
         # 필요 class init
-        self.ext_data = ExternalHandler()
-        self.install = Packages()
-        self.asset = Assets(ASSET_HOME)
-        self.artifact = Aritifacts()
+        self._init_class()
+        
         # alolib을 설치
-        self.install.set_alolib()
-
-        # 필요한 전역변수 선언
-        self.exp_plan = None
-        self.computing = computing 
-        self.proc_logger = None
-
-        if exp_plan_file == "" or exp_plan_file == None:
-            self.exp_plan_file = EXP_PLAN
-        else:
-            self.exp_plan_file = exp_plan_file
-
-        self.pipeline_type = pipeline_type
-            
-        self.boot_on = boot_on
+        self._set_alolib()
 
         # logger 초기화
-        self.init_logger()
-        
-        # init solution metadata
-        self.sol_meta = json.loads(solution_metadata) if solution_metadata != None else None # None or dict from json 
+        self._init_logger()
 
-    
-    def init(self, url = None):
-        '''
-        git clone --no-checkout http://mod.lge.com/hub/dxadvtech/aicontents/tcr.git
-        echo "config/experimental_plan.yaml" >> .git/info/sparse-checkout
-        git checkout
-        '''
+        self.system_envs = {}
 
-        if url != None:
-            self._sparse_checkout_copy(url)
-        else:
-            def is_file_in_folder():
-                # 파일의 전체 경로를 구성
-                file_path = EXP_PLAN
+        # 입력 받은 args를 전역변수로 변환
+        # config, system, mode, loop, computing
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
-                # 파일이 존재하는지 확인
-                return os.path.exists(file_path)
-            if is_file_in_folder():
-                pass
-            else:
-                print("experimental_plan 이 없습니다. alo.init을 통해 yaml을 설치해주세요. alo.init(git_url)")
-        
-        system_envs = {} 
-        self.experimental_plan = ExperimentalPlan(self.exp_plan_file, self.sol_meta)
-        # solution_metadata 존재 시 self.experimental_plan의 self 변수들 및 system_envs는 _update_yaml에서 업데이트 된다. 
-        self.exp_plan_file, system_envs = self.experimental_plan.read_yaml(system_envs)
-        # self.experimental_plan의 내용 (solution metadata 존재 시 self 변수들 업데이트 완료된)을 ALO 클래스 내부 변수화 
-        self._set_attr()
-        self.system_envs = self._set_system_envs(self.pipeline_type, self.boot_on, system_envs)
-
+        self._get_alo_version()
+        self.set_metadata()
         # 현재 ALO 버전
-        self.alo_version = subprocess.run(['git', 'symbolic-ref', '--short', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8').strip()
 
-        # ALO 설정 완료 info 와 로깅
-        self._alo_info()
-
+        # solution_metadata 존재 시 self.experimental_plan의 self 변수들 및 system_envs는 _update_yaml에서 업데이트 된다. 
+        # self.experimental_plan의 내용 (solution metadata 존재 시 self 변수들 업데이트 완료된)을 ALO 클래스 내부 변수화 
+        # self.set_metadata()
+        
+        
         # artifacts home 초기화 (from src.utils)
         self.artifacts = self.artifact.set_artifacts()
-        
-    
-    def _sparse_checkout_copy(self, url):
 
-        if os.path.exists(SOLUTION_HOME):
-            shutil.rmtree(SOLUTION_HOME)
-            os.makedirs(SOLUTION_HOME)
-        # 저장소 클론
-        os.chdir(SOLUTION_HOME)
-        subprocess.run(['git', 'clone', url, '.'])
-
-    
     #############################
     ####    Main Function    ####
     #############################
+        
+    def set_metadata(self):
+        """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
+        실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
+        운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
+        """
+        
+        if self.config == "" or self.config == None:
+            self.exp_plan_file = EXP_PLAN
+        else:
+            self.exp_plan_file = self.config
+
+        
+        # init solution metadata
+        sol_meta = self.load_solution_metadata()
+        self.system_envs['solution_metadata'] = sol_meta
+        self.load_experiment_plan(sol_meta, self.system_envs)
+        self._set_attr()
+        self.system_envs = self._set_system_envs(self.mode, self.loop, self.system_envs)
+
+        # 입력 받은 config(exp)가 없는 경우 default path에 있는 내용을 사용
+        
+
+        # metadata까지 완성되면 출력
+        self._alo_info()
+        # ALO 설정 완료 info 와 로깅
+
+
     def runs(self, mode = None):
         """ 파이프라인 실행에 필요한 데이터, 패키지, Asset 코드를 작업환경으로 setup 하고 & 순차적으로 실행합니다. 
 
@@ -226,13 +205,6 @@ class ALO:
     ####    Sub Function    ####
     ############################
             
-    def _set_attr(self):
-        self.user_parameters = self.experimental_plan.user_parameters
-        self.asset_source = self.experimental_plan.asset_source
-        self.external_path = self.experimental_plan.external_path
-        self.external_path_permission = self.experimental_plan.external_path_permission
-        self.control = self.experimental_plan.control
-                        
     def run(self, pipeline):
         
         self._set_attr()
@@ -244,8 +216,11 @@ class ALO:
             # [중요] sagemaker 사용 시엔 self.external_path['save_train_artifacts_path']를 sagemaker에서 제공하는 model_dir로 변경
             # [참고] https://github.com/aws/sagemaker-training-toolkit        
             self.external_path['save_train_artifacts_path'] = environment.Environment().model_dir
-        self.is_always_on = (self.sol_meta is not None) and (self.system_envs['redis_host'] is not None) \
+        
+        # (self.sol_meta is not None) and 를 어떻게 수정해서 사용할건지 확인
+        self.is_always_on = (self.system_envs['redis_host'] is not None) \
             and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
+        
         if pipeline not in ['train_pipeline', 'inference_pipeline']:
             self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
         ###################################
@@ -302,6 +277,8 @@ class ALO:
         ## Step7: summary yaml, output 정상 생성 체크    
         ###################################    
         
+        #임시
+        self.boot_on = False
         if pipeline == 'inference_pipeline' and self.boot_on == False:
             self._check_output()
         
@@ -327,7 +304,7 @@ class ALO:
     #####################################
     ####    Part1. Initialization    ####
     #####################################
-    def init_logger(self):
+    def _init_logger(self):
         """ALO Master 의 logger 를 초기화 합니다. 
         ALO Slave (Asset) 의 logger 를 별도 설정 되며, configuration 을 공유 합니다. 
         """
@@ -387,15 +364,22 @@ class ALO:
         if self.system_envs['boot_on'] == True: 
             self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
         else: 
-            self.proc_logger.process_meta(f"Loaded solution_metadata: \n{self.sol_meta}\n")
+            self.proc_logger.process_meta(f"Loaded solution_metadata: \n{self.system_envs['solution_metadata']}\n")
         self.proc_logger.process_info(f"Process start-time: {self.system_envs['start_time']}")
-        self.proc_logger.process_meta(f"ALO version = {self.alo_version}")
+        self.proc_logger.process_meta(f"ALO version = {self.system_envs['alo_version']}")
         self.proc_logger.process_info("==================== Start ALO preset ==================== ")
+
+    def load_solution_metadata(self):
+        # TODO solution meta version 관리 필요??
+        # system 은 입력받은 solution metadata
+        return json.loads(self.system) if self.system != None else None # None or dict from json 
+    
+    def load_experiment_plan(self, sol_meta, system_envs):
+        self.experimental_plan.read_yaml(exp_plan_file = self.exp_plan_file, system_envs = system_envs, sol_me_file = sol_meta)
 
     ###################################
     ####    Part2. Runs fuction    ####
     ###################################
-        
     
     def read_structure(self, pipeline, step):
         import pickle 
@@ -420,7 +404,7 @@ class ALO:
         
         self.asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
         self.asset_structure.envs['artifacts'] = self.artifacts
-        self.asset_structure.envs['alo_version'] = self.alo_version
+        self.asset_structure.envs['alo_version'] = self.system_envs['alo_version']
         if self.control['interface_mode'] not in INTERFACE_TYPES:
             self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
         self.asset_structure.envs['interface_mode'] = self.control['interface_mode']
@@ -653,4 +637,32 @@ class ALO:
         
         return asset_structure
     
-                
+    def _init_class(self):
+        self.ext_data = ExternalHandler()
+        self.install = Packages()
+        self.asset = Assets(ASSET_HOME)
+        self.artifact = Aritifacts()
+        self.experimental_plan = Metadata()
+
+    def _set_alolib(self):
+        self.install.set_alolib()
+
+    def _set_attr(self):
+        self.user_parameters = self.experimental_plan.user_parameters
+        self.asset_source = self.experimental_plan.asset_source
+        self.external_path = self.experimental_plan.external_path
+        self.external_path_permission = self.experimental_plan.external_path_permission
+        self.control = self.experimental_plan.control
+
+    def _get_alo_version(self):
+
+        with open('.git/HEAD', 'r') as f:
+            ref = f.readline().strip()
+
+        # ref는 형식이 'ref: refs/heads/브랜치명' 으로 되어 있으므로, 마지막 부분만 가져옵니다.
+        if ref.startswith('ref:'):
+            __version__ = ref.split('/')[-1]
+        else:
+            __version__ = ref  # Detached HEAD 상태 (브랜치명이 아니라 커밋 해시)
+        
+        self.system_envs['alo_version'] = __version__

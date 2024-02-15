@@ -8,6 +8,9 @@ PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 #--------------------------------------------------------------------------------------------------------------------------
 
 def set_args():
+    """
+    set args for ALO
+    """
     parser = argparse.ArgumentParser(description="Enter the options: << config, system, mode, loop >>")
     parser.add_argument("--config", type=str, default=None, help="config option: experimental_plan.yaml")
     parser.add_argument("--system", type=str, default=None, help="system option: jsonized solution_metadata.yaml")

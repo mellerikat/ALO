@@ -1,7 +1,7 @@
+import os
 import json
 import subprocess
 from src.utils import set_args, init_redis
-import os
 from src.alo import ALO
 
 # --------------------------------------------------------------------------------------------------------------------------
