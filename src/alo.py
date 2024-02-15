@@ -75,11 +75,10 @@ class ALO:
 
         # solution_metadata 존재 시 self.experimental_plan의 self 변수들 및 system_envs는 _update_yaml에서 업데이트 된다. 
         # self.experimental_plan의 내용 (solution metadata 존재 시 self 변수들 업데이트 완료된)을 ALO 클래스 내부 변수화 
-        # self.set_metadata()
-        
         
         # artifacts home 초기화 (from src.utils)
-        self.artifacts = self.artifact.set_artifacts()
+        self.system_envs['artifacts'] = self.artifact.set_artifacts()
+        b = 0
 
     #############################
     ####    Main Function    ####
@@ -403,7 +402,6 @@ class ALO:
         self.asset_structure.envs['project_home'] = PROJECT_HOME
         
         self.asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
-        self.asset_structure.envs['artifacts'] = self.artifacts
         self.asset_structure.envs['alo_version'] = self.system_envs['alo_version']
         if self.control['interface_mode'] not in INTERFACE_TYPES:
             self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
@@ -608,7 +606,7 @@ class ALO:
 
         # 사용자가 config['meta'] 를 통해 볼 수 있는 가변 부
         # FIXME step은 추후 삭제되야함, meta --> metadata 같은 식으로 약어가 아닌 걸로 변경돼야 함 
-        meta_dict = {'artifacts': self.artifacts, 'pipeline': pipeline, 'step': step, 'step_number': step, 'step_name': self.user_parameters[pipeline][step]['step']}
+        meta_dict = {'artifacts': self.system_envs['artifacts'], 'pipeline': pipeline, 'step': step, 'step_number': step, 'step_name': self.user_parameters[pipeline][step]['step']}
         asset_structure.config['meta'] = meta_dict #nested dict
 
         # TODO 가변부 status는 envs에는 아닌듯 >> 성선임님 논의         
