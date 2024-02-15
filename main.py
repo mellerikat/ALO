@@ -71,7 +71,7 @@ if __name__ == "__main__":
         ################################ 
         ##### Step2. Infinite loop ##### 
         ################################ 
-        kwargs = {'pipeline_type': args.mode, 'exp_plan_file': args.config, 'boot_on': False}
+        kwargs = {'pipeline_type': args.mode, 'solution_metadata': args.system, 'exp_plan_file': args.config, 'boot_on': False}
         alo = ALO(**kwargs)
         while True: 
             ## EdgeApp 이 추론 요청을 대기 (waiting 상태 유지)
@@ -83,7 +83,6 @@ if __name__ == "__main__":
                     ## 운영시에만 사용되는 solution_metadata 는 string 으로 입력 받는다. 
                     solution_metadata = msg_dict['solution_metadata']
                     alo.sol_meta = json.loads(solution_metadata)
-                    alo = ALO(**kwargs)
                     alo.init()
                     alo.runs()
                 except Exception as e: 
