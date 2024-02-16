@@ -400,7 +400,7 @@ class SolutionRegister:
         ## 업데이트  에러 처리 및 신규 등록 처리 (모든 solution list 검수 후 진행 가능)
         if self.solution_info['solution_update']:
             if not name in solution_list:
-                txt = f"[ERROR] If solution_type is True, the same solution name cannot exist.(name: {name})"
+                txt = f"[ERROR] If solution_update is True, the same solution name cannot exist.(name: {name})"
                 print_color(txt, color='red')
                 raise ValueError("Not find solution name.")
         else:
