@@ -2311,7 +2311,7 @@ class SolutionRegister:
                     exp_plan_dict['control'][idx]['get_external_data'] = 'every'
                     
         with open(REGISTER_EXPERIMENTAL_PLAN, 'w') as file:
-            yaml.safe_dump(self.exp_yaml, file)
+            yaml.safe_dump(exp_plan_dict, file)
 
         print_color("[SUCCESS] Success ALO directory setting.", color='green')
 
