@@ -8,15 +8,9 @@
 "LOGIN_MODE": "static" ## ldap, static
 "ECR_TAG": "latest"   ## 없어질 사항
 "REPOSITORY_TAGS": 
-  - "Key=Company,Value=LGE"
-  - "Key=Owner,Value=IC360"
-  - "Key=HQ,Value=CDO"
-  - "Key=Division,Value=CDO"
-  - "Key=Infra Region,Value=KIC"
-  - "Key=Service Mode,Value=OP"
-  - "Key=Cost Type,Value=COMPUTING"
-  - "Key=Project,Value=CIS"
-  - "Key=Sub Project,Value=CISM"
-  - "Key=System,Value=AIDX"
+  - "Key=Description,Value="Kubeflow Study"
+  - "Key=Owner,Value=DX엔지니어링팀"
+  - "Key=IamUser,Value="hyunsoo0802.lim"
+  - "Key=ExpriationDate,Value=2024-04"
 "AWS_KEY_FILE": "../aws.key"
 "SUPPORT_TRAINING": True   ## True, False
