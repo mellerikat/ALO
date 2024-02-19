@@ -10,6 +10,7 @@ from copy import deepcopy
 from src.constants import *
 from src.artifacts import Aritifacts
 from src.install import Packages
+from src.pipeline import Pipeline
 
 # 이름을 한번 다시 생각
 from src.assets import Assets
@@ -93,16 +94,32 @@ class ALO:
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
 
+        pipeline = Pipeline(self.system_envs, self.install, self.ext_data) 
+
+        # if self.system_envs['pipeline_list'] not in ['train_pipeline', 'inference_pipeline']:
+        #     self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
+
+        for pipes in self.system_envs['pipeline_list']:
+            # TODO 한번에 하려고 하니 이쁘지 않음 논의
+            pipeline.setup(pipes, self.experimental_plan)
+            pipeline.load(pipes, self.experimental_plan)
+            
+
+        b = 0
+        pipeline.setup_asset(self.system_envs['pipeline_list'])
         # init solution metadata
         if self.loop:
+            # boot sequence
             while self.loop:
+                # run
                 print(self.loop)
         else:
+            # run
             print(self.loop)
         
     def set_metadata(self, experimental_plan, pipeline_type):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
-        실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
+        실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
         
@@ -110,7 +127,7 @@ class ALO:
         sol_meta = self.load_solution_metadata()
         self.system_envs['solution_metadata'] = sol_meta
         self.system_envs['experimental_plan'] = experimental_plan
-        self.load_experiment_plan(sol_meta, experimental_plan, self.system_envs)
+        self.exp_yaml, sys_envs = self.load_experiment_plan(sol_meta, experimental_plan, self.system_envs)
         self._set_attr()
         # loop 모드면 항상 boot 모드
         self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
@@ -355,17 +372,18 @@ class ALO:
             system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
 
         # SOLUTION_PIPELINE_MODE 존재 시 (AIC, Sagemaker 등 운영 환경) 해당 pipline만 돌리기가 우선권 
-        try:
-            sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
-            if (sol_pipe_mode is not None) and (sol_pipe_mode not in ['', 'train', 'inference']): 
-                self.proc_logger.process_error(f"<< SOLUTION_PIPELINE_MODE >> must be << '' >> or << train >> or << inference >>")
-            if sol_pipe_mode in ['train', 'inference']:
-                system_envs['pipeline_mode'] = sol_pipe_mode
-                system_envs['pipeline_list'] = [f"{sol_pipe_mode}_pipeline"]
-            else:
-                self.proc_logger.process_info("<< SOLUTION_PIPELINE_MODE >> is now: {sol_pipe_mode} ")
-        except Exception as e:
-            self.proc_logger.process_error(f"While setting environmental variable << SOLUTION_PIPELINE_MODE >>, error occurs: \n {str(e)}")
+        
+        # try:
+        #     sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
+        #     if (sol_pipe_mode is not None) and (sol_pipe_mode not in ['', 'train', 'inference']): 
+        #         self.proc_logger.process_error(f"<< SOLUTION_PIPELINE_MODE >> must be << '' >> or << train >> or << inference >>")
+        #     if sol_pipe_mode in ['train', 'inference']:
+        #         system_envs['pipeline_mode'] = sol_pipe_mode
+        #         system_envs['pipeline_list'] = [f"{sol_pipe_mode}_pipeline"]
+        #     else:
+        #         self.proc_logger.process_info("<< SOLUTION_PIPELINE_MODE >> is now: {sol_pipe_mode} ")
+        # except Exception as e:
+        #     self.proc_logger.process_error(f"While setting environmental variable << SOLUTION_PIPELINE_MODE >>, error occurs: \n {str(e)}")
             
             
         return system_envs
