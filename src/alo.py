@@ -62,11 +62,9 @@ class ALO:
         
         # logger 초기화
         self._init_logger()
-        
+
         # alolib을 설치
         self._set_alolib()
-
-        
 
         self.system_envs = {}
 
@@ -99,7 +97,7 @@ class ALO:
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
 
-        pipeline = Pipeline(self.system_envs, self.install, self.ext_data) 
+        pipeline = Pipeline(self.system_envs, self.ext_data)
 
         # if self.system_envs['pipeline_list'] not in ['train_pipeline', 'inference_pipeline']:
         #     self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
@@ -109,7 +107,6 @@ class ALO:
             pipeline.setup(pipes, self.experimental_plan)
             pipeline.load(pipes, self.experimental_plan)
             
-        pipeline.setup_asset(self.system_envs['pipeline_list'])
         # init solution metadata
         if self.loop:
             # boot sequence
@@ -671,10 +668,10 @@ class ALO:
     def _init_class(self):
         # TODO 지우기 -> Pipeline 클래스에서 사용 예정
         self.ext_data = ExternalHandler()
-        
         self.install = Packages()
         self.asset = Assets(ASSET_HOME)
         self.artifact = Aritifacts()
+
         self.experimental_plan = Metadata()
 
     def _set_alolib(self):
