@@ -61,7 +61,7 @@ if __name__ == "__main__":
         # boot-on: inference pipeline_type로 하면 약 3.xx 초 
         # FIXME pipeline_type train-inference 인 경우 검증 필요 
         try: 
-            alo = ALO(pipeline_type = args.mode, boot_on = True)
+            alo = ALO(pipeline_type = args.mode, solution_metadata = args.system, boot_on = True)
             alo.init()
             alo.runs() 
             print('\033[92m==================== Finish ALO boot-on ====================\033[0m \n')
