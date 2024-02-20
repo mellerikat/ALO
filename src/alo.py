@@ -3,9 +3,12 @@ import sys
 import json 
 import shutil
 import traceback
+import subprocess
+# Packge
 from datetime import datetime
 from collections import Counter
-from copy import deepcopy 
+from copy import deepcopy
+from git import Repo, GitCommandError
 # local import
 from src.constants import *
 from src.artifacts import Aritifacts
@@ -57,11 +60,13 @@ class ALO:
         # 필요 class init
         self._init_class()
         
+        # logger 초기화
+        self._init_logger()
+        
         # alolib을 설치
         self._set_alolib()
 
-        # logger 초기화
-        self._init_logger()
+        
 
         self.system_envs = {}
 
@@ -104,8 +109,6 @@ class ALO:
             pipeline.setup(pipes, self.experimental_plan)
             pipeline.load(pipes, self.experimental_plan)
             
-
-        b = 0
         pipeline.setup_asset(self.system_envs['pipeline_list'])
         # init solution metadata
         if self.loop:
@@ -666,14 +669,44 @@ class ALO:
         return asset_structure
     
     def _init_class(self):
+        # TODO 지우기 -> Pipeline 클래스에서 사용 예정
         self.ext_data = ExternalHandler()
+        
         self.install = Packages()
         self.asset = Assets(ASSET_HOME)
         self.artifact = Aritifacts()
         self.experimental_plan = Metadata()
 
     def _set_alolib(self):
-        self.install.set_alolib()
+        """ALO 는 Master (파이프라인 실행) 와 slave (Asset 실행) 로 구분되어 ALO API 로 통신합니다. 
+        기능 업데이트에 따라 API 의 버전 일치를 위해 Master 가 slave 의 버전을 확인하여 최신 버전으로 설치 되도록 강제한다.
+        
+        """
+        # TODO 버전 mis-match 시, git 재설치하기. (미존재시, 에러 발생 시키기)
+        try:
+            if not os.path.exists(PROJECT_HOME + 'alolib'): 
+                ALOMAIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                repo = Repo(ALOMAIN)
+                ALOVER = repo.active_branch.name
+                # repository_url = ALO_LIB_URI
+                # destination_directory = ALO_LIB
+                cloned_repo = Repo.clone_from(ALO_LIB_URI, ALO_LIB, branch=ALOVER)
+                self.proc_logger.process_info(f"alolib {ALOVER} git pull success.")
+            else: 
+                self.proc_logger.process_info("alolib already exists in local path.")
+            alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
+            sys.path.append(alolib_path)
+        except GitCommandError as e:
+            self.proc_logger.process_error(e)
+            raise NotImplementedError("alolib git pull failed.")
+        req = os.path.join(alolib_path, "requirements.txt")
+        # pip package의 안정성이 떨어지기 때문에 subprocess 사용을 권장함
+        result = subprocess.run(['pip', 'install', '-r', req], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            self.proc_logger.process_info("Success installing alolib requirements.txt")
+            self.proc_logger.process_info(result.stdout)
+        else:
+            self.proc_logger.process_error(f"Failed installing alolib requirements.txt : \n {result.stderr}")
 
     def _set_attr(self):
         self.user_parameters = self.experimental_plan.user_parameters

@@ -2,7 +2,6 @@ import pkg_resources
 import os
 import subprocess
 import sys
-import yaml 
 from collections import defaultdict
 from src.logger import ProcessLogger 
 from src.constants import *
@@ -15,42 +14,8 @@ PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 #--------------------------------------------------------------------------------------------------------------------------
 
 class Packages:
-    def __init__(self):
-        pass
-    
-    def set_alolib(self):
-        """ALO 는 Master (파이프라인 실행) 와 slave (Asset 실행) 로 구분되어 ALO API 로 통신합니다. 
-        기능 업데이트에 따라 API 의 버전 일치를 위해 Master 가 slave 의 버전을 확인하여 최신 버전으로 설치 되도록 강제한다.
-        
-        """
-        # TODO 버전 mis-match 시, git 재설치하기. (미존재시, 에러 발생 시키기)
-        if not os.path.exists(PROJECT_HOME + 'alolib'): 
-            ALOMAIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            cmd = f'cd {ALOMAIN} && git symbolic-ref --short HEAD'
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, shell=True)
-            ALOVER = result.stdout.decode('utf-8').strip()
-            repository_url = ALO_LIB_URI
-            destination_directory = ALO_LIB
-            result = subprocess.run(['git', 'clone', '-b', ALOVER, repository_url, destination_directory], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if result.returncode == 0:
-                PROC_LOGGER.process_info("alolib git pull success.")
-            else:
-                raise NotImplementedError("alolib git pull failed.")
-        else: 
-            PROC_LOGGER.process_info("alolib already exists in local path.")
-            pass
-        alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
-        sys.path.append(alolib_path)
-        
-        req = os.path.join(alolib_path, "requirements.txt")
-        result = subprocess.run(['pip', 'install', '-r', req], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode == 0:
-            PROC_LOGGER.process_info("Success installing alolib requirements.txt")
-            PROC_LOGGER.process_info(result.stdout)
-        else:
-            PROC_LOGGER.process_error(f"Failed installing alolib requirements.txt : \n {result.stderr}")
-
-
+    # def __init__(self):
+    #     pass
     def extract_requirements_txt(self, step_name): 
         """ Description
             -----------
