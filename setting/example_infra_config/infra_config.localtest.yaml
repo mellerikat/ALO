@@ -8,9 +8,9 @@
 "LOGIN_MODE": "static" ## ldap, static
 "ECR_TAG": "latest"   ## 없어질 사항
 "REPOSITORY_TAGS": 
-  - "Key=Description,Value="Kubeflow Study"
+  - "Key=Description,Value=Kubeflow Study"
   - "Key=Owner,Value=DX엔지니어링팀"
-  - "Key=IamUser,Value="hyunsoo0802.lim"
+  - "Key=IamUser,Value=hyunsoo0802.lim"
   - "Key=ExpriationDate,Value=2024-04"
 "AWS_KEY_FILE": "../aws.key"
 "SUPPORT_TRAINING": True   ## True, False
