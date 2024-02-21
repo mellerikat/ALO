@@ -163,7 +163,7 @@ class ExternalHandler:
         pass
 
     # FIXME pipeline name까지 추후 반영해야할지? http://clm.lge.com/issue/browse/DXADVTECH-352?attachmentSortBy=dateTime&attachmentOrder=asc
-    def external_load_data(self, pipe_mode, external_path, external_path_permission, get_external_data): 
+    def external_load_data(self, pipe_mode, external_path, load_s3_key_path, get_external_data):
         """ Description
             -----------
                 - external_path로부터 데이터를 다운로드 
@@ -189,7 +189,6 @@ class ExternalHandler:
         if get_external_data not in ['once', 'every']:
             PROC_LOGGER.process_error(f"Check your << get_external_data >> control parameter in experimental_plan.yaml. \n You entered: {get_external_data}. Only << once >> or << every >> is allowed.")
         # s3 key 경로 가져오기 시도 (없으면 환경 변수나 aws config에 설정돼 있어야 추후 s3에서 데이터 다운로드시 에러 안남)
-        load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str) or None 
         if load_s3_key_path is None: 
             PROC_LOGGER.process_warning('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n \
                                     you have to write the s3_private_key_file path or set << AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY >> in your os environment. \n')
@@ -262,8 +261,8 @@ class ExternalHandler:
                 PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
             
             return
-
-    def external_load_model(self, external_path, external_path_permission): 
+    # TODO 확인 필요 premission을 통째로 넘기지 않고 s3_key_path만 넣는 것으로 수정
+    def external_load_model(self, external_path, load_s3_key_path):
         '''
         # external_load_model은 inference pipeline에서만 실행함 (alo.py에서)
         # external_load_model은 path 하나만 지원 (list X --> str only)
@@ -286,12 +285,14 @@ class ExternalHandler:
         ext_path = external_path['load_model_path']
 
         # get s3 key 
-        try:
-            load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
-            PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n')
-        except:
+        if load_s3_key_path == "" or load_s3_key_path == None:
             PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
             load_s3_key_path = None
+        else:
+            PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n')
+        # except:
+        #     PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
+        #     load_s3_key_path = None
         
         PROC_LOGGER.process_info(f"Start load model from external path: << {ext_path} >>. \n")
         
