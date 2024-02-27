@@ -73,8 +73,6 @@ class Pipeline:
         for key, value in experiment_plan.items():
             setattr(self, key, get_yaml_data(key, pipeline_type))
 
-        b = 0
-
     def setup(self):
         self._empty_artifacts(self.pipeline_type)
         self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
@@ -98,20 +96,37 @@ class Pipeline:
         # TODO return 구성
         # return 
             
-    def run(self, run_step = None):
-        for step, asset_config in enumerate(self.asset_source[self.pipeline_type]):
-            PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {asset_config['step']}")
-            self.asset_structure.args = self.get_args(step)
-            try: 
-                self.process_asset_step(asset_config, step)
-            except: 
-                PROC_LOGGER.process_error(f"Failed to process step: << {asset_config['step']} >>")
-
-    def get_args(self, step):
-        if type(self.user_parameters[self.pipeline_type][step]['args']) == type(None):
-            return dict()
+    def run(self, run_step = 'All'):
+        if run_step == 'All':
+            for step, asset_config in enumerate(self.asset_source[self.pipeline_type]):
+                PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {asset_config['step']}")
+                self.asset_structure.args = self.get_parameter(asset_config['step'])
+                try:
+                    self.process_asset_step(asset_config, step)
+                except:
+                    PROC_LOGGER.process_error(f"Failed to process step: << {asset_config['step']} >>")
         else:
-            return self.user_parameters[self.pipeline_type][step]['args'][0]
+            PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {run_step}")
+            self.asset_structure.args = self.get_parameter(run_step)
+
+    def get_parameter(self, step_name):
+        for step in self.user_parameters[self.pipeline_type]:
+            if step['step'] == step_name:
+                if type(step['args']) == list:
+                    return step['args'][0]
+                else:
+                    return dict()
+        raise ValueError("error")
+
+    def get_asset_source(self, step_name, source = None):
+        for step in self.asset_source[self.pipeline_type]:
+            if step['step'] == step_name:
+                if source == None:
+                    return step['source']
+                else:
+                    return step['source'][source]
+
+        raise ValueError("error")
         
     # def process_asset_step(self, asset_config, step, pipeline, asset_structure): 
     def process_asset_step(self, asset_config, step): 
@@ -128,6 +143,7 @@ class Pipeline:
             return
         
         meta_dict = {'artifacts': self.system_envs['artifacts'], 'pipeline': self.pipeline_type, 'step': step, 'step_number': step, 'step_name': self.user_parameters[self.pipeline_type][step]['step']}
+
         self.asset_structure.config['meta'] = meta_dict #nested dict
 
         if step > 0: 
