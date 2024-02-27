@@ -44,7 +44,8 @@ class AssetStructure:
         
 class ALO:
     # def __init__(self, exp_plan_file = None, solution_metadata = None, pipeline_type = 'all', boot_on = False, computing = 'local'):
-    def __init__(self, kwargs, experimental_plan = EXP_PLAN, pipeline_type = 'all'):
+    # 'config': None, 'system': None, 'mode': 'all', 'loop': False, 'computing': 'local'
+    def __init__(self, experimental_plan = None, solution_metadatas = None, pipeline_type = 'all', loop = False, computing = 'local'):
         """실험 계획 (experimental_plan.yaml), 운영 계획(solution_metadata), 
         파이프라인 종류(train, inference), 동작방식(always-on) 에 대한 설정을 완료함
 
@@ -56,7 +57,6 @@ class ALO:
             computing: 학습하는 컴퓨팅 자원 (local, sagemaker)
         Returns:
         """
-
         # 필요 class init
         self._init_class()
         
@@ -66,6 +66,10 @@ class ALO:
         # alolib을 설치
         self._set_alolib()
 
+        self.system = solution_metadatas
+        self.loop = loop
+        self.computing = computing
+
         self.system_envs = {}
 
         # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
@@ -74,8 +78,6 @@ class ALO:
 
         # 입력 받은 args를 전역변수로 변환
         # config, system, mode, loop, computing
-        for key, value in kwargs.items():
-            setattr(self, key, value)
 
         self._get_alo_version()
         self.set_metadata(experimental_plan, pipeline_type)
@@ -90,33 +92,26 @@ class ALO:
     #############################
     ####    Main Function    ####
     #############################
-        
+    def pipeline(self, pipes = 'train_pipeline'):
+        pipeline = Pipeline(self.exp_yaml, pipes, self.system_envs)
+        return pipeline
+
     def main(self):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
-
-        pipeline = Pipeline(self.system_envs, self.ext_data)
-
         # if self.system_envs['pipeline_list'] not in ['train_pipeline', 'inference_pipeline']:
         #     self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
-
         for pipes in self.system_envs['pipeline_list']:
+            print("*****************************************", pipes, "*********************************************")
+            # 이 방법이 맞나 확인 필요
+            pipeline = self.pipeline(pipes)
             # TODO 한번에 하려고 하니 이쁘지 않음 논의
-            pipeline.setup(pipes, self.experimental_plan)
-            pipeline.load(pipes, self.experimental_plan)
-            
-        # init solution metadata
-        if self.loop:
-            # boot sequence
-            while self.loop:
-                # run
-                print(self.loop)
-        else:
-            # run
-            print(self.loop)
-        
+            pipeline.setup()
+            pipeline.load()
+            pipeline.run()
+
     def set_metadata(self, experimental_plan, pipeline_type):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
@@ -130,7 +125,10 @@ class ALO:
         self.exp_yaml, sys_envs = self.load_experiment_plan(sol_meta, experimental_plan, self.system_envs)
         self._set_attr()
         # loop 모드면 항상 boot 모드
-        self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
+        if self.computing != 'local':
+            self.system_envs = self._set_system_envs(pipeline_type, True, self.system_envs)
+        else:
+            self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
 
         # 입력 받은 config(exp)가 없는 경우 default path에 있는 내용을 사용
         
