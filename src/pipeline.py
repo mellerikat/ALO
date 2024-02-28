@@ -55,6 +55,8 @@ class Pipeline:
 
         def get_yaml_data(key, pipeline_type = 'all'): # inner func.
             data_dict = {}
+            if key == "name":
+                return
             for data in experiment_plan[key]:
                 data_dict.update(data)
 
@@ -86,12 +88,12 @@ class Pipeline:
         # TODO 분기 태우는 코드가 필요        
         if self.pipeline_type == 'inference_pipeline':
             if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
-                self.external.external_load_model(self.external_path, self.external_path_permission['s3_private_key_file'])
+                self.external.external_load_model(self.external_path, self.external_path_permission)
         
         if self.system_envs['boot_on'] == False:  ## boot_on 시, skip
             # NOTE [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
             # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
-            self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission['s3_private_key_file'], self.control['get_external_data'])
+            self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission, self.control['get_external_data'])
 
         # TODO return 구성
         # return 

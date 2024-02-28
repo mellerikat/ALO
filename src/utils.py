@@ -21,13 +21,13 @@ def set_args():
     
     return args
 
-def init_redis(args):
+def init_redis(system):
     ##### import RedisQueue ##### 
     from src.redisqueue import RedisQueue
     import json
     
     ##### parse redis server port, ip #####
-    sol_meta_json = json.loads(args.system)
+    sol_meta_json = json.loads(system)
     redis_host, redis_port = sol_meta_json['edgeapp_interface']['redis_server_uri'].split(':')
     # FIXME 이런데서 죽으면 EdgeApp은 ALO가 죽었는 지 알 수 없다? >> 아마 alo 실행 실패 시 error catch하는 게 EdgeAPP 이든 host든 어디선가 필요하겠지? 
     if (redis_host == None) or (redis_port == None): 

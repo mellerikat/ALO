@@ -7,6 +7,8 @@ from src.logger import ProcessLogger
 import os
 import boto3
 from boto3.session import Session
+from botocore.exceptions import ProfileNotFound
+from botocore.exceptions import NoCredentialsError, ClientError
 from botocore.client import Config
 from botocore.handlers import set_list_objects_encoding_type_url
 from src.constants import *
@@ -21,33 +23,30 @@ PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 #--------------------------------------------------------------------------------------------------------------------------
 
 class S3Handler:
-    def __init__(self, s3_uri, load_s3_key_path):
+    def __init__(self, s3_uri, aws_key_profile):
         # url : (ex) 's3://aicontents-marketplace/cad/inference/' 
         # S3 VARIABLES
         # TODO 파일 기반으로 key 로드할 거면 무조건 파일은 access_key 먼저 넣고, 그 다음 줄에 secret_key 넣는 구조로 만들게 가이드한다.
-        self.access_key, self.secret_key = self.init_s3_key(load_s3_key_path) 
-        self.s3_uri = s3_uri 
-        self.bucket, self.s3_folder =  self.parse_s3_url(s3_uri) # (ex) aicontents-marketplace, cad/inference/
+        self.access_key, self.secret_key = self.load_aws_key(aws_key_profile) 
+        if s3_uri:
+            self.s3_uri = s3_uri 
+            self.bucket, self.s3_folder =  self.parse_s3_url(s3_uri) # (ex) aicontents-marketplace, cad/inference/
         
-    def init_s3_key(self, s3_key_path): 
-        if s3_key_path != None: 
-            _, ext = os.path.splitext(s3_key_path)
-            if ext != '.csv': 
-                PROC_LOGGER.process_error(f"AWS key file extension must be << csv >>. \n You entered: << {s3_key_path} >>")
-            try: 
-                with open(s3_key_path, newline='') as csvfile: 
-                    csv_reader = csv.reader(csvfile, delimiter=',')
-                    reader_list = [] 
-                    for row in csv_reader: 
-                        reader_list.append(row) 
-                        if len(row) != 2: # 컬럼 수 2가 아니면 에러 
-                            PROC_LOGGER.process_error(f"AWS key file must have regular format \n - first row: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY \n - second row: << access key value >>, << secret access key value >>")
-                    if len(reader_list) != 2: # 행 수 2가 아니면 에러 
-                        PROC_LOGGER.process_error(f"AWS key file must have regular format \n - first row: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY \n - second row: << access key value >>, << secret access key value >>")
-                PROC_LOGGER.process_info(f"Successfully read AWS key file from << {s3_key_path} >>")
-                return tuple((reader_list[1][0].strip(), reader_list[1][1].strip()))
-            except: 
-                PROC_LOGGER.process_error(f'Failed to get s3 key from {s3_key_path}. The shape of contents in the S3 key file may be incorrect.')
+    def load_aws_key(self, aws_key_profile): 
+
+        if (aws_key_profile != None) and (len(aws_key_profile)>0): 
+            try:
+                session = boto3.Session(profile_name=aws_key_profile)
+
+                credentials = session.get_credentials().get_frozen_credentials()
+                access_key = credentials.access_key
+                secret_key = credentials.secret_key
+
+                region = session.region_name  ## 임시
+
+                return access_key, secret_key 
+            except ProfileNotFound: 
+                PROC_LOGGER.process_error(f'Failed to get s3 key from "{aws_key_profile}". The profile may be incorrect.')
         else: # yaml에 s3 key path 입력 안한 경우는 한 번 시스템 환경변수에 사용자가 key export 해둔게 있는지 확인 후 있으면 반환 없으면 경고   
             access_key, secret_key = os.getenv("AWS_ACCESS_KEY_ID"), os.getenv("AWS_SECRET_ACCESS_KEY")
             if (access_key != None) and (secret_key != None):
@@ -149,6 +148,29 @@ class S3Handler:
     def upload_file(self, file_path):
         s3 = self.create_s3_session_resource() # session resource 만들어야함 
         bucket = s3.Bucket(self.bucket)
+
+        ### bucket 접근 시도 
+        try:
+            # 버킷의 콘텐츠 나열 시도
+            for obj in bucket.objects.limit(1):
+                print(f"Access to the bucket '{self.bucket}' is confirmed.")
+                print(f"Here's one object key for testing purposes: {obj.key}")
+                break
+            else:
+                print(f"Bucket '{self.bucket}' is accessible but may be empty.")
+        except NoCredentialsError:
+            PROC_LOGGER.process_error("Credentials not found. Unable to test bucket access.")
+        except ClientError as e:
+            # 접근 권한이 없거나 존재하지 않는 버킷일 때 에러 처리
+            if e.response['Error']['Code'] == 'AccessDenied':
+                PROC_LOGGER.process_error(f"Access denied for bucket '{self.bucket}'.")
+            elif e.response['Error']['Code'] == 'NoSuchBucket':
+                PROC_LOGGER.process_error(f"Bucket '{self.bucket}' does not exist.")
+            else:
+                PROC_LOGGER.process_error(f"An error occurred: {e.response['Error']['Message']}")
+
+
+
         base_name = os.path.basename(os.path.normpath(file_path))
         bucket_upload_path = self.s3_folder + base_name 
         
@@ -163,7 +185,7 @@ class ExternalHandler:
         pass
 
     # FIXME pipeline name까지 추후 반영해야할지? http://clm.lge.com/issue/browse/DXADVTECH-352?attachmentSortBy=dateTime&attachmentOrder=asc
-    def external_load_data(self, pipe_mode, external_path, load_s3_key_path, get_external_data):
+    def external_load_data(self, pipe_mode, external_path, external_path_permission, get_external_data): 
         """ Description
             -----------
                 - external_path로부터 데이터를 다운로드 
@@ -189,12 +211,13 @@ class ExternalHandler:
         if get_external_data not in ['once', 'every']:
             PROC_LOGGER.process_error(f"Check your << get_external_data >> control parameter in experimental_plan.yaml. \n You entered: {get_external_data}. Only << once >> or << every >> is allowed.")
         # s3 key 경로 가져오기 시도 (없으면 환경 변수나 aws config에 설정돼 있어야 추후 s3에서 데이터 다운로드시 에러 안남)
-        if load_s3_key_path is None: 
-            PROC_LOGGER.process_warning('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n \
-                                    you have to write the s3_private_key_file path or set << AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY >> in your os environment. \n')
+        aws_key_profile = external_path_permission['aws_key_profile'] # 무조건 1개 (str) or None 
+        if aws_key_profile is None: 
+            PROC_LOGGER.process_warning('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n \
+                                    you have to write the aws_key_profile or set << AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY >> in your os environment. \n')
         else: 
-            if type(load_s3_key_path) != str: 
-                PROC_LOGGER.process_error(f"You entered wrong type of << s3_private_key_file >> in your expermimental_plan.yaml: << {load_s3_key_path} >>. \n Only << str >> type is allowed.")
+            if type(aws_key_profile) != str: 
+                PROC_LOGGER.process_error(f"You entered wrong type of << aws_key_profile >> in your expermimental_plan.yaml: << {aws_key_profile} >>. \n Only << str >> type is allowed.")
         ################################################################################################################
         external_data_path = []  
         external_base_dirs = []
@@ -257,12 +280,12 @@ class ExternalHandler:
             # external 데이터 가져오기 
             for ext_path in external_data_path:
                 ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
-                self._load_data(pipe_mode, ext_type, ext_path, load_s3_key_path)
+                self._load_data(pipe_mode, ext_type, ext_path, aws_key_profile)
                 PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
             
             return
-    # TODO 확인 필요 premission을 통째로 넘기지 않고 s3_key_path만 넣는 것으로 수정
-    def external_load_model(self, external_path, load_s3_key_path):
+
+    def external_load_model(self, external_path, external_path_permission): 
         '''
         # external_load_model은 inference pipeline에서만 실행함 (alo.py에서)
         # external_load_model은 path 하나만 지원 (list X --> str only)
@@ -285,14 +308,12 @@ class ExternalHandler:
         ext_path = external_path['load_model_path']
 
         # get s3 key 
-        if load_s3_key_path == "" or load_s3_key_path == None:
-            PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
-            load_s3_key_path = None
-        else:
-            PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n')
-        # except:
-        #     PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
-        #     load_s3_key_path = None
+        try:
+            aws_key_profile = external_path_permission['aws_key_profile'] # 무조건 1개 (str)
+            PROC_LOGGER.process_info(f's3 private key file << aws_key_profile >> loaded successfully. \n')
+        except:
+            PROC_LOGGER.process_info('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the aws_key_profile path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
+            aws_key_profile = None
         
         PROC_LOGGER.process_info(f"Start load model from external path: << {ext_path} >>. \n")
         
@@ -333,7 +354,7 @@ class ExternalHandler:
                 
         elif ext_type  == 's3':
             try: 
-                s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
+                s3_downloader = S3Handler(s3_uri=ext_path, aws_key_profile=aws_key_profile)
                 model_existence = s3_downloader.download_model(TEMP_MODEL_PATH) # 해당 s3 경로에 model.tar.gz 미존재 시 False, 존재 시 다운로드 후 True 반환
                 if model_existence: # TEMP_MODEL_PATH로 model.tar.gz 이 다운로드 된 상태 
                     tar = tarfile.open(TEMP_MODEL_PATH + COMPRESSED_MODEL_FILE)
@@ -388,11 +409,11 @@ class ExternalHandler:
             
         # get s3 key 
         try:
-            load_s3_key_path = external_path_permission['s3_private_key_file'] # 무조건 1개 (str)
-            PROC_LOGGER.process_info(f's3 private key file << load_s3_key_path >> loaded successfully. \n')
+            aws_key_profile = external_path_permission['aws_key_profile'] # 무조건 1개 (str)
+            PROC_LOGGER.process_info(f's3 private key file << aws_key_profile >> loaded successfully. \n')
         except:
-            PROC_LOGGER.process_info('You did not write any << s3_private_key_file >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the s3_private_key_file path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' )
-            load_s3_key_path = None
+            PROC_LOGGER.process_info('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the aws_key_profile path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' )
+            aws_key_profile = None
 
         # external path가 존재하는 경우 
         # save artifacts 
@@ -431,10 +452,10 @@ class ExternalHandler:
             try: 
                 # s3 key path가 yaml에 작성 돼 있으면 해당 key 읽어서 s3 접근, 작성 돼 있지 않으면 사용자 환경 aws config 체크 후 key 설정 돼 있으면 사용자 notify 후 활용, 없으면 에러 발생 
                 # s3 접근권한 없으면 에러 발생 
-                s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
+                s3_uploader = S3Handler(s3_uri=ext_path, aws_key_profile=aws_key_profile)
                 s3_uploader.upload_file(artifacts_tar_path)
                 if model_tar_path is not None: 
-                    s3_uploader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
+                    s3_uploader = S3Handler(s3_uri=ext_path, aws_key_profile=aws_key_profile)
                     s3_uploader.upload_file(model_tar_path)
             except:
                 PROC_LOGGER.process_error(f'Failed to upload << {artifacts_tar_path} >> & << {model_tar_path} >> onto << {ext_path} >>')
@@ -449,7 +470,7 @@ class ExternalHandler:
             # 미지원 external data storage type
             PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
         
-        PROC_LOGGER.process_info(f" Successfully done saving << artifacts: {artifacts_tar_path} >> & << model: {model_tar_path} >> \n onto << {save_artifacts_path} >> & removing local files.")
+        PROC_LOGGER.process_info(f" Successfully done saving (path: {save_artifacts_path})")
         
         return ext_path 
 
@@ -465,7 +486,7 @@ class ExternalHandler:
                                         which have << data >> as duplicated basename of the path.")
         return base_dir_list # 마지막 base폴더 이름들 리스트          
 
-    def _load_data(self, pipeline, ext_type, ext_path, load_s3_key_path): 
+    def _load_data(self, pipeline, ext_type, ext_path, aws_key_profile): 
         # 실제로 데이터 복사 (절대 경로) or 다운로드 (s3) 
         ####################################################
         # inpt_data_dir 변수화 
@@ -505,7 +526,7 @@ class ExternalHandler:
             # s3 접근권한 없으면 에러 발생 
             # 기존에 사용자 환경 input 폴더에 외부 데이터 경로 폴더와 같은 이름의 폴더가 있으면 notify 후 덮어 씌우기 
             try: 
-                s3_downloader = S3Handler(s3_uri=ext_path, load_s3_key_path=load_s3_key_path)
+                s3_downloader = S3Handler(s3_uri=ext_path, aws_key_profile=aws_key_profile)
                 s3_downloader.download_folder(input_data_dir)
             except:
                 PROC_LOGGER.process_error(f'Failed to download s3 data folder from << {ext_path} >>')
@@ -543,6 +564,12 @@ class ExternalHandler:
         if 'models' in _path: 
             _save_path = TEMP_MODEL_PATH + COMPRESSED_MODEL_FILE
             last_dir = 'models/'
+
+            ## models 에 파일이 하나도 존재 하지 않을 경우 에러 발생
+            if not os.listdir(PROJECT_HOME + _path):
+                # 폴더가 비어 있으면 에러 발생
+                PROC_LOGGER.process_error(f"The folder '{PROJECT_HOME + _path}' is empty. Cannot create model.tar.gz file.")
+
         else: 
             _save_file_name = _path.strip('.') 
             _save_path = TEMP_ARTIFACTS_PATH +  f'{_save_file_name}.tar.gz' 

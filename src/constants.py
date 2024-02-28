@@ -9,11 +9,6 @@ ALO_LIB = PROJECT_HOME + "alolib/"
 
 ALO_LIB_URI = "http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git"
 
-SOLUTION_HOME = PROJECT_HOME + "solution/"
-# experimental plan yaml의 위치
-EXP_PLAN = SOLUTION_HOME + "experimental_plan.yaml"
-
-SOLUTION_META = PROJECT_HOME + "solution_metadata.yaml"
 # interface mode support type 
 INTERFACE_TYPES = ['memory', 'file']
 # asset 코드들의 위치
@@ -55,6 +50,21 @@ artifacts_structure = {
     '.asset_interface': {},
     '.history': {}
 }
+###################################
+##### Solution 
+###################################
+SOLUTION_HOME = PROJECT_HOME + "solution/"
+SOLUTION_META = PROJECT_HOME + "solution_metadata.yaml"
+SOLUTION_REQ_FILE = PROJECT_HOME + "solution_requirements.txt"
+
+###################################
+##### Experimental Plan 
+###################################
+# experimental plan yaml의 위치
+EXP_PLAN = SOLUTION_HOME + "experimental_plan.yaml"
+EXPERIMENTAL_PLAN_FORMAT_FILE = PROJECT_HOME + "src/experimental_plan_format/experimental_plan_format.yaml"
+EXPERIMENTAL_OPTIONAL_KEY_LIST = ['ui_args_detail']
+
 
 ###################################
 ##### Set sagemaker 
@@ -65,6 +75,8 @@ SAGEMAKER_CONFIG = PROJECT_HOME + "setting/sagemaker_config.yaml"
 SAGEMKAER_DOCKERFILE = PROJECT_HOME + "src/Dockerfiles/SagemakerDockerfile"
 SAGEMAKER_PATH = PROJECT_HOME + ".sagemaker/"
 TEMP_SAGEMAKER_MODEL_PATH = PROJECT_HOME + ".temp_sagemaker_model/"
+
+
 ###################################
 ##### Register AI Solution 
 ###################################
@@ -79,6 +91,4 @@ REGISTER_WRANGLER_PATH = SOLUTION_HOME + "wrangler/wrangler.py"
 REGISTER_INTERFACE_PATH = PROJECT_HOME + ".register_interface/"
 REGISTER_ICON_PATH = PROJECT_HOME + "src/icons/"
 REGISTER_DOCKER_PATH = PROJECT_HOME + "src/Dockerfiles/register/"
-REGISTER_EXPERIMENTAL_PLAN = REGISTER_SOURCE_PATH + "solution/experimental_plan.yaml"
-
-REGISTER_PREFIX_NAME = "-instance-"
+REGISTER_EXPPLAN = REGISTER_SOURCE_PATH + "solution/experimental_plan.yaml"
