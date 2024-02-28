@@ -152,7 +152,7 @@ class ALO:
                 self.artifact.backup_history(pipeline, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록        
                 ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
-                if self.is_always_on:
+                if self.loop:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
                     if self.system_envs['runs_status'] == 'init':
                         self.system_envs['q_inference_summary'].rput(fail_str)
@@ -242,7 +242,7 @@ class ALO:
                 self.artifact.backup_history(pipeline, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록        
                 ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
-                if self.is_always_on:
+                if self.loop:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
                     if self.system_envs['runs_status'] == 'init':
                         self.system_envs['q_inference_summary'].rput(fail_str)
@@ -312,7 +312,7 @@ class ALO:
             self.external_path['save_train_artifacts_path'] = environment.Environment().model_dir
         
         # (self.sol_meta is not None) and 를 어떻게 수정해서 사용할건지 확인
-        self.is_always_on = (self.system_envs['redis_host'] is not None) \
+        self.loop = (self.system_envs['redis_host'] is not None) \
             and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
         
         if pipeline not in ['train_pipeline', 'inference_pipeline']:
@@ -364,7 +364,7 @@ class ALO:
         ## Step6: 추론 완료 send summary (운영 추론 모드일 때만 실행)
         ###################################
         
-        if self.is_always_on:
+        if self.loop:
             self.system_envs['success_str'] = self.send_summary()
 
         ###################################
@@ -601,7 +601,7 @@ class ALO:
         except:
             self.proc_logger.process_error("Failed to save artifacts into external path.") 
         # 운영 추론 모드일 때는 redis로 edgeapp에 artifacts 생성 완료 전달 
-        if self.is_always_on:
+        if self.loop:
             if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
                 # send_summary에서 생성된 summary yaml을 다시 한번 전송
                 self.system_envs['q_inference_artifacts'].rput(self.system_envs['success_str'])  
