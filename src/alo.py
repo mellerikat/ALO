@@ -116,6 +116,9 @@ class ALO:
             pipeline.setup()
             pipeline.load()
             pipeline.run()
+
+        with open(PROJECT_HOME + 'solution_requirements.txt', 'w') as file_:
+            subprocess.Popen(['pip', 'freeze'], stdout=file_).communicate()
         
         # boot 모드 동작 후 boot 모드 취소
         self.system_envs['boot_on'] = False

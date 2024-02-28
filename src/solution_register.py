@@ -842,6 +842,8 @@ class SolutionRegister:
         from botocore.exceptions import NoCredentialsError
         from botocore.exceptions import ProfileNotFound
         # session 먼저 생성
+
+        print("**********************************")
         
         try:
             self.session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
@@ -1103,36 +1105,49 @@ class SolutionRegister:
         print_color(f"[SYSTEM] target AWS ECR url: ", color='blue')
         print(f"{self.ecr_url}",)
 
-        import base64
-        auth_data = ecr_client.get_authorization_token()
-        auth_token = auth_data['authorizationData'][0]['authorizationToken']
-        user, password = base64.b64decode(auth_token).decode().split(':')
+        # import base64
+        # auth_data = ecr_client.get_authorization_token()
+        # auth_token = auth_data['authorizationData'][0]['authorizationToken']
+        # user, password = base64.b64decode(auth_token).decode().split(':')
+        
+        try:
+            p1 = subprocess.Popen(
+                ['aws', 'ecr', 'get-login-password', '--region', f'{self.infra_setup["REGION"]}', '--profile', f'{self.infra_setup["AWS_KEY_PROFILE"]}'], stdout=subprocess.PIPE
+            )
+        except:
+            p1 = subprocess.Popen(
+                ['aws', 'ecr', 'get-login-password', '--region', f'{self.infra_setup["REGION"]}',], stdout=subprocess.PIPE
+            )
         
         if self.docker:
-            import docker
-            from docker.errors import APIError
+            # import docker
+            # from docker.errors import APIError
 
-            client = docker.from_env()
-            try:
-                login_result = client.login(username=user, password=password, registry="086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/cism/ai-solutions/")
-                if login_result.get("Status") == "Login Succeeded":
-                    print("Docker login succeeded")
-                else:
-                    print("Docker login failed:", login_result)
-            except APIError as error:
-                print("Docker login failed with error:", error)
+            # client = docker.from_env()
+            # try:
+            #     login_result = client.login(username=user, password=password, registry=self.ecr_url)
+            #     if login_result.get("Status") == "Login Succeeded":
+            #         print("Docker login succeeded")
+            #     else:
+            #         print("Docker login failed:", login_result)
+            # except APIError as error:
+            #     print("Docker login failed with error:", error)
+            run = 'docker'
+            # 혹시 안되면 복구
+            p2 = subprocess.Popen(
+            [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE)
+            p1.stdout.close()
+            output = p2.communicate()[0]
+            print_color(f"[SYSTEM] AWS ECR | docker login result:", color='cyan')
+            print(f"{output.decode()}")
         else:
             run = 'buildah'
             # 혹시 안되면 복구
-            p1 = subprocess.Popen(
-                ['aws', 'ecr', 'get-login-password', '--region', f'{self.infra_setup["REGION"]}'], stdout=subprocess.PIPE
-            )
             p2 = subprocess.Popen(
                 ['sudo', f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE
             )
             p1.stdout.close()
             output = p2.communicate()[0]
-
             print_color(f"[SYSTEM] AWS ECR | docker login result:", color='cyan')
             print(f"{output.decode()}")
 
