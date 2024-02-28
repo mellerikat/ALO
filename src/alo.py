@@ -107,11 +107,11 @@ class ALO:
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
-        # if self.system_envs['pipeline_list'] not in ['train_pipeline', 'inference_pipeline']:
-        #     self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
         try:
             for pipes in self.system_envs['pipeline_list']:
-                print("*****************************************", pipes, "*********************************************")
+                self.proc_logger.process_info("#########################################################################################################")
+                self.proc_logger.process_info(f"                                                 {pipes}                                                   ") 
+                self.proc_logger.process_info("#########################################################################################################")
                 # 이 방법이 맞나 확인 필요
                 pipeline = self.pipeline(pipes)
                 # TODO 한번에 하려고 하니 이쁘지 않음 논의
@@ -149,9 +149,9 @@ class ALO:
             finally:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
-                self.artifact.backup_history(pipeline, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
+                self.artifact.backup_history(pipes, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록        
-                ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+                ext_saved_path = self.ext_data.external_save_artifacts(pipes, self.external_path, self.external_path_permission)
                 if self.loop:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
                     if self.system_envs['runs_status'] == 'init':
@@ -210,47 +210,6 @@ class ALO:
         self._alo_info()
         # ALO 설정 완료 info 와 로깅
 
-    def runs(self, mode = None):
-        """ 파이프라인 실행에 필요한 데이터, 패키지, Asset 코드를 작업환경으로 setup 하고 & 순차적으로 실행합니다. 
-        학습/추론 파이프라인을 순차적으로 실행합니다. (각 한개씩만 지원 multi-pipeline 는 미지원) 
-        파이프라인은 외부 데이터 (external_load_data) 로드, Asset 들의 패키지 및 git 설치(setup_asset), Asset 실행(run_asset) 순으로 실행 합니다.
-        추론 파이프라인에서는 external_model 의 path 가 존재 시에 load 한다. (학습 파이프라인에서 생성보다 우선순위 높음)
-
-        """
-
-        # summary yaml를 redis q로 put. redis q는 _update_yaml 에서 이미 set 완료  
-        # solution meta 존재하면서 (운영 모드) & redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요 
-        # Edgeapp과 interface 중인지 (운영 모드인지 체크)
-
-        try: 
-            # CHECKLIST preset 과정도 logging 필요하므로 process logger에서는 preset 전에 실행되려면 alolib-source/asset.py에서 log 폴더 생성 필요 (artifacts 폴더 생성전)
-            # NOTE 큼직한 단위의 alo.py에서의 로깅은 process logging (인자 X) - train, inference artifacts/log 양쪽에 다 남김 
-            if mode != None:
-                self.run(mode)
-            else:
-                for pipeline in self.system_envs["pipeline_list"]:
-                    # 입력된 pipeline list 확인
-                    self.run(pipeline)
-        except: 
-            # NOTE [ref] https://medium.com/@rahulkumar_33287/logger-error-versus-logger-exception-4113b39beb4b 
-            # NOTE [ref2] https://stackoverflow.com/questions/3702675/catch-and-print-full-python-exception-traceback-without-halting-exiting-the-prog
-            # + traceback.format_exc() << 이 방법은 alolib logger에서 exc_info=True 안할 시에 사용가능
-            try:  # 여기에 try, finally 구조로 안쓰면 main.py 로 raise 되버리면서 backup_artifacts가 안됨 
-                self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
-            finally:
-                # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
-                # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
-                self.artifact.backup_history(pipeline, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
-                # error 발생해도 external save artifacts 하도록        
-                ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
-                if self.loop:
-                    fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
-                    if self.system_envs['runs_status'] == 'init':
-                        self.system_envs['q_inference_summary'].rput(fail_str)
-                        self.system_envs['q_inference_artifacts'].rput(fail_str)
-                    elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
-                        self.system_envs['q_inference_artifacts'].rput(fail_str)
-        
             
     def sagemaker_runs(self): 
         try:
@@ -295,105 +254,6 @@ class ALO:
             # 딱히 안해도 문제는 없는듯 하지만 혹시 모르니 설정했던 환경 변수를 제거 
             os.unsetenv("AWS_PROFILE")
 
-        
-    ############################
-    ####    Sub Function    ####
-    ############################
-            
-    def run(self, pipeline):
-        
-        self._set_attr()
-
-        self.system_envs['pipeline_start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
-        # FIXME os env['COMPUTING']은 SagemakerDockerfile에서 설정. sagemaker 일 때만 environment import 
-        if os.getenv('COMPUTING') == 'sagemaker':
-            from sagemaker_training import environment
-            # [중요] sagemaker 사용 시엔 self.external_path['save_train_artifacts_path']를 sagemaker에서 제공하는 model_dir로 변경
-            # [참고] https://github.com/aws/sagemaker-training-toolkit        
-            self.external_path['save_train_artifacts_path'] = environment.Environment().model_dir
-        
-        # (self.sol_meta is not None) and 를 어떻게 수정해서 사용할건지 확인
-        self.loop = (self.system_envs['redis_host'] is not None) \
-            and (self.system_envs['boot_on'] == False) and (pipeline == 'inference_pipeline')
-        
-        if pipeline not in ['train_pipeline', 'inference_pipeline']:
-            self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
-        ###################################
-        ## Step1: artifacts 를 초기화 하기 
-        ###################################
-        # [주의] 단 .~_artifacts/log 폴더는 지우지 않기! 
-        self._empty_artifacts(pipeline)
-
-        ###################################
-        ## Step2: 데이터 준비 하기 
-        ###################################
-        if self.system_envs['boot_on'] == False:  ## boot_on 시, skip
-            # NOTE [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
-            # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
-            self._external_load_data(pipeline)
-        
-        # inference pipeline 인 경우, plan yaml의 load_model_path 가 존재 시 .train_artifacts/models/ 를 비우고 외부 경로에서 모델을 새로 가져오기   
-        # 왜냐하면 train - inference 둘 다 돌리는 경우도 있기때문 
-        # FIXME boot on 때도 모델은 일단 있으면 가져온다 ? 
-        if pipeline == 'inference_pipeline':
-            try:
-                if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""): 
-                    self._external_load_model()
-            except:
-                pass
-
-        # 각 asset import 및 실행 
-        try:
-            ###################################
-            ## Step3: Asset git clone 및 패키지 설치 
-            ###################################
-            packages = self.setup_asset(pipeline)
-
-            ###################################
-            ## Step4: Asset interface 용 data structure 준비 
-            ###################################
-            self.set_asset_structure()
-
-            ###################################
-            ## Step5: Asset 실행 (with asset data structure)  
-            ###################################
-            self.run_asset(pipeline)
-        except: 
-            self.proc_logger.process_error(f"Failed to run import: {pipeline}")
-
-        ###################################
-        ## Step6: 추론 완료 send summary (운영 추론 모드일 때만 실행)
-        ###################################
-        
-        if self.loop:
-            self.system_envs['success_str'] = self.send_summary()
-
-        ###################################
-        ## Step7: summary yaml, output 정상 생성 체크    
-        ###################################    
-        
-        #임시
-        self.boot_on = False
-        if pipeline == 'inference_pipeline' and self.boot_on == False:
-            self._check_output()
-        
-        ###################################
-        ## Step8: Artifacts 저장   
-        ###################################
-
-        self.save_artifacts(pipeline)
-
-        ###################################
-        ## Step9: Artifacts 를 history 에 backup 
-        ###################################
-        if self.control['backup_artifacts'] == True:
-            try:
-                self.artifact.backup_history(pipeline, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
-            except: 
-                self.proc_logger.process_error("Failed to backup artifacts into << .history >>")
-
-        self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
 
     #####################################
     ####    Part1. Initialization    ####
@@ -441,20 +301,6 @@ class ALO:
                 system_envs['pipeline_list'] = [*self.user_parameters]
             else:
                 system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
-
-        # SOLUTION_PIPELINE_MODE 존재 시 (AIC, Sagemaker 등 운영 환경) 해당 pipline만 돌리기가 우선권 
-        
-        # try:
-        #     sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
-        #     if (sol_pipe_mode is not None) and (sol_pipe_mode not in ['', 'train', 'inference']): 
-        #         self.proc_logger.process_error(f"<< SOLUTION_PIPELINE_MODE >> must be << '' >> or << train >> or << inference >>")
-        #     if sol_pipe_mode in ['train', 'inference']:
-        #         system_envs['pipeline_mode'] = sol_pipe_mode
-        #         system_envs['pipeline_list'] = [f"{sol_pipe_mode}_pipeline"]
-        #     else:
-        #         self.proc_logger.process_info("<< SOLUTION_PIPELINE_MODE >> is now: {sol_pipe_mode} ")
-        # except Exception as e:
-        #     self.proc_logger.process_error(f"While setting environmental variable << SOLUTION_PIPELINE_MODE >>, error occurs: \n {str(e)}")
             
             
         return system_envs
