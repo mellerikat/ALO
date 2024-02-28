@@ -1,0 +1,31 @@
+## external load data, load model, save artifacts directories path 
+name: titanic-sample
+external_path:
+    - load_train_data_path: ./solution/sample_data/train/
+    - load_inference_data_path: ./solution/sample_data/test/
+    - save_train_artifacts_path: /external/save/train/artifacts/folder3/
+    - save_inference_artifacts_path: /external/save/inference/artifacts/folder4/
+    - load_model_path: /external/load/model/folder5/
+## s3 access key file path 
+external_path_permission:
+    - aws_key_profile: /s3/permission/aws_key_file
+
+## asset parameters info. 
+user_parameters: []
+
+## asset install info. 
+asset_source: []
+
+control:
+    ## 1. whether to install assets and dependency packages once or every time. 
+    - get_asset_source: once ## once, every
+    ## 2. whether to fetch external load data into < alo/input/ > path once or every time.   
+    - get_external_data: once ## once, every
+    ## 3. whether to backup saved artifacts
+    - backup_artifacts: True ## True, False
+    ## 4. whether to backup log
+    - backup_log: True  ## True, False
+    ## 5. determine artifacts backup size(MB)
+    - backup_size: 1000
+    ## 6. asset data, config interfacing method - memory: (fast) / file: (saved; non-volatilizing) 
+    - interface_mode: memory ## memory, file
