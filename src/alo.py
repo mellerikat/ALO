@@ -129,9 +129,9 @@ class ALO:
                 ###################################
                 ## Step8: Artifacts 저장   
                 ###################################
-
-                self.save_artifacts(pipes)
-
+                if self.system_envs['boot_on'] == False:
+                    self.save_artifacts(pipes)
+                    
                 ###################################
                 ## Step9: Artifacts 를 history 에 backup 
                 ###################################
