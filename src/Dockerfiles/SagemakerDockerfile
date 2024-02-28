@@ -20,7 +20,6 @@ ENV LC_ALL=C.UTF-8
 # Set some environment variables
 ENV PYTHONUNBUFFERED=TRUE
 ENV PYTHONDONTWRITEBYTECODE=TRUE
-ENV SOLUTION_PIPELINE_MODE='train'
 ENV COMPUTING='sagemaker'
 #alo v 2.1.3
 COPY /.sagemaker /opt/ml/code/

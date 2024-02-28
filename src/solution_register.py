@@ -60,7 +60,6 @@ class SolutionRegister:
         self.aws_access_key = s3_client.access_key
         self.aws_secret_key = s3_client.secret_key
 
-
         ####################################
         ########### Setup AIC api ##########
         ####################################
@@ -840,14 +839,18 @@ class SolutionRegister:
         """
         self.print_step("Check to access S3")
 
-        if not self.aws_access_key:
-            self.s3_client = boto3.client('s3',
-                                aws_access_key_id=self.aws_access_key,
-                                aws_secret_access_key=self.aws_secret_key,
-                                region_name=self.infra_setup['REGION'])
-        else:
+        from botocore.exceptions import NoCredentialsError
+        from botocore.exceptions import ProfileNotFound
+        # session 먼저 생성
+        
+        try:
+            self.session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
+            self.s3_client = self.session.client('s3', region_name=self.infra_setup['REGION'])
+        except ProfileNotFound:
             print_color(f"[INFO] Start s3 access check without key file.", color="blue")
             self.s3_client = boto3.client('s3', region_name=self.infra_setup['REGION'])
+        except Exception:
+            ValueError("The credentials are not available.")
 
         print(f"[INFO] AWS region: {self.infra_setup['REGION']}")
         if isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient) == True:       
@@ -1073,7 +1076,6 @@ class SolutionRegister:
 
     def _set_aws_ecr(self, docker = True, tags = []):
 
-
         self.docker = docker
         self.ecr_url = self.ecr_name.split("/")[0]
         # FIXME 마지막에 붙는 container 이름은 solution_name 과 같게 
@@ -1084,14 +1086,13 @@ class SolutionRegister:
         self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
 
         ## 동일 이름의 ECR 존재 시, 삭제하고 다시 생성한다. 
-        if not self.aws_access_key:
-            ecr_client = boto3.client('ecr',
-                                aws_access_key_id=self.aws_access_key,
-                                aws_secret_access_key=self.aws_secret_key,
-                                region_name=self.infra_setup['REGION'])
-        else:
+        try:
+            ecr_client = self.session.client('ecr',region_name=self.infra_setup['REGION'])
+        except NoCredentialsError:
             print_color(f"[INFO] Start s3 access check without key file.", color="blue")
             ecr_client = boto3.client('ecr', region_name=self.infra_setup['REGION'])
+        except Exception:
+            ValueError("The credentials are not available.")
 
         try:
             ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
@@ -1099,31 +1100,41 @@ class SolutionRegister:
         except:
             pass
 
-        if self.docker == True:
-            run = 'docker'
-        else:
-            run = 'buildah'
-
         print_color(f"[SYSTEM] target AWS ECR url: ", color='blue')
         print(f"{self.ecr_url}",)
 
-        p1 = subprocess.Popen(
-            ['aws', 'ecr', 'get-login-password', '--region', f'{self.infra_setup["REGION"]}'], stdout=subprocess.PIPE
-        )
-        if self.docker == True:
-            p2 = subprocess.Popen(
-                [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE
-            )
+        import base64
+        auth_data = ecr_client.get_authorization_token()
+        auth_token = auth_data['authorizationData'][0]['authorizationToken']
+        user, password = base64.b64decode(auth_token).decode().split(':')
+        
+        if self.docker:
+            import docker
+            from docker.errors import APIError
+
+            client = docker.from_env()
+            try:
+                login_result = client.login(username=user, password=password, registry="086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-hyunsoo-dev/cism/ai-solutions/")
+                if login_result.get("Status") == "Login Succeeded":
+                    print("Docker login succeeded")
+                else:
+                    print("Docker login failed:", login_result)
+            except APIError as error:
+                print("Docker login failed with error:", error)
         else:
+            run = 'buildah'
+            # 혹시 안되면 복구
+            p1 = subprocess.Popen(
+                ['aws', 'ecr', 'get-login-password', '--region', f'{self.infra_setup["REGION"]}'], stdout=subprocess.PIPE
+            )
             p2 = subprocess.Popen(
                 ['sudo', f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE
             )
+            p1.stdout.close()
+            output = p2.communicate()[0]
 
-        p1.stdout.close()
-        output = p2.communicate()[0]
-
-        print_color(f"[SYSTEM] AWS ECR | docker login result:", color='cyan')
-        print(f"{output.decode()}")
+            print_color(f"[SYSTEM] AWS ECR | docker login result:", color='cyan')
+            print(f"{output.decode()}")
 
         print_color(f"[SYSTEM] Target AWS ECR repository:", color='cyan')
         print(f"{self.ecr_repo}")
@@ -1159,7 +1170,6 @@ class SolutionRegister:
                         key, value = tag.split(',')
                         tag_dict = {'Key': key.split('=')[1], 'Value': value.split('=')[1]}
                         tags_new.append(tag_dict)
-                
 
                 resp = ecr_client.tag_resource(
                     resourceArn=repository_arn,
@@ -1640,10 +1650,7 @@ class SolutionRegister:
             else:
                 print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
                 raise ValueError(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})")
-            
-
-
-
+    
     def download_artifacts(self): 
 
         self.print_step("Download train artifacts ")
@@ -1657,31 +1664,27 @@ class SolutionRegister:
 
         ## s3_client 생성
  
-        if not self.aws_access_key:
-            s3_client = boto3.client('s3',
-                                aws_access_key_id=self.aws_access_key,
-                                aws_secret_access_key=self.aws_secret_key,
-                                region_name=self.infra_setup['REGION'])
-        else:
-            print_color(f"[INFO] Start s3 access check without key file.", color="blue")
-            s3_client = boto3.client('s3', region_name=self.infra_setup['REGION'])
-
-
+        # if not self.aws_access_key:
+        #     s3_client = boto3.client('s3',
+        #                         aws_access_key_id=self.aws_access_key,
+        #                         aws_secret_access_key=self.aws_secret_key,
+        #                         region_name=self.infra_setup['REGION'])
+        # else:
+        #     print_color(f"[INFO] Start s3 access check without key file.", color="blue")
+        #     s3_client = boto3.client('s3', region_name=self.infra_setup['REGION'])
         try: 
             s3_bucket = split_s3_path(self.stream_history['train_artifact_uri'])[0]
             s3_prefix = split_s3_path(self.stream_history['train_artifact_uri'])[1]
             # S3 버킷에서 파일 목록 가져오기
-            objects = s3_client.list_objects(Bucket=s3_bucket, Prefix=s3_prefix)
+            objects = self.s3_client.list_objects(Bucket=s3_bucket, Prefix=s3_prefix)
             # 파일 다운로드
             for obj in objects.get('Contents', []):
                 key = obj['Key']
                 filename = key.split('/')[-1]  # 파일 이름 추출
-                s3_client.download_file(s3_bucket, key, filename)
+                self.s3_client.download_file(s3_bucket, key, filename)
                 print_color(f'Downloaded: {filename}', color='cyan')
         except: 
             raise NotImplementedError("Failed to download train artifacts.")
-
-
 
     #####################################
     ######    Delete
