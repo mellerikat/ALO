@@ -5,5 +5,5 @@
 'VERSION': 1.0
 "LOGIN_MODE": "static" ## ldap 미적용이므로 static
 "REPOSITORY_TAGS": [] ## TAG 구분은 정의되지 않았음
-"AWS_KEY_FILE": "../aws-meerkat.key"
+"AWS_KEY_PROFILE": "register-solution-storage"
 "SUPPORT_TRAINING": False   ## True, False
