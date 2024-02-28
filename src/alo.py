@@ -738,7 +738,7 @@ class ALO:
 
     def _get_alo_version(self):
 
-        with open('.git/HEAD', 'r') as f:
+        with open(PROJECT_HOME + '.git/HEAD', 'r') as f:
             ref = f.readline().strip()
 
         # ref는 형식이 'ref: refs/heads/브랜치명' 으로 되어 있으므로, 마지막 부분만 가져옵니다.
