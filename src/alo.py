@@ -123,7 +123,7 @@ class ALO:
                 ## Step7: summary yaml, output 정상 생성 체크    
                 ###################################    
                 
-                if pipes == 'inference_pipeline' and self.boot_on == False:
+                if pipes == 'inference_pipeline' and self.system_envs['boot_on'] == False:
                     self._check_output()
                 
                 ###################################
