@@ -109,39 +109,56 @@ class ALO:
         """
         # if self.system_envs['pipeline_list'] not in ['train_pipeline', 'inference_pipeline']:
         #     self.proc_logger.process_error(f'Pipeline name in the experimental_plan.yaml \n It must be << train_pipeline >> or << inference_pipeline >>')
-        for pipes in self.system_envs['pipeline_list']:
-            print("*****************************************", pipes, "*********************************************")
-            # 이 방법이 맞나 확인 필요
-            pipeline = self.pipeline(pipes)
-            # TODO 한번에 하려고 하니 이쁘지 않음 논의
-            pipeline.setup()
-            pipeline.load()
-            pipeline.run()
+        try:
+            for pipes in self.system_envs['pipeline_list']:
+                print("*****************************************", pipes, "*********************************************")
+                # 이 방법이 맞나 확인 필요
+                pipeline = self.pipeline(pipes)
+                # TODO 한번에 하려고 하니 이쁘지 않음 논의
+                pipeline.setup()
+                pipeline.load()
+                pipeline.run()
 
-            ###################################
-            ## Step7: summary yaml, output 정상 생성 체크    
-            ###################################    
-            
-            if pipeline == 'inference_pipeline' and self.boot_on == False:
-                self._check_output()
-            
-            ###################################
-            ## Step8: Artifacts 저장   
-            ###################################
+                ###################################
+                ## Step7: summary yaml, output 정상 생성 체크    
+                ###################################    
+                
+                if pipes == 'inference_pipeline' and self.boot_on == False:
+                    self._check_output()
+                
+                ###################################
+                ## Step8: Artifacts 저장   
+                ###################################
 
-            self.save_artifacts(pipeline)
+                self.save_artifacts(pipes)
 
-            ###################################
-            ## Step9: Artifacts 를 history 에 backup 
-            ###################################
-            if self.control['backup_artifacts'] == True:
-                try:
-                    self.artifact.backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
-                except: 
-                    self.proc_logger.process_error("Failed to backup artifacts into << .history >>")
+                ###################################
+                ## Step9: Artifacts 를 history 에 backup 
+                ###################################
+                if self.control['backup_artifacts'] == True:
+                    try:
+                        self.artifact.backup_history(pipes, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
+                    except: 
+                        self.proc_logger.process_error("Failed to backup artifacts into << .history >>")
 
-            self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
+                self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
+        except:
+            try:  # 여기에 try, finally 구조로 안쓰면 main.py 로 raise 되버리면서 backup_artifacts가 안됨 
+                self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
+            finally:
+                # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
+                # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
+                self.artifact.backup_history(pipeline, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
+                # error 발생해도 external save artifacts 하도록        
+                ext_saved_path = self.ext_data.external_save_artifacts(pipeline, self.external_path, self.external_path_permission)
+                if self.is_always_on:
+                    fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
+                    if self.system_envs['runs_status'] == 'init':
+                        self.system_envs['q_inference_summary'].rput(fail_str)
+                        self.system_envs['q_inference_artifacts'].rput(fail_str)
+                    elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
+                        self.system_envs['q_inference_artifacts'].rput(fail_str)
 
         with open(PROJECT_HOME + 'solution_requirements.txt', 'w') as file_:
             subprocess.Popen(['pip', 'freeze'], stdout=file_).communicate()
