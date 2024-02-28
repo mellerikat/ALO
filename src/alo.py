@@ -192,6 +192,7 @@ class ALO:
         """
         
         # init solution metadata
+        self.system_envs['pipeline_start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
         sol_meta = self.load_solution_metadata()
         self.system_envs['solution_metadata'] = sol_meta
         self.system_envs['experimental_plan'] = experimental_plan
