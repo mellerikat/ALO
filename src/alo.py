@@ -118,6 +118,31 @@ class ALO:
             pipeline.load()
             pipeline.run()
 
+            ###################################
+            ## Step7: summary yaml, output 정상 생성 체크    
+            ###################################    
+            
+            if pipeline == 'inference_pipeline' and self.boot_on == False:
+                self._check_output()
+            
+            ###################################
+            ## Step8: Artifacts 저장   
+            ###################################
+
+            self.save_artifacts(pipeline)
+
+            ###################################
+            ## Step9: Artifacts 를 history 에 backup 
+            ###################################
+            if self.control['backup_artifacts'] == True:
+                try:
+                    self.artifact.backup_history(pipeline, self.exp_plan_file, self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
+                except: 
+                    self.proc_logger.process_error("Failed to backup artifacts into << .history >>")
+
+            self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
+
         with open(PROJECT_HOME + 'solution_requirements.txt', 'w') as file_:
             subprocess.Popen(['pip', 'freeze'], stdout=file_).communicate()
         
