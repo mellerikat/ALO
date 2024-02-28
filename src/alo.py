@@ -9,6 +9,7 @@ from datetime import datetime
 from collections import Counter
 from copy import deepcopy
 from git import Repo, GitCommandError
+import yaml
 # local import
 from src.utils import init_redis
 from src.constants import *
@@ -427,6 +428,16 @@ class ALO:
     def load_solution_metadata(self):
         # TODO solution meta version 관리 필요??
         # system 은 입력받은 solution metadata
+                ## args.system 이 *.yaml 이면 파일 로드하여 string 화 하여 입력 함
+        filename = self.system
+        if (filename is not None) and filename.endswith('.yaml'):
+            try:
+                with open(filename, encoding='UTF-8') as file:
+                    content = yaml.load(file, Loader=yaml.FullLoader)  # 파일 내용을 읽고 자료구조로 변환하여 반�
+                # 로드한 YAML 내용을 JSON 문자열로 변환
+                self.system = json.dumps(content)
+            except FileNotFoundError:
+                print(f"The file {filename} does not exist.")
         return json.loads(self.system) if self.system != None else None # None or dict from json 
     
     def load_experiment_plan(self, sol_meta, experimental_plan, system_envs):

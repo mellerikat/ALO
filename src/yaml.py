@@ -35,16 +35,11 @@ class Metadata:
             exp_plan_file = self.load_experimental_plan(exp_plan_file) 
             PROC_LOGGER.process_info(f"Successfully loaded << experimental_plan.yaml >> from: \n {exp_plan_file}") 
             
-            exp_plan = self.get_yaml(exp_plan_file)  ## from compare_yamls.py
+            self.exp_plan = self.get_yaml(exp_plan_file)  ## from compare_yamls.py
             # self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드  ## from compare_yamls.py
-            self.check_exp_plan_keys(exp_plan) 
-            # solution metadata yaml --> exp plan yaml overwrite
-            if sol_me_file is not None:
-                # 주의: _update_yaml에서 self.exp_plan의 내용이 바뀜
-                system_envs = self._update_yaml(sol_me_file, system_envs=system_envs)
-                PROC_LOGGER.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
-
-            def get_yaml_data(key): # inner func.
+            self.check_exp_plan_keys(self.exp_plan) 
+            
+            def get_yaml_data(key, exp_plan): # inner func.
                 data_dict = {}
                 for data in exp_plan[key]:
                     data_dict.update(data)
@@ -52,18 +47,25 @@ class Metadata:
 
             # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
             values = {}
-            for key, value in exp_plan.items():
+            for key, value in self.exp_plan.items():
                 if type(value) != str:
-                    setattr(self, key, get_yaml_data(key))
+                    setattr(self, key, get_yaml_data(key, self.exp_plan))
                 else:
                     setattr(self, key, value)
+            
+            # solution metadata yaml --> exp plan yaml overwrite
+            if sol_me_file is not None:
+                self.sol_meta = sol_me_file
+                # 주의: _update_yaml에서 self.exp_plan의 내용이 바뀜
+                system_envs = self._update_yaml(system_envs=system_envs)
+                PROC_LOGGER.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
         except:
             PROC_LOGGER.process_error("Failed to read experimental plan yaml.")
 
         # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭 (from src.utils)
         self._match_steps()
 
-        return exp_plan, system_envs
+        return self.exp_plan, system_envs
     # TODO rel 2.2 --> 2.2.1 added 
     def check_exp_plan_keys(self, exp_plan: dict): 
         exp_plan_format = self.get_yaml(EXPERIMENTAL_PLAN_FORMAT_FILE) ## dict 
@@ -160,7 +162,7 @@ class Metadata:
         
         return True
     
-    def _update_yaml(self, sol_me_file, system_envs):
+    def _update_yaml(self, system_envs):  
         '''
         sol_meta's << dataset_uri, artifact_uri, selected_user_parameters ... >> into exp_plan 
         '''
@@ -172,34 +174,34 @@ class Metadata:
         #     raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
         # solution metadata version 가져오기 --> inference summary yaml의 version도 이걸로 통일 
         # key 명 바뀜 version -> metadata_version (24.02.02)
-        system_envs['solution_metadata_version'] = sol_me_file['metadata_version']
+        system_envs['solution_metadata_version'] = self.sol_meta['metadata_version']
         # solution metadata yaml에 pipeline key 있는지 체크 
-        if 'pipeline' not in sol_me_file.keys(): # key check 
+        if 'pipeline' not in self.sol_meta.keys(): # key check 
             PROC_LOGGER.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
         
         # EdgeConductor Interface
-        system_envs['inference_result_datatype'] = sol_me_file['edgeconductor_interface']['inference_result_datatype']
-        system_envs['train_datatype'] =  sol_me_file['edgeconductor_interface']['train_datatype']
+        system_envs['inference_result_datatype'] = self.sol_meta['edgeconductor_interface']['inference_result_datatype']
+        system_envs['train_datatype'] =  self.sol_meta['edgeconductor_interface']['train_datatype']
         if (system_envs['inference_result_datatype'] not in ['image', 'table']) or (system_envs['train_datatype'] not in ['image', 'table']):
             PROC_LOGGER.process_error(f"Only << image >> or << table >> is supported for \n \
                 train_datatype & inference_result_datatype of edge-conductor interface.")
         
         # EdgeAPP Interface : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
         def _check_edgeapp_interface(): # inner func.
-            if 'edgeapp_interface' not in sol_me_file.keys():
+            if 'edgeapp_interface' not in self.sol_meta.keys():
                 return False 
-            if 'redis_server_uri' not in sol_me_file['edgeapp_interface'].keys():
+            if 'redis_server_uri' not in self.sol_meta['edgeapp_interface'].keys():
                 return False 
-            if sol_me_file['edgeapp_interface']['redis_server_uri'] == None:
+            if self.sol_meta['edgeapp_interface']['redis_server_uri'] == None:
                 return False
-            if sol_me_file['edgeapp_interface']['redis_server_uri'] == "":
+            if self.sol_meta['edgeapp_interface']['redis_server_uri'] == "":
                 return False 
             return True 
         
         if _check_edgeapp_interface() == True: 
             try: 
                 # get redis server host, port 
-                system_envs['redis_host'], _redis_port = sol_me_file['edgeapp_interface']['redis_server_uri'].split(':')
+                system_envs['redis_host'], _redis_port = self.sol_meta['edgeapp_interface']['redis_server_uri'].split(':')
                 system_envs['redis_port'] = int(_redis_port)
                 if (system_envs['redis_host'] == None) or (system_envs['redis_port'] == None): 
                     PROC_LOGGER.process_error("Missing host or port of << redis_server_uri >> in solution metadata.")
@@ -244,10 +246,10 @@ class Metadata:
                          
         # TODO: solution_metadata 에 존재하는 pipeline 이 experimental 에는 존재 하지 않을 수 있음을 대응
         exp_pipe_list = []
-        for params in self.user_parameters:
+        for params in self.exp_plan['user_parameters']:
             exp_pipe_list.append(list(params.keys())[0].replace('_pipeline',''))
 
-        for sol_pipe in sol_me_file['pipeline']: 
+        for sol_pipe in self.sol_meta['pipeline']: 
             pipe_type = sol_pipe['type'] # train, inference 
             if pipe_type in exp_pipe_list:
                 artifact_uri = sol_pipe['artifact_uri']
@@ -255,12 +257,12 @@ class Metadata:
                 selected_params = sol_pipe['parameters']['selected_user_parameters']  
                 # plan yaml에서 현재 sol meta pipe type의 index 찾기 
                 cur_pipe_idx = None 
-                for idx, plan_pipe in enumerate(self.user_parameters):
+                for idx, plan_pipe in enumerate(self.exp_plan['user_parameters']):
                     # pipeline key가 하나이고, 해당 pipeline에 대응되는 plan yaml pipe가 존재할 시 
                     if (len(plan_pipe.keys()) == 1) and (f'{pipe_type}_pipeline' in plan_pipe.keys()): 
                         cur_pipe_idx = idx 
                 # selected params를 exp plan으로 덮어 쓰기 
-                init_exp_plan = self.user_parameters[cur_pipe_idx][f'{pipe_type}_pipeline'].copy()
+                init_exp_plan = self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'].copy()
                 for sol_step_dict in selected_params: 
                     sol_step = sol_step_dict['step']
                     sol_args = sol_step_dict['args'] #[주의] solution meta v9 기준 elected user params의 args는 list아니고 dict
@@ -273,36 +275,36 @@ class Metadata:
                         continue 
                     for idx, plan_step_dict in enumerate(init_exp_plan):  
                         if sol_step == plan_step_dict['step']:
-                            self.user_parameters[cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args) #dict update
+                            self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args) #dict update
                             # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. (그냥 s3에서 다운받으면 그 밑에있는거 다사용하도록) 
                             if sol_step == 'input':
-                                self.user_parameters[cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
+                                self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
               
                 # external path 덮어 쓰기 
                 if pipe_type == 'train': 
                     check_train_keys = []
-                    for idx, ext_dict in enumerate(self.external_path):
+                    for idx, ext_dict in enumerate(self.exp_plan['external_path']):
                         if 'load_train_data_path' in ext_dict.keys(): 
-                            self.external_path[idx]['load_train_data_path'] = dataset_uri
+                            self.exp_plan['external_path'][idx]['load_train_data_path'] = dataset_uri
                             check_train_keys.append('load_train_data_path') 
                         if 'save_train_artifacts_path' in ext_dict.keys(): 
-                            self.external_path[idx]['save_train_artifacts_path'] = artifact_uri
+                            self.exp_plan['external_path'][idx]['save_train_artifacts_path'] = artifact_uri   
                             check_train_keys.append('save_train_artifacts_path') 
                     diff_keys = set(['load_train_data_path', 'save_train_artifacts_path']) - set(check_train_keys)
                     if len(diff_keys) != 0:
                         PROC_LOGGER.process_error(f"<< {diff_keys} >> key does not exist in experimental plan yaml.")
                 elif pipe_type == 'inference':
                     check_inference_keys = []
-                    for idx, ext_dict in enumerate(self.external_path):
+                    for idx, ext_dict in enumerate(self.exp_plan['external_path']):
                         if 'load_inference_data_path' in ext_dict.keys():
-                            self.external_path[idx]['load_inference_data_path'] = dataset_uri
+                            self.exp_plan['external_path'][idx]['load_inference_data_path'] = dataset_uri  
                             check_inference_keys.append('load_inference_data_path')
                         if 'save_inference_artifacts_path' in ext_dict.keys():  
-                            self.external_path[idx]['save_inference_artifacts_path'] = artifact_uri
+                            self.exp_plan['external_path'][idx]['save_inference_artifacts_path'] = artifact_uri 
                             check_inference_keys.append('save_inference_artifacts_path')
                         # inference type인 경우 model_uri를 plan yaml의 external_path의 load_model_path로 덮어쓰기
                         if 'load_model_path' in ext_dict.keys():
-                            self.external_path[idx]['load_model_path'] = sol_pipe['model_uri']
+                            self.exp_plan['external_path'][idx]['load_model_path'] = sol_pipe['model_uri']
                             check_inference_keys.append('load_model_path')
                     diff_keys = set(['load_inference_data_path', 'save_inference_artifacts_path', 'load_model_path']) - set(check_inference_keys)
                     if len(diff_keys) != 0:
@@ -310,10 +312,10 @@ class Metadata:
                 else: 
                     PROC_LOGGER.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
 
-                # if self.user_parameters[f"save_inference_artifacts_path"] is None:
+                # if self.external_path[f"save_inference_artifacts_path"] is None:  
                 #     PROC_LOGGER.process_error(f"You did not enter the << save_inference_artifacts_path >> in the experimental_plan.yaml") 
 
         # [중요] system 인자가 존재해서 _update_yaml이 실행될 때는 항상 get_external_data를 every로한다. every로 하면 항상 input/train (or input/inference)를 비우고 새로 데이터 가져온다.
-        self.control['get_external_data'] = 'every'
+        self.exp_plan['control'][0]['get_external_data'] = 'every'
 
         return system_envs
