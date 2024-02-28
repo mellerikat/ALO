@@ -29,5 +29,4 @@ control:
     - backup_size: 1000
     ## 6. asset data, config interfacing method - memory: (fast) / file: (saved; non-volatilizing) 
     - interface_mode: memory ## memory, file
-    ## 7. whether to release asset memory cache  
-    - reset_assets: False ## True, False
+
