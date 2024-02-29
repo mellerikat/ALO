@@ -149,11 +149,7 @@ class ALO:
                 self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
                 
-                # loop 모드로 동작
-                # 코드 구조 변경 필요***
-                # solution_metadata를 어떻게 넘길지 고민
-                # update yaml 위치를 새로 선정할 필요가 있음 ***
-                # while(self.loop):
+                # FIXME loop 모드로 동작 / solution_metadata를 어떻게 넘길지 고민 / update yaml 위치를 새로 선정할 필요가 있음 ***
                 if self.loop: 
                     try:
                         # boot 모드 동작 후 boot 모드 취소
@@ -162,8 +158,6 @@ class ALO:
                         self.system = msg_dict['solution_metadata'] ## 수정
                         self.set_metadata(pipeline_type='inference') ## 수정
                         self.main()
-                        # if self.loop:
-                        # self.system_envs['success_str'] = self.send_summary()
                     except Exception as e: 
                         ## always-on 모드에서는 Error 가 발생해도 종료되지 않도록 한다. 
                         print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
@@ -329,13 +323,12 @@ class ALO:
 
     def load_solution_metadata(self):
         # TODO solution meta version 관리 필요??
-        # system 은 입력받은 solution metadata
-                ## args.system 이 *.yaml 이면 파일 로드하여 string 화 하여 입력 함
+        # system 은 입력받은 solution metadata / args.system 이 *.yaml 이면 파일 로드하여 string 화 하여 입력 함
         filename = self.system
         if (filename is not None) and filename.endswith('.yaml'):
             try:
                 with open(filename, encoding='UTF-8') as file:
-                    content = yaml.load(file, Loader=yaml.FullLoader)  # 파일 내용을 읽고 자료구조로 변환하여 반�
+                    content = yaml.load(file, Loader=yaml.FullLoader)  # 파일 내용을 읽고 자료구조로 변환
                 # 로드한 YAML 내용을 JSON 문자열로 변환
                 self.system = json.dumps(content)
             except FileNotFoundError:
@@ -361,15 +354,13 @@ class ALO:
         with open(b, 'rb') as f:
             _data = pickle.load(f)
         return _config, _data
-    
+
     def set_asset_structure(self):
         """Asset 의 In/Out 을 data structure 로 전달한다.
         파이프라인 실행에 필요한 환경 정보를 envs 에 setup 한다.
         """
         self.asset_structure = AssetStructure() 
-        
         self.asset_structure.envs['project_home'] = PROJECT_HOME
-        
         self.asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
         self.asset_structure.envs['artifacts'] = self.system_envs['artifacts']
         self.asset_structure.envs['alo_version'] = self.system_envs['alo_version']
@@ -379,7 +370,6 @@ class ALO:
         self.asset_structure.envs['proc_start_time'] = self.system_envs['start_time']
         self.asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
         self.asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
-
     
     def setup_asset(self, pipeline):
         """asset 의 git clone 및 패키지를 설치 한다. 
@@ -472,7 +462,6 @@ class ALO:
 
         return ext_saved_path
 
-              
     def _empty_artifacts(self, pipeline): 
         '''
         - pipe_prefix: 'train', 'inference'
@@ -589,7 +578,6 @@ class ALO:
 
         ua = user_asset(asset_structure) 
         asset_structure.data, asset_structure.config = ua.run()
-     
         # FIXME memory release : on/off 필요 
         try:
             if self.control['reset_assets']:
@@ -653,16 +641,13 @@ class ALO:
         self.control = self.experimental_plan.control
 
     def _get_alo_version(self):
-
         with open(PROJECT_HOME + '.git/HEAD', 'r') as f:
             ref = f.readline().strip()
-
         # ref는 형식이 'ref: refs/heads/브랜치명' 으로 되어 있으므로, 마지막 부분만 가져옵니다.
         if ref.startswith('ref:'):
             __version__ = ref.split('/')[-1]
         else:
             __version__ = ref  # Detached HEAD 상태 (브랜치명이 아니라 커밋 해시)
-        
         self.system_envs['alo_version'] = __version__
 
     def _get_redis_msg(self):
