@@ -47,7 +47,7 @@ class AssetStructure:
 class ALO:
     # def __init__(self, exp_plan_file = None, solution_metadata = None, pipeline_type = 'all', boot_on = False, computing = 'local'):
     # 'config': None, 'system': None, 'mode': 'all', 'loop': False, 'computing': 'local'
-    def __init__(self, experimental_plan = None, solution_metadatas = None, pipeline_type = 'all', loop = False, computing = 'local'):
+    def __init__(self, experimental_plan = None, solution_metadata = None, pipeline_type = 'all', loop = False, computing = 'local'):
         """실험 계획 (experimental_plan.yaml), 운영 계획(solution_metadata), 
         파이프라인 종류(train, inference), 동작방식(always-on) 에 대한 설정을 완료함
 
@@ -68,7 +68,7 @@ class ALO:
         # alolib을 설치
         self._set_alolib()
 
-        self.system = solution_metadatas
+        self.system = solution_metadata
         self.loop = loop
         self.computing = computing
 
@@ -122,15 +122,20 @@ class ALO:
                 ###################################
                 ## Step7: summary yaml, output 정상 생성 체크    
                 ###################################    
-                
-                if pipes == 'inference_pipeline' and self.system_envs['boot_on'] == False:
+                if (pipes == 'inference_pipeline') and (self.system_envs['boot_on'] == False):
                     self._check_output()
                 
+                # 추론 output 생성이 완료 됐다는 성공 msg를 edgeapp으로 전송 
+                if (self.loop == True) and (self.system_envs['boot_on'] == False): 
+
+                    self.system_envs['success_str'] = self.send_summary() 
+
                 ###################################
                 ## Step8: Artifacts 저장   
                 ###################################
                 if self.system_envs['boot_on'] == False:
-                    self.save_artifacts(pipes)
+                    # save_artifacts 내에도 edgeapp redis 전송 있음 
+                    self.save_artifacts(pipes) 
                     
                 ###################################
                 ## Step9: Artifacts 를 history 에 backup 
@@ -143,16 +148,45 @@ class ALO:
 
                 self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
+                
+                # loop 모드로 동작
+                # 코드 구조 변경 필요***
+                # solution_metadata를 어떻게 넘길지 고민
+                # update yaml 위치를 새로 선정할 필요가 있음 ***
+                # while(self.loop):
+                if self.loop: 
+                    try:
+                        # boot 모드 동작 후 boot 모드 취소
+                        self.system_envs['boot_on'] = False
+                        msg_dict = self._get_redis_msg() ## 수정
+                        self.system = msg_dict['solution_metadata'] ## 수정
+                        self.set_metadata(pipeline_type='inference') ## 수정
+                        self.main()
+                        # if self.loop:
+                        # self.system_envs['success_str'] = self.send_summary()
+                    except Exception as e: 
+                        ## always-on 모드에서는 Error 가 발생해도 종료되지 않도록 한다. 
+                        print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
+                        continue
+
+                if self.computing == "sagemaker":
+                    self.sagemaker_runs()
+                
+            # train, inference 다 돌고 pip freeze 돼야함 
+            # FIXME 무한루프 모드일 땐 pip freeze 할 일 없다 ?
+            with open(PROJECT_HOME + 'solution_requirements.txt', 'w') as file_:
+                subprocess.Popen(['pip', 'freeze'], stdout=file_).communicate()
         except:
             try:  # 여기에 try, finally 구조로 안쓰면 main.py 로 raise 되버리면서 backup_artifacts가 안됨 
-                self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
+                #self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
+                self.proc_logger.process_error(traceback.format_exc())
             finally:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
                 self.artifact.backup_history(pipes, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록        
                 ext_saved_path = self.ext_data.external_save_artifacts(pipes, self.external_path, self.external_path_permission)
-                if self.loop:
+                if self.loop == True:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
                     if self.system_envs['runs_status'] == 'init':
                         self.system_envs['q_inference_summary'].rput(fail_str)
@@ -160,30 +194,6 @@ class ALO:
                     elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
 
-        with open(PROJECT_HOME + 'solution_requirements.txt', 'w') as file_:
-            subprocess.Popen(['pip', 'freeze'], stdout=file_).communicate()
-        
-        # boot 모드 동작 후 boot 모드 취소
-        self.system_envs['boot_on'] = False
-        # loop 모드로 동작
-        # 코드 구조 변경 필요***
-        # solution_metadata를 어떻게 넘길지 고민
-        # update yaml 위치를 새로 선정할 필요가 있음 ***
-        while(self.loop):
-            try:
-                msg_dict = self._get_redis_msg() ## 수정
-                self.system = msg_dict['solution_metadata'] ## 수정
-                self.set_metadata(pipeline_type='inference_pipeline') ## 수정
-                self.main()
-                if self.loop:
-                    self.system_envs['success_str'] = self.send_summary()
-            except Exception as e: 
-                ## always-on 모드에서는 Error 가 발생해도 종료되지 않도록 한다. 
-                print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
-                continue
-
-        if self.computing == "sagemaker":
-            self.sagemaker_runs()
 
     def set_metadata(self, experimental_plan = EXP_PLAN, pipeline_type = 'train_pipeline'):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
@@ -202,8 +212,11 @@ class ALO:
         if self.computing != 'local':
             self.system_envs = self._set_system_envs(pipeline_type, True, self.system_envs)
         else:
-            self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
-
+            if 'boot_on' in self.system_envs.keys(): # loop mode - boot on 이후 
+                self.system_envs = self._set_system_envs(pipeline_type, self.system_envs['boot_on'], self.system_envs)
+            else: # loop mode - 최초 boot on 시 / 일반 flow  
+                self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
+                
         # 입력 받은 config(exp)가 없는 경우 default path에 있는 내용을 사용
         
         # metadata까지 완성되면 출력
