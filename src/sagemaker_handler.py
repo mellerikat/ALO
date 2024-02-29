@@ -14,7 +14,8 @@ PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 #--------------------------------------------------------------------------------------------------------------------------
 
 class SagemakerHandler:
-    def __init__(self, sm_config):
+    def __init__(self, aws_key_profile, sm_config):
+        self.aws_key_profile = aws_key_profile
         self.sm_config = sm_config
         self.SAGEMAKER_PATH = SAGEMAKER_PATH
         self.temp_model_extract_dir = TEMP_SAGEMAKER_MODEL_PATH
@@ -25,7 +26,7 @@ class SagemakerHandler:
         """
         # aws configure의 profile을 sagemaker-profile로 변경 (sagemaker 및 본인 계정 s3, ecr 권한 있는)
         # 사외 서비스 시엔 사용자가 미리 sagemaker-profile와 meerkat-profile를 aws configure multi-profile 등록해놨어야 함
-        os.environ["AWS_PROFILE"] = "sagemaker-profile"
+        os.environ["AWS_PROFILE"] = self.aws_key_profile
         # FIXME sagemaker install 은 sagemaker_runs일 때만 진행 
         self._install_sagemaker()
         try: 

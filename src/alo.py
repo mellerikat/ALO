@@ -109,6 +109,7 @@ class ALO:
         """
         try:
             for pipes in self.system_envs['pipeline_list']:
+
                 self.proc_logger.process_info("#########################################################################################################")
                 self.proc_logger.process_info(f"                                                 {pipes}                                                   ") 
                 self.proc_logger.process_info("#########################################################################################################")
@@ -229,7 +230,7 @@ class ALO:
             try:
                 # load sagemaker_config.yaml - (account_id, role, region, ecr_repository, s3_bucket_uri, train_instance_type)
                 sm_config = self.experimental_plan.get_yaml(SAGEMAKER_CONFIG) 
-                sm_handler = SagemakerHandler(sm_config)
+                sm_handler = SagemakerHandler(self.external_path_permission['aws_key_profile'], sm_config)
                 sm_handler.init()
             except Exception as e:
                 self.proc_logger.process_error("Failed to init SagemakerHandler. \n" + str(e)) 
@@ -300,12 +301,17 @@ class ALO:
         system_envs['boot_on'] = boot_on
         system_envs['start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
 
-        
-        if boot_on:
+        if self.computing != 'local':
+            system_envs['pipeline_list'] = ['train_pipeline']
+        elif boot_on:
             system_envs['pipeline_list'] = ['inference_pipeline']
         else:
             if pipeline_type == 'all':
-                system_envs['pipeline_list'] = [*self.user_parameters]
+                if os.getenv('COMPUTING') == 'sagemaker':
+                    # TODO 2.2.1 added (sagemaker 일 땐 학습만 진행)
+                    system_envs['pipeline_list'] = ["train_pipeline"]
+                else:
+                    system_envs['pipeline_list'] = [*self.user_parameters]
             else:
                 system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
             
