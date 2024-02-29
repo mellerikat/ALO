@@ -2273,6 +2273,29 @@ class SolutionRegister:
             shutil.copy(REGISTER_DOCKER_PATH + dockerfile, PROJECT_HOME)
             os.rename(PROJECT_HOME+dockerfile, PROJECT_HOME + 'Dockerfile')
 
+            venv_path = getattr(sys, 'real_prefix', sys.base_prefix)
+            venv_site_packages_path = os.path.join(venv_path, 'lib', 'python3.10', 'site-packages')
+
+            docker_site_path = '/usr/local/lib/python3.10/site-packages/'
+            dockerfile_path = '/home/wonjun.sung/0.repo/release/release-2.2/gcr_solution/src/Dockerfiles/register/TrainDockerfile'
+            local_path = "./.site-packages/"
+
+            try:
+                shutil.rmtree(local_path)
+            except:
+                pass
+            shutil.copytree(venv_site_packages_path, local_path)
+
+            search_string = 'site_packages_location'
+            with open(PROJECT_HOME + 'Dockerfile', 'r', encoding='utf-8') as file:
+                content = file.read()
+
+            if search_string in content:
+                # 교체할 문자열이 있는 경우 해당 내용을 새로운 문자열로 변경
+                content = content.replace(search_string, f"COPY {local_path} {docker_site_path}")
+                with open(PROJECT_HOME + 'Dockerfile', 'w', encoding='utf-8') as file:
+                    file.write(content)
+
             print_color(f"[SUCESS] set DOCKERFILE for ({self.pipeline}) pipeline", color='green')
         except Exception as e: 
             raise NotImplementedError(f"Failed DOCKERFILE setting. \n - pipeline: {self.pipeline} \n {e}")

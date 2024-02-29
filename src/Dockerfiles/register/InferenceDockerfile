@@ -34,10 +34,7 @@ WORKDIR /framework/
 # --no-cache-dir 는 pip 패키지를 설치할 때 캐시를 사용하지 않도록 지시.
 # pip 다운로드한 패키지 파일들을 로컬 시스템의 캐시 디렉토리에 저장. 
 # 동일한 패키지를 재설치할 때 인터넷에서 다시 다운로드할 필요 없음.
-RUN pip3 install --upgrade pip
-RUN pip3 install --upgrade setuptools
-RUN pip3 install -r requirements.txt
-RUN pip3 install -r solution_requirements.txt
+site_packages_location
 # RUN pip3 install --no-cache-dir -r framework/requirements.txt
 # RUN pip3 install --no-cache-dir -r framework/solution_requirements.txt
 
