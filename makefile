@@ -18,7 +18,7 @@ clean :
 	rm -rf $(FOLDER_PATH)* ./.history ./.asset_interface ./.inference_artifacts ./.temp_artifacts_dir ./.train_artifacts ./input/ ./assets/ ./alolib ./.register_* 
 	rm -rf $(FOLDER_PATH)* ./solution
 	rm -rf $(FOLDER_PATH)* Dockerfile solution_requirements.txt
-
+	rm -rf $(FOLDER_PATH)* .site-packages
 clean-cache:
 	@find . -type d -name '__pycache__' -exec rm -r {} +
 

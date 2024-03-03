@@ -10,8 +10,8 @@ from src.alo import ALO
 
 def main():
     # ALO 실행 전 필요한 args를 받아옴
-    args = set_args()
-    alo = ALO(args.config, args.system, args.mode, args.loop, args.computing)
+    kwargs = vars(set_args())
+    alo = ALO(**kwargs)
     alo.main()
 
 if __name__ == "__main__":

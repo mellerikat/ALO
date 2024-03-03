@@ -8,12 +8,14 @@ import shutil
 from typing import Dict, List, Tuple, Union, Optional, Any
 from collections import Counter
 import git
+import json
 
 from src.constants import *
 # from src.assets import *
 from src.install import Packages
 from src.external import ExternalHandler
 from src.logger import ProcessLogger
+from src.artifacts import Aritifacts
 
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
@@ -50,8 +52,9 @@ class Pipeline:
         # TODO ALO 에 대한 클래스는 pipeline에서만 사용 나중에 옮겨야 할지 논의
         self.install = Packages()
         self.external = ExternalHandler()
-
         self.asset_structure = AssetStructure()
+        self.artifact = Aritifacts()
+        self.ext_data = ExternalHandler()
 
         def get_yaml_data(key, pipeline_type = 'all'): # inner func.
             data_dict = {}
@@ -110,6 +113,108 @@ class Pipeline:
         else:
             PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {run_step}")
             self.asset_structure.args = self.get_parameter(run_step)
+
+    def save(self):
+
+        ###################################
+        ## Step7: summary yaml, output 정상 생성 체크
+        ###################################
+        if (self.pipeline_type == 'inference_pipeline') and (self.system_envs['boot_on'] == False):
+            self._check_output()
+
+        # 추론 output 생성이 완료 됐다는 성공 msg를 edgeapp으로 전송
+        if self.system_envs['loop'] and (self.system_envs['boot_on'] == False):
+            self.system_envs['success_str'] = self._send_summary()
+
+        ###################################
+        ## Step8: Artifacts 저장
+        ###################################
+        if self.system_envs['boot_on'] == False:
+            # save_artifacts 내에도 edgeapp redis 전송 있음
+            self._save_artifacts()
+
+        ###################################
+        ## Step9: Artifacts 를 history 에 backup
+        ###################################
+        if self.control['backup_artifacts'] == True:
+            try:
+                self.artifact.backup_history(self.pipeline_type, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
+            except:
+                PROC_LOGGER.process_error("Failed to backup artifacts into << .history >>")
+
+
+    def _check_output(self):
+        """inference_summary.yaml 및 output csv / image 파일 (jpg, png, svg) 정상 생성 체크
+            csv 및 image 파일이 각각 1개씩만 존재해야 한다.
+        Args:
+          -
+        """
+        # check inference summary
+        if "inference_summary.yaml" in os.listdir(INFERENCE_SCORE_PATH):
+            PROC_LOGGER.process_info(f"[Success] << inference_summary.yaml >> exists in the inference score path: << {INFERENCE_SCORE_PATH} >>")
+        else:
+            PROC_LOGGER.process_error(f"[Failed] << inference_summary.yaml >> does not exist in the inference score path: << {INFERENCE_SCORE_PATH} >>")
+        # check output files
+        output_files = []
+        for file_path in os.listdir(INFERENCE_OUTPUT_PATH):
+        # check if current file_path is a file
+            if os.path.isfile(os.path.join(INFERENCE_OUTPUT_PATH, file_path)):
+                # add filename to list
+                output_files.append(file_path)
+        if len(output_files) == 1:
+            if os.path.splitext(output_files[0])[-1] not in TABULAR_OUTPUT_FORMATS + IMAGE_OUTPUT_FORMATS:
+                PROC_LOGGER.process_error(f"[Failed] output file extension must be one of << {TABULAR_OUTPUT_FORMATS + IMAGE_OUTPUT_FORMATS} >>. \n Your output: {output_files}")
+        elif len(output_files) == 2:
+            output_extension = set([os.path.splitext(i)[-1] for i in output_files]) # must be {'.csv', '.jpg' (or other image ext)}
+            allowed_extensions = [set(TABULAR_OUTPUT_FORMATS + [i]) for i in IMAGE_OUTPUT_FORMATS]
+            if output_extension not in allowed_extensions:
+                PROC_LOGGER.process_error(f"[Failed] output files extension must be one of << {allowed_extensions} >>. \n Your output: {output_files}")
+        else:
+            PROC_LOGGER.process_error(f"[Failed] the number of output files must be 1 or 2. \n Your output: {output_files}")
+
+    def _send_summary(self):
+        """save artifacts가 완료되면 OK를 redis q로 put. redis q는 _update_yaml 이미 set 완료
+        solution meta 존재하면서 (운영 모드) &  redis host none아닐때 (edgeapp 모드 > AIC 추론 경우는 아래 코드 미진입) & boot-on이 아닐 때 & inference_pipeline 일 때 save_summary 먼저 반환 필요
+        외부 경로로 잘 artifacts 복사 됐나 체크 (edge app에선 고유한 경로로 항상 줄것임)
+
+        Args:
+          - success_str(str): 완료 메시지
+          - ext_saved_path(str): 외부 경로
+        """
+        success_str = None
+        summary_dir = INFERENCE_SCORE_PATH
+        if 'inference_summary.yaml' in os.listdir(summary_dir):
+            summary_dict = self.experimental_plan.get_yaml(summary_dir + 'inference_summary.yaml')
+            success_str = json.dumps({'status':'success', 'message': summary_dict})
+            self.system_envs['q_inference_summary'].rput(success_str)
+            PROC_LOGGER.process_info("Successfully completes putting inference summary into redis queue.")
+            self.system_envs['runs_status'] = 'summary'
+        else:
+            PROC_LOGGER.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")
+        return success_str
+
+    def _save_artifacts(self):
+        """파이프라인 실행 시 생성된 결과물(artifacts) 를 ./*_artifacts/ 에 저장한다.
+        always-on 모드에서는 redis 로 inference_summary 결과를 Edge App 으로 전송한다.
+
+        만약, 외부로 결과물 저장 설정이 되있다면, local storage 또는 S3 로 결과값 저장한다.
+        """
+        # s3, nas 등 외부로 artifacts 압축해서 전달 (복사)
+        try:
+            ext_saved_path = self.ext_data.external_save_artifacts(self.pipeline_type, self.external_path, self.external_path_permission)
+        except:
+            PROC_LOGGER.process_error("Failed to save artifacts into external path.")
+        # 운영 추론 모드일 때는 redis로 edgeapp에 artifacts 생성 완료 전달
+        if self.system_envs['loop']:
+            if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
+                # send_summary에서 생성된 summary yaml을 다시 한번 전송
+                self.system_envs['q_inference_artifacts'].rput(self.system_envs['success_str'])
+                PROC_LOGGER.process_info("Completes putting artifacts creation << success >> signal into redis queue.")
+                self.system_envs['runs_status'] = 'artifacts'
+            else:
+                PROC_LOGGER.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
+
+        return ext_saved_path
 
     def get_parameter(self, step_name):
         for step in self.user_parameters[self.pipeline_type]:
