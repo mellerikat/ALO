@@ -287,6 +287,8 @@ class ALO:
                 if os.getenv('COMPUTING') == 'sagemaker':
                     # TODO 2.2.1 added (sagemaker 일 땐 학습만 진행)
                     system_envs['pipeline_list'] = ["train_pipeline"]
+                    from sagemaker_training import environment      
+                    self.external_path['save_train_artifacts_path'] = environment.Environment().model_dir
                 else:
                     system_envs['pipeline_list'] = [*self.user_parameters]
             else:
