@@ -33,6 +33,8 @@ INFERENCE_OUTPUT_PATH = PROJECT_HOME + ".inference_artifacts/output/"
 TABULAR_OUTPUT_FORMATS = [".csv"]
 IMAGE_OUTPUT_FORMATS = [".jpg", ".jpeg", ".png", ".svg"]
 
+ASSET_PACKAGE_PATH = PROJECT_HOME + ".package_list/"
+
 artifacts_structure = {
     'input': {}, 
     '.train_artifacts': {

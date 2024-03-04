@@ -80,8 +80,10 @@ class Pipeline:
 
     def setup(self):
         self._empty_artifacts(self.pipeline_type)
-        self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
+        _, packs, = self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         self._set_asset_structure()
+
+        self._create_package(packs)
 
         # TODO return 구성
         # return 
@@ -378,6 +380,7 @@ class Pipeline:
         except:
             PROC_LOGGER.process_error("An issue occurred while releasing the memory of module")
 
+
     def _install_asset(self, asset_config, check_asset_source='once'): 
         """ Description
             -----------
@@ -464,4 +467,25 @@ class Pipeline:
             else: 
                 PROC_LOGGER.process_error(f'You have written wrong git url: {asset_source_code}')
         
-        return 
+        return
+
+    def _create_package(self, packs):
+        # 폴더가 있는지 확인하고 있으면 제거합니다.
+        pipes_dir = ASSET_PACKAGE_PATH + self.pipeline_type + '/'
+        if os.path.exists(pipes_dir):
+            shutil.rmtree(pipes_dir)
+            print(f"Folder '{pipes_dir}' has been removed.")
+
+        # 새로운 폴더를 생성합니다.
+        os.makedirs(pipes_dir)
+        print(f"Folder '{pipes_dir}' has been created.")
+        step_number = 0
+        for key, values in packs.items():
+            if values:
+                file_name = pipes_dir + f"step_{step_number}.txt"
+                step_number += 1
+                with open(file_name, 'w') as file:
+                    for value in values:
+                        if "force" in value:
+                            continue
+                        file.write(value + '\n')

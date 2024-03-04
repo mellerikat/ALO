@@ -181,7 +181,7 @@ class Packages:
         # 패키지 설치 
         self._install_packages(dup_checked_requirements_dict, dup_chk_set)
 
-        return dup_checked_requirements_dict
+        return dup_checked_requirements_dict, extracted_requirements_dict
 
 class AssetSetup:
     def __init__():
