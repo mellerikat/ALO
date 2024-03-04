@@ -104,8 +104,8 @@ class Pipeline:
 
 
 
-    def run(self, run_step = 'All'):
-        if run_step == 'All':
+    def run(self, steps = 'All'):
+        if steps == 'All':
             for step, asset_config in enumerate(self.asset_source[self.pipeline_type]):
                 PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {asset_config['step']}")
                 self.asset_structure.args[asset_config['step']] = self.get_parameter(asset_config['step'])
@@ -114,14 +114,27 @@ class Pipeline:
                 except:
                     PROC_LOGGER.process_error(f"Failed to process step: << {asset_config['step']} >>")
         else:
-            if type(run_step) == list:
-                pass
+            if type(steps) == list:
+                for step in steps:
+                    PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {step}")
+                    self.asset_structure.args[step] = self.get_parameter(step)
+                    for i, asset_configs in enumerate(self.asset_source[self.pipeline_type]):
+                        if asset_configs['step'] == step:
+                            asset_config = asset_configs
+                            break
+                        else:
+                            continue
+                    try:
+                        self.process_asset_step(asset_config, i)
+                    except:
+                        PROC_LOGGER.process_error(f"Failed to process step: << {step} >>")
+                        continue
             else:
-                PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {run_step}")
-                self.asset_structure.args[run_step] = self.get_parameter(run_step)
+                PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {steps}")
+                self.asset_structure.args[steps] = self.get_parameter(steps)
                 step = 0
                 for i, asset_configs in enumerate(self.asset_source[self.pipeline_type]):
-                    if asset_configs['step'] == run_step:
+                    if asset_configs['step'] == steps:
                         asset_config = asset_configs
                         step = i
                         break
@@ -130,7 +143,7 @@ class Pipeline:
                 try:
                     self.process_asset_step(asset_config, step)
                 except:
-                    PROC_LOGGER.process_error(f"Failed to process step: << {run_step} >>")
+                    PROC_LOGGER.process_error(f"Failed to process step: << {steps} >>")
 
     def save(self):
 
