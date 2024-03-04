@@ -2273,26 +2273,29 @@ class SolutionRegister:
             shutil.copy(REGISTER_DOCKER_PATH + dockerfile, PROJECT_HOME)
             os.rename(PROJECT_HOME+dockerfile, PROJECT_HOME + 'Dockerfile')
 
-            venv_path = getattr(sys, 'real_prefix', sys.base_prefix)
-            venv_site_packages_path = os.path.join(venv_path, 'lib', 'python3.10', 'site-packages')
+            docker_location = '/framework/'
+            subfolders = []
+            for dirpath, dirnames, filenames in os.walk(ASSET_PACKAGE_PATH):
+                # dirpath는 현재의 폴더 경로, dirnames는 현재 폴더 아래의 하위 폴더 리스트
+                for dirname in dirnames:
+                    subfolder_path = os.path.join(dirpath, dirname)  # 하위 폴더의 전체 경로
+                    if self.pipeline not in subfolder_path:
+                        continue
+                    subfolders.append(subfolder_path)
 
-            docker_site_path = '/usr/local/lib/python3.10/site-packages/'
-            dockerfile_path = '/home/wonjun.sung/0.repo/release/release-2.2/gcr_solution/src/Dockerfiles/register/TrainDockerfile'
-            local_path = "./.site-packages/"
-
-            try:
-                shutil.rmtree(local_path)
-            except:
-                pass
-            shutil.copytree(venv_site_packages_path, local_path)
+            file_list = next(os.walk(subfolders[0]))[2]
 
             search_string = 'site_packages_location'
             with open(PROJECT_HOME + 'Dockerfile', 'r', encoding='utf-8') as file:
                 content = file.read()
+            path = subfolders[0].replace(PROJECT_HOME, "")
+            replace_string = '\n'.join([f"COPY {path}/{file} {docker_location}" for file in file_list])
+
+            requirement_files = [file for file in file_list if file.endswith('.txt')]
+            pip_install_commands = '\n'.join([f"RUN pip3 install --no-cache-dir -r {docker_location}{file}" for file in requirement_files])
 
             if search_string in content:
-                # 교체할 문자열이 있는 경우 해당 내용을 새로운 문자열로 변경
-                content = content.replace(search_string, f"COPY {local_path} {docker_site_path}")
+                content = content.replace(search_string, replace_string + "\n" + pip_install_commands)
                 with open(PROJECT_HOME + 'Dockerfile', 'w', encoding='utf-8') as file:
                     file.write(content)
 
@@ -2306,7 +2309,6 @@ class SolutionRegister:
         # YAML 파일을 읽어옵니다.
             with open(yaml_file_path, 'r') as yaml_file:
                 data = yaml.safe_load(yaml_file)
-
 
         # 파싱된 YAML 데이터를 사용합니다.
         except FileNotFoundError:
