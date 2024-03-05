@@ -59,6 +59,8 @@ class Pipeline:
             data_dict = {}
             if key == "name":
                 return
+            if key == "version":
+                return
             for data in experiment_plan[key]:
                 data_dict.update(data)
 
@@ -97,7 +99,8 @@ class Pipeline:
         if self.system_envs['boot_on'] == False:  ## boot_on 시, skip
             # NOTE [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
             # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
-            self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission, self.control['get_external_data'], self.system_envs)
+            self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission, self.control['get_external_data'])
+
 
         # TODO return 구성
         # return
