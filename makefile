@@ -15,7 +15,7 @@ del :
 
 # "make clean" 명령을 실행할 때 실행되는 규칙
 clean : 
-	rm -rf $(FOLDER_PATH)* ./.history ./.asset_interface ./.inference_artifacts ./.temp_artifacts_dir ./.train_artifacts ./input/ ./assets/ ./alolib ./.register_* 
+	rm -rf $(FOLDER_PATH)* ./.TEMP_MODEL_PATH ./.history ./.asset_interface ./.inference_artifacts ./.temp_artifacts_dir ./.train_artifacts ./input/ ./assets/ ./alolib ./.register_* 
 	rm -rf $(FOLDER_PATH)* ./solution
 	rm -rf $(FOLDER_PATH)* Dockerfile solution_requirements.txt
 	rm -rf $(FOLDER_PATH)* .package_list
