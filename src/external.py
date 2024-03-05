@@ -1,3 +1,5 @@
+from functools import partial
+import zlib
 from src.constants import *
 import shutil
 from datetime import datetime
@@ -259,6 +261,8 @@ class ExternalHandler:
                 os.mkdir(input_data_dir)
         else: 
             PROC_LOGGER.process_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
+
+
         ################################################################################################################
         # external base 폴더 이름들과 현재 input 폴더 내 구성의 일치여부 확인 후 once, every에 따른 동작 분기 
         if get_external_data == 'once':
@@ -280,10 +284,10 @@ class ExternalHandler:
             # external 데이터 가져오기 
             for ext_path in external_data_path:
                 ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
-                self._load_data(pipe_mode, ext_type, ext_path, aws_key_profile)
+                data_checksum = self._load_data(pipe_mode, ext_type, ext_path, aws_key_profile)
                 PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
             
-            return
+            return data_checksum
 
     def external_load_model(self, external_path, external_path_permission): 
         '''
@@ -487,6 +491,51 @@ class ExternalHandler:
         return base_dir_list # 마지막 base폴더 이름들 리스트          
 
     def _load_data(self, pipeline, ext_type, ext_path, aws_key_profile): 
+
+
+        ## v.2.3 spec-in: DATA_ID 생성 (데이터 변경 확인 용)
+        def copy_and_checksums(src, dst):
+            """디렉토리의 내용을 복사하고 모든 파일의 체크값을 계산하거나,
+            src가 빈 문자열일 경우, dst의 내용에 대한 체크값을 계산합니다."""
+
+            def _calculate_checksum(file_path):
+                """파일의 내용에 기반한 32비트 체크값을 계산하여 반환합니다."""
+                with open(file_path, 'rb') as file:
+                    data = file.read()
+                    return zlib.adler32(data) & 0xffffffff
+
+            # 전체 파일 체크값을 결합하여 하나의 값을 생성합니다.
+            def _aggregate_checksums(checksums_dict):
+                total_checksum = 0
+                for checksum in checksums_dict.values():
+                    total_checksum = zlib.adler32(checksum.to_bytes(4, byteorder='little'), total_checksum)
+                return total_checksum & 0xffffffff
+
+            checksums_dict = {}
+
+            if src and os.path.isdir(src):
+                # 사용자 정의 파일 복사 함수
+                def _custom_copy_function(src, dst, checksums_dict):
+                    shutil.copy2(src, dst)
+                    checksums_dict[dst] = _calculate_checksum(dst)
+
+                # 복사하며 체크값 계산
+                customized_copy = partial(_custom_copy_function, checksums_dict=checksums_dict)
+                shutil.copytree(src, dst, copy_function=customized_copy)
+            elif not src:
+                # src가 비어있다면 dst에서 체크값을 계산합니다.
+                for root, _, files in os.walk(dst):
+                    for filename in files:
+                        file_path = os.path.join(root, filename)
+                        checksums_dict[file_path] = _calculate_checksum(file_path)
+
+            # 체크값 집계
+            total_checksum = _aggregate_checksums(checksums_dict)
+
+            print(f"Total checksum for all files: {total_checksum}")
+            return total_checksum
+        
+
         # 실제로 데이터 복사 (절대 경로) or 다운로드 (s3) 
         ####################################################
         # inpt_data_dir 변수화 
@@ -510,14 +559,19 @@ class ExternalHandler:
                 # [참고] https://stackoverflow.com/questions/3925096/how-to-get-only-the-last-part-of-a-path-in-python
                 base_dir = os.path.basename(os.path.normpath(ext_path)) # 가령 /nas001/test/ 면 test가 mother_path, ./이면 .가 mother_path 
                 # [참고] python 3.7에서는 shutil.copytree 시 dirs_exist_ok라는 인자 없음  
-                shutil.copytree(ext_path, input_data_dir + base_dir) # base_dir 라는 폴더를 만들면서 가져옴 
+                # shutil.copytree(ext_path, input_data_dir + base_dir) # base_dir 라는 폴더를 만들면서 가져옴 
+                # 디렉토리 복사 및 전체 파일에 대한 체크값 계산
+                dst_path = input_data_dir + base_dir
+                checksums = copy_and_checksums(ext_path, dst_path )
             except: 
                 PROC_LOGGER.process_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong absolute path (must be existing directory!) \n / or You do not have permission to access.')
         elif ext_type == 'relative': 
             try:
                 base_dir = os.path.basename(os.path.normpath(ext_path))
                 rel_config_path = PROJECT_HOME + ext_path
-                shutil.copytree(rel_config_path, input_data_dir + base_dir) 
+                # shutil.copytree(rel_config_path, input_data_dir + base_dir) 
+                dst_path = input_data_dir + base_dir
+                checksums = copy_and_checksums(rel_config_path, dst_path)
             except: 
                 PROC_LOGGER.process_error(f'Failed to copy data from << {ext_path} >>. You may have written wrong relative path (must be existing directory!) \n / or You do not have permission to access.')
         elif ext_type  == 's3':  
@@ -528,12 +582,14 @@ class ExternalHandler:
             try: 
                 s3_downloader = S3Handler(s3_uri=ext_path, aws_key_profile=aws_key_profile)
                 s3_downloader.download_folder(input_data_dir)
+
+                checksums = copy_and_checksums('', input_data_dir) # 체크값 계산
             except:
                 PROC_LOGGER.process_error(f'Failed to download s3 data folder from << {ext_path} >>')
 
         PROC_LOGGER.process_info(f'Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}') 
-        
-        return 
+
+        return checksums
 
     ## Common Func. 
     def _get_ext_path_type(self, _ext_path: str): # inner function 
