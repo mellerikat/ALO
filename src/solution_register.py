@@ -427,19 +427,20 @@ class SolutionRegister:
         if len(description)==0:
             description = self.solution_info["description"]
 
-        def validate_dict(d):
-            required_keys = ['title', 'input_data', 'output_data', 'user_parameters', 'algorithm']
 
-            if 'overview' not in d:
-              raise KeyError("overview key is required") 
+        ## icon 은 icon 함수에서 삽입
+        ## contents_name, contents_version 은 experimental_plan 에서 자동으로 가져오기  (v2.3.0 신규, 24.03.25)
+        def _add_descr_keys(d):
+            required_keys = ['title', 'problem', 'data', 'key_feature', 'value', 'note_and_contact']
 
             for key in required_keys:
               if key not in d:
                 d[key] = ""
         
-        validate_dict(description)
+        _add_descr_keys(description)
         description['title'] = self.solution_name  ## name 을 title default 로 설정함
         description['contents_name'] = self.exp_yaml['name']
+        description['contents_version'] = self.exp_yaml['version']
 
         try: 
             self.sm_yaml['description'].update(description)
@@ -495,7 +496,8 @@ class SolutionRegister:
             metadata_value = self.solution_info['contents_type']
 
         def _check_edgeconductor_interface(user_dict):
-            check_keys = ['support_labeling', 'inference_result_datatype', 'train_datatype']
+            ## v2.3.0 NEW:  labeling_column_name  추가 됨
+            check_keys = ['support_labeling', 'inference_result_datatype', 'train_datatype', 'labeling_column_name']
             allowed_datatypes = ['table', 'image']
             for k in user_dict.keys(): ## 엉뚱한 keys 존재 하는지 확인
                 self._check_parammeter(k)
@@ -862,36 +864,37 @@ class SolutionRegister:
 
         return isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient)
 
+    def _s3_delete_and_update(self, s3, bucket_name, data_path, local_folder, s3_path, delete=True):
+        if delete == True: 
+            objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
+            if 'Contents' in objects_to_delete:
+                for obj in objects_to_delete['Contents']:
+                    self.s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                    print_color(f'[SYSTEM] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
+            s3.delete_object(Bucket=bucket_name, Key=s3_path)
+        s3.put_object(Bucket=bucket_name, Key=(s3_path))
+
+        ## s3 생성
+        try:    
+            response = s3.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
+        except NoCredentialsError as e:
+            raise NoCredentialsError("NoCredentialsError: \n{e}")
+        except ClientError as e:
+            print(f"ClientError: ", e)
+            return False
+        # temp = s3_path + "/" + data_path[len(local_folder):]
+        uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
+        # print(data_path)
+        print_color(f"[SUCCESS] update train_data to S3:", color='green')
+        print(f"{uploaded_path }")
+        return True
+
     def s3_upload_data(self):
         """input 폴더에 존재하는 데이터를 s3 에 업로드 합니다. 
         """
         self.print_step(f"Upload {self.pipeline} data to S3")
 
         # inner func.
-        def s3_process(s3, bucket_name, data_path, local_folder, s3_path, delete=True):
-            if delete == True: 
-                objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
-                if 'Contents' in objects_to_delete:
-                    for obj in objects_to_delete['Contents']:
-                        self.s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                        print_color(f'[SYSTEM] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
-                s3.delete_object(Bucket=bucket_name, Key=s3_path)
-            s3.put_object(Bucket=bucket_name, Key=(s3_path))
-
-            ## s3 생성
-            try:    
-                response = s3.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
-            except NoCredentialsError as e:
-                raise NoCredentialsError("NoCredentialsError: \n{e}")
-            except ClientError as e:
-                print(f"ClientError: ", e)
-                return False
-            # temp = s3_path + "/" + data_path[len(local_folder):]
-            uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
-            # print(data_path)
-            print_color(f"[SUCCESS] update train_data to S3:", color='green')
-            print(f"{uploaded_path }")
-            return True
 
         if "train" in self.pipeline:
             local_folder = INPUT_DATA_HOME + "train/"
@@ -912,9 +915,9 @@ class SolutionRegister:
                     for idx, file in enumerate(files):
                         data_path = os.path.join(root, file)
                         if idx == 0: #최초 1회만 delete s3
-                            s3_process(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, True) 
+                            self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, True) 
                         else: 
-                            s3_process(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
+                            self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
             except Exception as e: 
                 raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
 
@@ -937,13 +940,56 @@ class SolutionRegister:
                     for idx, file in enumerate(files):
                         data_path = os.path.join(root, file)
                         if idx == 0: #최초 1회만 delete s3
-                            s3_process(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, True) 
+                            self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, True) 
                         else: 
-                            s3_process(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
+                            self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
             except Exception as e: 
                 raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
         else:
             raise ValueError(f"[ERROR] Not allowed value for << pipeline >>: {self.pipeline}")
+
+    def s3_upload_stream_data(self, stream_id='stream_id', instance_id='insatsnce_id'):
+        """input 폴더에 존재하는 데이터를 stream 용 s3 에 업로드 합니다. 
+            s3_upload_data 를 최적화 만 함. s3_upload_data 를 그대로 사용하기에는 조건문이 많아져서 최적화 힘들것으로 판단
+        """
+        self.print_step(f"Upload {self.pipeline} data to S3")
+
+        ## stream 은 학습 데이터만 업로드 함
+        local_folder = INPUT_DATA_HOME + "train/"
+        print_color(f'[SYSTEM] Start uploading data into S3 from local folder:', color='cyan')
+        print(f'{local_folder}')
+
+        try:
+            s3_prefix_uri = "streams/" + f"{stream_id}/{instance_id}/train/data/"
+
+            ### upload data to S3
+            for root, dirs, files in os.walk(local_folder):
+                for idx, file in enumerate(files):
+                    data_path = os.path.join(root, file)
+                    if idx == 0: #최초 1회만 delete s3
+                        self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, True) 
+                    else: 
+                        self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
+        except Exception as e: 
+            raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
+
+        
+        ## sol_metadata 업데이트 용 dict 생성
+        data_paths = []
+        for item in os.listdir(local_folder):
+            sub_folder = os.path.join(local_folder, item)
+            if os.path.isdir(sub_folder):
+                data_paths.append(item+"/")
+        
+        if len(data_paths) ==0 :
+            uri = {'dataset_uri': ["s3://" + self.bucket_name + "/" + s3_prefix_uri]}
+        else:
+            uri = {'dataset_uri': []}
+            data_path_base = "s3://" + self.bucket_name + "/" +  s3_prefix_uri
+            for data_path_sub in data_paths:
+                uri['dataset_uri'].append(data_path_base + data_path_sub)
+
+        return uri
 
 
     def s3_upload_artifacts(self):
@@ -1527,15 +1573,22 @@ class SolutionRegister:
         }
         pprint(stream_params)
 
+        ## v2.3 NEW: stream 이 요구하는 s3 경로에 (edge conductor 처럼) train sample 데이터 업로드 
+        dataset_uri = self.s3_upload_stream_data(stream_id=load_response['id'], instance_id=load_response['instance_id'])
+
         # solution_metadata 를 읽어서 json 화 
         with open(SOLUTION_META, 'r') as file:
             yaml_data = yaml.safe_load(file)
+        ##   + dataset_uri 업데이트 하여 등록 함
+        for pip in yaml_data['pipeline']:
+            if pip['type'] == 'train':
+                pip['dataset_uri'] = dataset_uri['dataset_uri']
+
         data = {
             "metadata_json": yaml_data,
             "config_path": "" # FIXME config_path는 일단 뭐넣을지 몰라서 비워둠 
         }
         data =json.dumps(data) # json 화
-
 
 
         aic = self.infra_setup["AIC_URI"]
@@ -1572,7 +1625,7 @@ class SolutionRegister:
             raise ValueError(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})")
 
 
-    def get_stream_status(self, status_period):
+    def get_stream_status(self, status_period=10):
         """ KUBEFLOW_STATUS 에서 지원하는 status 별 action 처리를 진행 함. 
             KUBEFLOW_STATUS = ("Pending", "Running", "Succeeded", "Skipped", "Failed", "Error")
             https://www.kubeflow.org/docs/components/pipelines/v2/reference/api/kubeflow-pipeline-api-spec/
