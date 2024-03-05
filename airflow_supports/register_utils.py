@@ -607,7 +607,7 @@ class AirflowRegisterer:
 
     def set_alo(self):
         alo_path = ALODIR
-        alo_src = ['main.py', 'src', 'config', 'assets', 'alolib', '.git', 'requirements.txt']
+        alo_src = ['main.py', 'src', 'solution', 'assets', 'alolib', '.git', 'requirements.txt']
         work_path = WORKINGDIR + "alo/"
 
         if os.path.isdir(work_path):
