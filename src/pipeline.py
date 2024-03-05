@@ -59,6 +59,8 @@ class Pipeline:
             data_dict = {}
             if key == "name":
                 return
+            if key == "version":
+                return
             for data in experiment_plan[key]:
                 data_dict.update(data)
 
