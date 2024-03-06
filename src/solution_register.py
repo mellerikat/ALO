@@ -424,10 +424,6 @@ class SolutionRegister:
 
         self.print_step("Set AI Solution Description")
 
-        if len(description)==0:
-            description = self.solution_info["description"]
-
-
         ## icon 은 icon 함수에서 삽입
         ## contents_name, contents_version 은 experimental_plan 에서 자동으로 가져오기  (v2.3.0 신규, 24.03.25)
         def _add_descr_keys(d):
@@ -440,7 +436,7 @@ class SolutionRegister:
         _add_descr_keys(description)
         description['title'] = self.solution_name  ## name 을 title default 로 설정함
         description['contents_name'] = self.exp_yaml['name']
-        description['contents_version'] = self.exp_yaml['version']
+        description['contents_version'] = str(self.exp_yaml['version'])
 
         try: 
             self.sm_yaml['description'].update(description)
