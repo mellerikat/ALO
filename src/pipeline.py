@@ -432,7 +432,7 @@ class Pipeline:
         - 주의: log 폴더는 지우지 않기
         '''
         pipe_prefix = pipeline.split('_')[0]
-        dir_artifacts = PROJECT_HOME + f".{pipe_prefix}_artifacts/"
+        dir_artifacts = PROJECT_HOME + f"{pipe_prefix}_artifacts/"
         try:
             for subdir in os.listdir(dir_artifacts):
                 if subdir == 'log':
@@ -442,7 +442,7 @@ class Pipeline:
                     os.makedirs(dir_artifacts + subdir)
                     PROC_LOGGER.process_info(f"Successfully emptied << {dir_artifacts + subdir} >> ")
         except:
-            PROC_LOGGER.process_error(f"Failed to empty & re-make << .{pipe_prefix}_artifacts >>")
+            PROC_LOGGER.process_error(f"Failed to empty & re-make << {pipe_prefix}_artifacts >>")
 
     def import_asset(self, _path, _file):
         _user_asset = 'none'
