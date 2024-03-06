@@ -53,6 +53,10 @@ class Metadata:
                 else:
                     setattr(self, key, value)
             
+            ## v2.3.0 NEW : name, version 을 system_envs 에 저장한다. 
+            system_envs["experimental_name"] = self.name
+            system_envs["experimental_version"] = self.version
+            
             # solution metadata yaml --> exp plan yaml overwrite
             if sol_me_file is not None:
                 self.sol_meta = sol_me_file

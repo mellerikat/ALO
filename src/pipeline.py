@@ -195,12 +195,21 @@ class Pipeline:
             # save_artifacts 내에도 edgeapp redis 전송 있음
             self._save_artifacts()
 
+            # system_envs 에서 data, code, param id 를 저장함
+            type = self.pipeline_type.split('_')[0]
+            if type == 'train':
+                path = TRAIN_ARTIFACTS_PATH + 'log/experimental_history.json'
+            else:
+                path = INFERENCE_ARTIFACTS_PATH + 'log/experimental_history.json'
+            with open(path, 'w') as f:
+                json.dump(self.system_envs[f"{type}_history"], f, indent=4)    
+
         ###################################
         ## Step9: Artifacts 를 history 에 backup
         ###################################
         if self.control['backup_artifacts'] == True:
             try:
-                self.artifact.backup_history(self.pipeline_type, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
+                self.artifact.backup_history(self.pipeline_type, self.system_envs, size=self.control['backup_size'])
             except:
                 PROC_LOGGER.process_error("Failed to backup artifacts into << .history >>")
 

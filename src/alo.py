@@ -5,7 +5,7 @@ import shutil
 import traceback
 import subprocess
 # Packge
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import Counter
 from copy import deepcopy
 from git import Repo, GitCommandError
@@ -154,7 +154,7 @@ class ALO:
             finally:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
-                self.artifact.backup_history(pipes, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], error=True, size=self.control['backup_size'])
+                self.artifact.backup_history(pipes, self.system_envs, error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록        
                 ext_saved_path = self.ext_data.external_save_artifacts(pipes, self.external_path, self.external_path_permission)
                 if self.loop == True:
@@ -173,7 +173,7 @@ class ALO:
         """
         
         # init solution metadata
-        self.system_envs['pipeline_start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
+        self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         sol_meta = self.load_solution_metadata()
         self.system_envs['solution_metadata'] = sol_meta
         self.system_envs['experimental_plan'] = experimental_plan
