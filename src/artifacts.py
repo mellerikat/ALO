@@ -80,19 +80,19 @@ class Aritifacts:
         
         if current_pipeline == "train_pipeline":
             try: 
-                os.mkdir(temp_backup_artifacts_dir + ".train_artifacts")
-                shutil.copytree(PROJECT_HOME + ".train_artifacts", temp_backup_artifacts_dir + ".train_artifacts", dirs_exist_ok=True)
+                os.mkdir(temp_backup_artifacts_dir + "train_artifacts")
+                shutil.copytree(PROJECT_HOME + "train_artifacts", temp_backup_artifacts_dir + "train_artifacts", dirs_exist_ok=True)
             except: 
                 shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
-                PROC_LOGGER.process_error(f"Failed to copy << .train_artifacts >> into << {temp_backup_artifacts_dir} >>")
+                PROC_LOGGER.process_error(f"Failed to copy << train_artifacts >> into << {temp_backup_artifacts_dir} >>")
                 
         elif current_pipeline == "inference_pipeline":
             try: 
-                os.mkdir(temp_backup_artifacts_dir + ".inference_artifacts")
-                shutil.copytree(PROJECT_HOME + ".inference_artifacts", temp_backup_artifacts_dir + ".inference_artifacts", dirs_exist_ok=True)
+                os.mkdir(temp_backup_artifacts_dir + "inference_artifacts")
+                shutil.copytree(PROJECT_HOME + "inference_artifacts", temp_backup_artifacts_dir + "inference_artifacts", dirs_exist_ok=True)
             except: 
                 shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
-                PROC_LOGGER.process_error(f"Failed to copy << .inference_artifacts >> into << {temp_backup_artifacts_dir} >>")
+                PROC_LOGGER.process_error(f"Failed to copy << inference_artifacts >> into << {temp_backup_artifacts_dir} >>")
         else:
             shutil.rmtree(temp_backup_artifacts_dir) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
             PROC_LOGGER.process_error(f"You entered wrong pipeline in the experimental yaml file: << {current_pipeline} >> \n Only << train_pipeline >> or << inference_pipeline>> is allowed.")

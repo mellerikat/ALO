@@ -39,31 +39,3 @@ def init_redis(system):
 
     return q        
         
-        
-        
-        
-### LEGACY
-
-## alo.py의 empty_artifacts로 대체함 
-# def remove_log_files(artifacts): 
-#     if '.train_artifacts' in artifacts: 
-#         log_path = artifacts['.train_artifacts'] + 'log'
-#         if os.path.exists(log_path):
-#             shutil.rmtree(log_path, ignore_errors=True)
-#     if '.inference_artifacts' in artifacts:
-#         log_path = artifacts['.inference_artifacts'] + 'log'
-#         if os.path.exists(log_path):
-#             shutil.rmtree(log_path, ignore_errors=True)
-
-# # TODO logger 코드 정리하기
-# class Logger:
-#     def __init__(self, filename):
-#         self.terminal = sys.stdout
-#         self.log = open(filename, "a")
-
-#     def write(self, message):
-#         self.terminal.write(message)
-#         self.log.write(message)
-
-#     def flush(self):
-#         pass

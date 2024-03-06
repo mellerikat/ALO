@@ -151,8 +151,8 @@ class BraceFormatStyleFormatter(logging.Formatter):
 #--------------------------------------------------------------------------------------------------------------------------
 LINE_LENGTH = 120
 # PROJECT_HOME = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) + "/"
-# TRAIN_LOG_PATH =  PROJECT_HOME + ".train_artifacts/log/"
-# INFERENCE_LOG_PATH = PROJECT_HOME + ".inference_artifacts/log/"
+# TRAIN_LOG_PATH =  PROJECT_HOME + "train_artifacts/log/"
+# INFERENCE_LOG_PATH = PROJECT_HOME + "inference_artifacts/log/"
 # print_color related variables 
 COLOR_RED = '\033[91m'
 COLOR_END = '\033[0m'
@@ -201,8 +201,8 @@ class ProcessLogger:
             self.project_home = project_home
         except: 
             print_color("[LOGGER][ERROR] Argument << project_home: str >> required for initializing ProcessLogger.", color='red')
-        self.train_log_path = self.project_home + ".train_artifacts/log/"
-        self.inference_log_path = self.project_home + ".inference_artifacts/log/"
+        self.train_log_path = self.project_home + "train_artifacts/log/"
+        self.inference_log_path = self.project_home + "inference_artifacts/log/"
         if not os.path.exists(self.train_log_path):
             os.makedirs(self.train_log_path)
         if not os.path.exists(self.inference_log_path):

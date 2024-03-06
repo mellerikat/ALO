@@ -1,6 +1,6 @@
 assets/
-.train_artifacts/
-.inference_artifacts/
+train_artifacts/
+inference_artifacts/
 .history/
 .asset_interface/
 input/

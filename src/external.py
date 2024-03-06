@@ -1,4 +1,5 @@
 from functools import partial
+import hashlib
 import zlib
 from src.constants import *
 import shutil
@@ -272,9 +273,12 @@ class ExternalHandler:
                 return # 외부 데이터 가져오지 않고 return 
             else: 
                 get_external_data = 'every' # external과 input 폴더 내 구성이 갖지 않으면 once라도 every처럼 동작
+            
+            ## TODO-SSH: data_cheksums 만들기. artifacts 에서 metadata 읽어와서 처리하도록 artifacts 에 파일 추가 하기
+
         
         # 현재 pipe mode 에 따른 설정 완료 후 실제 데이터 가져오기 시작 
-        if get_external_data == 'every': 
+        elif get_external_data == 'every': 
             # copy (로컬 절대경로, 상대경로) or download (s3) data (input 폴더로)
             try: 
                 shutil.rmtree(input_data_dir, ignore_errors=True) # 새로 데이터 가져오기 전 폴더 없애기 (ex. input/train) >> 어짜피 아래서 _load_data 시 새로 폴더 만들것임 
@@ -284,21 +288,24 @@ class ExternalHandler:
             # external 데이터 가져오기 
             for ext_path in external_data_path:
                 ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
-                data_checksum = self._load_data(pipe_mode, ext_type, ext_path, aws_key_profile)
+                data_checksums = self._load_data(pipe_mode, ext_type, ext_path, aws_key_profile)
                 PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
+
+            return data_checksums
+        else:
+            raise Exception(f"You entered wrong value in your expermimental_plan.yaml: << get_external_data: {get_external_data} >>")
             
-            return data_checksum
 
     def external_load_model(self, external_path, external_path_permission): 
         '''
         # external_load_model은 inference pipeline에서만 실행함 (alo.py에서)
         # external_load_model은 path 하나만 지원 (list X --> str only)
-        # external_path에 (local이든 s3든) model.tar.gz이 있으면 해당 파일을 .train_artifacts/models/ 에 압축해제 
-        # model.tar.gz이 없으면 그냥 external_path 밑에 있는 파일(or 서브폴더)들 전부 .train_artifacts/models/ 로 copy
+        # external_path에 (local이든 s3든) model.tar.gz이 있으면 해당 파일을 train_artifacts/models/ 에 압축해제 
+        # model.tar.gz이 없으면 그냥 external_path 밑에 있는 파일(or 서브폴더)들 전부 train_artifacts/models/ 로 copy
         '''
         ####################################################################################################
         models_path = TRAIN_MODEL_PATH
-        # .train_artifacts/models 폴더 비우기
+        #train_artifacts/models 폴더 비우기
         try: 
             if os.path.exists(models_path) == False: 
                 os.makedirs(models_path)
@@ -379,7 +386,7 @@ class ExternalHandler:
     def external_save_artifacts(self, pipe_mode, external_path, external_path_permission):
         """ Description
             -----------
-                - 생성된 .train_artifacts, /inference_artifacts를 압축하여 (tar.gzip) 외부 경로로 전달  
+                - 생성된 train_artifacts, /inference_artifacts를 압축하여 (tar.gzip) 외부 경로로 전달  
             Parameters
             -----------
                 - proc_start_time: alo runs start 시간 
@@ -421,20 +428,22 @@ class ExternalHandler:
 
         # external path가 존재하는 경우 
         # save artifacts 
+        ######## 일단 내부 경로에 저장
         PROC_LOGGER.process_info(f" Start saving generated artifacts into external path << {save_artifacts_path} >>. \n")
         ext_path = save_artifacts_path
         ext_type = self._get_ext_path_type(ext_path) # absolute / s3
         artifacts_tar_path = None 
         model_tar_path = None 
         if pipe_mode == "train_pipeline":
-            artifacts_tar_path = self._tar_dir(".train_artifacts") 
-            model_tar_path = self._tar_dir(".train_artifacts/models") 
+            artifacts_tar_path = self._tar_dir("train_artifacts") 
+            model_tar_path = self._tar_dir("train_artifacts/models") 
         # FIXME train-inference 같이 돌릴 때 train, inf 같은 external save 경로로 plan yaml에 지정하면  models tar gz 덮어씌워질수있음 
         elif pipe_mode == "inference_pipeline": 
-            artifacts_tar_path = self._tar_dir(".inference_artifacts") 
-            if "models" in os.listdir(PROJECT_HOME + ".inference_artifacts/"): # FIXME 이거 필요할지? 
-                model_tar_path = self._tar_dir(".inference_artifacts/models") 
+            artifacts_tar_path = self._tar_dir("inference_artifacts") 
+            if "models" in os.listdir(PROJECT_HOME + "inference_artifacts/"): # FIXME 이거 필요할지? 
+                model_tar_path = self._tar_dir("inference_artifacts/models") 
             
+        ######### 
         # FIXME external save path 를 지우고 다시 만드는게 맞는가 ? (로컬이든 s3든)
         if (ext_type  == 'absolute') or (ext_type  == 'relative'):
             ext_path = PROJECT_HOME + ext_path if ext_type == 'relative' else ext_path
@@ -499,17 +508,21 @@ class ExternalHandler:
             src가 빈 문자열일 경우, dst의 내용에 대한 체크값을 계산합니다."""
 
             def _calculate_checksum(file_path):
-                """파일의 내용에 기반한 32비트 체크값을 계산하여 반환합니다."""
+                """파일의 내용에 기반한 64비트 체크값을 계산하여 반환합니다."""
                 with open(file_path, 'rb') as file:
                     data = file.read()
-                    return zlib.adler32(data) & 0xffffffff
+                    hash_obj = hashlib.sha256(data)
+                    # SHA-256 해시값을 64비트로 축소
+                    return int(hash_obj.hexdigest(), 16) & ((1 << 64) - 1)
 
             # 전체 파일 체크값을 결합하여 하나의 값을 생성합니다.
             def _aggregate_checksums(checksums_dict):
                 total_checksum = 0
                 for checksum in checksums_dict.values():
-                    total_checksum = zlib.adler32(checksum.to_bytes(4, byteorder='little'), total_checksum)
-                return total_checksum & 0xffffffff
+                    # 64비트 체크값을 total_checksum에 결합
+                    bytes_value = checksum.to_bytes(8, byteorder='little')
+                    total_checksum = zlib.adler32(bytes_value, total_checksum)
+                return total_checksum & ((1 << 64) - 1)
 
             checksums_dict = {}
 
@@ -531,10 +544,10 @@ class ExternalHandler:
 
             # 체크값 집계
             total_checksum = _aggregate_checksums(checksums_dict)
-
-            print(f"Total checksum for all files: {total_checksum}")
-            return total_checksum
-        
+            checksums = {}
+            checksums['data_id_description'] = checksums_dict
+            checksums['data_id'] = total_checksum
+            return checksums 
 
         # 실제로 데이터 복사 (절대 경로) or 다운로드 (s3) 
         ####################################################
@@ -613,7 +626,7 @@ class ExternalHandler:
             PROC_LOGGER.process_error(f'<< {_ext_path} >> is unsupported type of external save artifacts path. \n Do not enter the file path. (Finish the path with directory name)')
                 
     def _tar_dir(self, _path): 
-        ## _path: .train_artifacts / .inference_artifacts     
+        ## _path: train_artifacts / inference_artifacts     
         os.makedirs(TEMP_ARTIFACTS_PATH , exist_ok=True)
         os.makedirs(TEMP_MODEL_PATH, exist_ok=True)
         last_dir = None
@@ -629,14 +642,14 @@ class ExternalHandler:
         else: 
             _save_file_name = _path.strip('.') 
             _save_path = TEMP_ARTIFACTS_PATH +  f'{_save_file_name}.tar.gz' 
-            last_dir = _path # ex. .train_artifacts/
+            last_dir = _path # ex. train_artifacts/
         tar = tarfile.open(_save_path, 'w:gz')
         for root, dirs, files in os.walk(PROJECT_HOME  + _path):
             #base_dir = last_dir + root.split(last_dir)[-1] + '/' # ex. /home/~~/models/ --> models/
             base_dir = root.split(last_dir)[-1] + '/'
             for file_name in files:
                 #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
-                tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 .train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
+                tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
         tar.close()
         
         return _save_path

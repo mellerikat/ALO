@@ -284,7 +284,7 @@ control:
 
 ## Asset 파일 생성하기
 
-파이프라인의 실행 결과를 저장하기 위해서는 ALO 가 제공하는 API 를 이용하여 코딩해야 합니다. Train 파이프라인은 /.train_artifacts/* 에 결과물을 저장하고 Inference 파이프라인은 /.inference_artifacts/* 에 결과물을 저장합니다. 결과물 별 저장 방법은 아래 API 를 참조 하세요. 
+파이프라인의 실행 결과를 저장하기 위해서는 ALO 가 제공하는 API 를 이용하여 코딩해야 합니다. Train 파이프라인은 /train_artifacts/* 에 결과물을 저장하고 Inference 파이프라인은 /inference_artifacts/* 에 결과물을 저장합니다. 결과물 별 저장 방법은 아래 API 를 참조 하세요. 
 
 ### asset_{step_name}.py 에 제공되는 사용자 API
 1. **user parameter 의 default 값 설정 (필수)**

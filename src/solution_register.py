@@ -1026,7 +1026,7 @@ class SolutionRegister:
             raise NotImplementedError(f'Failed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
         
         if "train" in self.pipeline:
-            artifacts_path = _tar_dir(".train_artifacts")  # artifacts tar.gz이 저장된 local 경로 return
+            artifacts_path = _tar_dir("train_artifacts")  # artifacts tar.gz이 저장된 local 경로 return
             local_folder = os.path.split(artifacts_path)[0] + '/'
             print_color(f'[SYSTEM] Start uploading train artifacts into S3 from local folder:', color='cyan')
             print(f'{local_folder}')
@@ -1036,7 +1036,7 @@ class SolutionRegister:
 
         elif "inference" in self.pipeline:
             ## inference artifacts tar gz 업로드 
-            artifacts_path = _tar_dir(".inference_artifacts")  # artifacts tar.gz이 저장된 local 경로 
+            artifacts_path = _tar_dir("inference_artifacts")  # artifacts tar.gz이 저장된 local 경로 
             local_folder = os.path.split(artifacts_path)[0] + '/'
             print_color(f'[INFO] Start uploading inference artifacts into S3 from local folder:', color='cyan')
             print(f'{local_folder}')
@@ -1048,7 +1048,7 @@ class SolutionRegister:
             ## model tar gz 업로드 
             # [중요] model_uri는 inference type 밑에 넣어야되는데, 경로는 inference 대신 train이라고 pipeline 들어가야함 (train artifacts 경로에 저장)
             train_artifacts_s3_path = s3_prefix_uri.replace(f'v{self.solution_version_new}/inference', f'v{self.solution_version_new}/train')
-            model_path = _tar_dir(".train_artifacts/models")  # model tar.gz이 저장된 local 경로 return 
+            model_path = _tar_dir("train_artifacts/models")  # model tar.gz이 저장된 local 경로 return 
             local_folder = os.path.split(model_path)[0] + '/'
             print_color(f'\n[SYSTEM] Start uploading << model >> into S3 from local folder:', color='cyan')
             print(f'{local_folder}')
@@ -2423,7 +2423,7 @@ def print_color(msg, color):
         raise ValueError('[ERROR] print_color() function call error. - selected color : {}'.format(COLOR_DICT.keys()))
     
 def _tar_dir(_path): 
-    ## _path: .train_artifacts / .inference_artifacts     
+    ## _path: train_artifacts / inference_artifacts     
     os.makedirs(REGISTER_ARTIFACT_PATH , exist_ok=True)
     os.makedirs(REGISTER_MODEL_PATH, exist_ok=True)
     last_dir = None
@@ -2433,7 +2433,7 @@ def _tar_dir(_path):
     else: 
         _save_file_name = _path.strip('.') 
         _save_path = REGISTER_ARTIFACT_PATH +  f'{_save_file_name}.tar.gz' 
-        last_dir = _path # ex. .train_artifacts/
+        last_dir = _path # ex. train_artifacts/
 
     tar = tarfile.open(_save_path, 'w:gz')
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):
@@ -2441,7 +2441,7 @@ def _tar_dir(_path):
         for file_name in files:
             # print("SSH@@@@@@@@@@@", file_name, base_dir, file_name)
             #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
-            tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 .train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
+            tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
     tar.close()
     
     return _save_path

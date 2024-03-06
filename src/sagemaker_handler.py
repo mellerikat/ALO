@@ -240,10 +240,10 @@ class SagemakerHandler:
                 tar.extractall(self.temp_model_extract_dir) # 본인경로에 풀면안되는듯 
                 tar.close() 
             # alo에서 생성했던 'train_artifacts.tar.gz'과 'model.tar.gz' 중 train_artifacts 만 PROJECT HOME에 압축해제 (--> log, models, output,..)
-            # FIXME 이미 .train_artifacts 존재해도 에러 안나고 덮어쓰기 되는지 ? 
+            # FIXME 이미 train_artifacts 존재해도 에러 안나고 덮어쓰기 되는지 ? 
             if COMPRESSED_TRAIN_ARTIFACTS_FILE in os.listdir(self.temp_model_extract_dir): 
                 tar = tarfile.open(self.temp_model_extract_dir + COMPRESSED_TRAIN_ARTIFACTS_FILE)
-                # .train_artifacts 폴더 없으면 생성 
+                # train_artifacts 폴더 없으면 생성 
                 _create_dir(TRAIN_ARTIFACTS_PATH)
                 tar.extractall(TRAIN_ARTIFACTS_PATH)
                 tar.close() 

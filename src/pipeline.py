@@ -1,5 +1,7 @@
 # set up pipeline class
+import hashlib
 import importlib
+import inspect
 import sys
 import os
 import re
@@ -99,7 +101,11 @@ class Pipeline:
         if self.system_envs['boot_on'] == False:  ## boot_on 시, skip
             # NOTE [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
             # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
-            self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission, self.control['get_external_data'])
+            data_checksums = self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission, self.control['get_external_data'])
+
+            # v2.3.0 NEW: 실험 history 를 위한 data_id 생성
+            type = self.pipeline_type.split('_')[0]
+            self.system_envs[f'{type}_history'] = data_checksums
 
 
         # TODO return 구성
@@ -147,6 +153,28 @@ class Pipeline:
                     self.process_asset_step(asset_config, step)
                 except:
                     PROC_LOGGER.process_error(f"Failed to process step: << {steps} >>")
+        
+        ## v2.3.0 NEW: param_id 생성 
+        params = self.user_parameters[self.pipeline_type]
+        type = self.pipeline_type.split('_')[0]
+        self.system_envs[f'{type}_history']['param_id'] = self._parameter_checksum(params)
+        
+        ## v2.3.0 NEW: code id 생성
+        total_checksum = hashlib.md5()
+        checksum_dict = {}
+        for i, asset_config in enumerate(self.asset_source[self.pipeline_type]):
+            _path = ASSET_HOME + asset_config['step'] + "/"
+            checksum = self._code_checksum(_path)
+            checksum_dict[asset_config['step']] = checksum
+
+            # 폴더별 checksum을 문자열로 변환 후 total_checksum 업데이트
+            total_checksum.update(str(checksum).encode())
+
+        # 최종 total_checksum을 64비트 정수로 변환
+        total_checksum = int(total_checksum.hexdigest(), 16) & ((1 << 64) - 1)
+        self.system_envs[f'{type}_history']['code_id_description'] = checksum_dict
+        self.system_envs[f'{type}_history']['code_id'] = total_checksum
+
 
     def save(self):
 
@@ -175,6 +203,34 @@ class Pipeline:
                 self.artifact.backup_history(self.pipeline_type, self.system_envs['experimental_plan'], self.system_envs['pipeline_start_time'], size=self.control['backup_size'])
             except:
                 PROC_LOGGER.process_error("Failed to backup artifacts into << .history >>")
+
+    def _parameter_checksum(self, params):
+        # params를 문자열로 변환하여 해시 입력값으로 사용
+        # 여기서는 params가 문자열이라고 가정합니다. 실제 사용 시 params를 적절히 변환해야 할 수 있습니다.
+        params_str = str(params)
+        # hashlib을 사용해 params_str의 해시 계산
+        checksum = hashlib.sha256(params_str.encode('utf-8'))
+        # 해시 객체에서 hexdigest 메소드를 호출하여 16진수 해시 문자열 얻기
+        hexdigest_str = checksum.hexdigest()
+        # 16진수 문자열을 정수로 변환하고, 64비트로 제한
+        return int(hexdigest_str, 16) & ((1 << 64) - 1)
+
+    def _code_checksum(self,folder_path):
+        """폴더 내 모든 Python 파일들의 내용 기반으로 checksum을 계산합니다."""
+        checksum = hashlib.md5()
+        # 폴더를 순회하며 모든 .py 파일들에 대해 작업 수행
+        for root, dirs, files in os.walk(folder_path):
+            for file in sorted(files):
+                if file.endswith('.py'):
+                    file_path = os.path.join(root, file)
+                    # 파일 내용을 읽고 checksum 업데이트
+                    with open(file_path, 'rb') as f:
+                        while chunk := f.read(8192):
+                            checksum.update(chunk)
+    
+        # 최종적인 checksum을 64비트 정수로 변환
+        return int(checksum.hexdigest(), 16) & ((1 << 64) - 1)
+
 
     def _check_output(self):
         """inference_summary.yaml 및 output csv / image 파일 (jpg, png, svg) 정상 생성 체크

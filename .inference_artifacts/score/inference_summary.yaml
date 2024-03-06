@@ -1,0 +1,9 @@
+date: '2024-03-05 06:01:28'
+file_path: ''
+note: Score means titanic survival ratio
+probability:
+  dead: 0.6
+  survived: 0.4
+result: '#survived:148 / #total:418'
+score: 0.35
+version: ''
