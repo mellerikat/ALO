@@ -37,5 +37,5 @@ RUN mkdir -p /alo/artifacts/inference_artifacts/log && \
     mkdir /alo/edgeapp_interface/output
 WORKDIR /framework/
 
-CMD sh -c 'python3 main.py --loop True --mode inference --system "$(jq -r "." /framework/solution_metadata.yaml)"'
+#CMD sh -c 'python3 main.py --loop True --mode inference --system "$(jq -r "." #/framework/solution_metadata.yaml)"'
 

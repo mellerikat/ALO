@@ -360,8 +360,6 @@ class AirflowRegisterer:
             if old_key in d:
                 d[new_key] = d.pop(old_key)
 
-        print(self.exp_yaml)
-        print(self.exp_yaml.keys())
         if "train" in self.pipeline:
             temp_dict = self.exp_yaml['user_parameters'][0]
             rename_key(temp_dict, 'train_pipeline', 'candidate_parameters')
