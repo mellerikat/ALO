@@ -2331,8 +2331,8 @@ class SolutionRegister:
                     if self.pipeline not in subfolder_path:
                         continue
                     subfolders.append(subfolder_path)
-
-            file_list = next(os.walk(subfolders[0]))[2]
+            # step_ 뒤에 붙는 숫자의 크기 기준으로 sort 
+            file_list = sorted(next(os.walk(subfolders[0]))[2], key=lambda x:int(os.path.splitext(x)[0].split('_')[-1]))
 
             search_string = 'site_packages_location'
             with open(PROJECT_HOME + 'Dockerfile', 'r', encoding='utf-8') as file:
