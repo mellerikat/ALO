@@ -242,7 +242,7 @@ class Pipeline:
             try:
                 self.artifact.backup_history(self.pipeline_type, self.system_envs, size=self.control['backup_size'])
             except:
-                PROC_LOGGER.process_error("Failed to backup artifacts into << .history >>")
+                PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
 
     def history(self):
         """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
@@ -300,14 +300,14 @@ class Pipeline:
         df.drop(drop_col, axis=1, inplace=True)
 
         new_order = ['id', 'start_time', 'end_time', 'score', 'result', 'note', 'probability', 'version', 'data_id', 'code_id', 'param_id']
-        df = df[new_order].reset_index(drop=True)
+        df = df[new_order]
         df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT)
         df['start_time'] = df['start_time'].dt.strftime(TIME_FORMAT_DISPLAY)
         df['end_time'] = pd.to_datetime(df['end_time'], format=TIME_FORMAT)
         df['end_time'] = df['end_time'].dt.strftime(TIME_FORMAT_DISPLAY)
 
         df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT_DISPLAY)
-        df = df.sort_values(by='end_time', ascending=False)
+        df = df.sort_values(by='end_time', ascending=False).reset_index(drop=True)
 
         return df
 

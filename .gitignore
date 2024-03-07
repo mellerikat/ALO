@@ -3,7 +3,7 @@ train_artifacts/
 inference_artifacts/
 .train_artifacts/
 .inference_artifacts/
-.history/
+history/
 .asset_interface/
 input/
 solution/

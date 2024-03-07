@@ -40,7 +40,7 @@ class Aritifacts:
     def backup_history(self, pipelines, system_envs,  error=False, size=1000):
         """ Description
             -----------
-                - 파이프라인 실행 종료 후 사용한 yaml과 결과 artifacts를 .history에 백업함 
+                - 파이프라인 실행 종료 후 사용한 yaml과 결과 artifacts를 history에 백업함 
             Parameters
             ----------- 
                 - pipelines: pipeline mode (train, inference)
@@ -69,7 +69,7 @@ class Aritifacts:
             self._delete_old_files(HISTORY_PATH, 10)
 
         type = pipelines.split("_")[0]
-        # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 .history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
+        # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
         folder_name = system_envs[f"{type}_history"]["id"]
         backup_folder_name= f'{folder_name}/' if error == False else f'{folder_name}-error/'
         

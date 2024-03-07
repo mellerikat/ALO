@@ -40,7 +40,7 @@ delete:
 	aws ecr batch-delete-image --repository-name $(NS)/$(TYPE)/$(REPO) --image-ids imageTag=latest
 
 clean : 
-	rm -rf $(FOLDER_PATH)* ./.history ./.asset_interface ./inference_artifacts ./train_artifacts ./input/ ./assets/ ./main.py ./src/ ./config/ ./solution_metadata.yaml
+	rm -rf $(FOLDER_PATH)* ./history ./.asset_interface ./inference_artifacts ./train_artifacts ./input/ ./assets/ ./main.py ./src/ ./config/ ./solution_metadata.yaml
  
 ecr: login ecr
 sync: login build tag delete push logout

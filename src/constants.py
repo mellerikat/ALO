@@ -28,7 +28,7 @@ TRAIN_MODEL_PATH = PROJECT_HOME + "train_artifacts/models/"
 TEMP_ARTIFACTS_PATH = PROJECT_HOME + ".TEMP_ARTIFACTS_PATH/"
 # 외부 model.tar.gz (혹은 부재 시 해당 경로 폴더 통째로)을 train_artifacts/models 경로로 옮기기 전 임시 저장 경로 
 TEMP_MODEL_PATH = PROJECT_HOME + ".TEMP_MODEL_PATH/"
-HISTORY_PATH = PROJECT_HOME + ".history/"
+HISTORY_PATH = PROJECT_HOME + "history/"
 COMPRESSED_MODEL_FILE = "model.tar.gz"
 COMPRESSED_TRAIN_ARTIFACTS_FILE = "train_artifacts.tar.gz"
 INFERENCE_LOG_PATH = PROJECT_HOME + "inference_artifacts/log/"
@@ -54,7 +54,7 @@ artifacts_structure = {
         'log': {}
     },
     '.asset_interface': {},
-    '.history': {}
+    'history': {}
 }
 ###################################
 ##### Solution 
