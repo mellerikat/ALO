@@ -2,6 +2,7 @@
 import hashlib
 import importlib
 import inspect
+import random
 import sys
 import os
 import re
@@ -84,17 +85,25 @@ class Pipeline:
         for key, value in experiment_plan.items():
             setattr(self, key, get_yaml_data(key, pipeline_type))
 
+        ## pipeline.run() 만 실행 시, init 에 존재해야 함
+        self._set_asset_structure()
+
     def setup(self):
         self._empty_artifacts(self.pipeline_type)
         _, packs, = self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
-        self._set_asset_structure()
 
         self._create_package(packs)
 
         # TODO return 구성
         # return
 
-    def load(self):
+    def load(self, data_path=[]):
+
+        ptype = self.pipeline_type.split('_')[0]
+        if isinstance(data_path, str):
+            data_path = [data_path]
+        if len(data_path) > 0:
+            self.external_path[f'load_{ptype}_data_path'] = data_path
 
         # TODO 분기 태우는 코드가 필요
         if self.pipeline_type == 'inference_pipeline':
@@ -107,8 +116,8 @@ class Pipeline:
             data_checksums = self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission, self.control['get_external_data'])
 
             # v2.3.0 NEW: 실험 history 를 위한 data_id 생성
-            type = self.pipeline_type.split('_')[0]
-            self.system_envs[f'{type}_history'] = data_checksums
+            ptype = self.pipeline_type.split('_')[0]
+            self.system_envs[f'{ptype}_history'] = data_checksums
 
 
         # TODO return 구성
@@ -159,8 +168,8 @@ class Pipeline:
         
         ## v2.3.0 NEW: param_id 생성 
         params = self.user_parameters[self.pipeline_type]
-        type = self.pipeline_type.split('_')[0]
-        self.system_envs[f'{type}_history']['param_id'] = self._parameter_checksum(params)
+        ptype = self.pipeline_type.split('_')[0]
+        self.system_envs[f'{ptype}_history']['param_id'] = self._parameter_checksum(params)
         
         ## v2.3.0 NEW: code id 생성
         total_checksum = hashlib.md5()
@@ -175,8 +184,8 @@ class Pipeline:
 
         # 최종 total_checksum을 64비트 정수로 변환
         total_checksum = int(total_checksum.hexdigest(), 16) & ((1 << 64) - 1)
-        self.system_envs[f'{type}_history']['code_id_description'] = checksum_dict
-        self.system_envs[f'{type}_history']['code_id'] = total_checksum
+        self.system_envs[f'{ptype}_history']['code_id_description'] = checksum_dict
+        self.system_envs[f'{ptype}_history']['code_id'] = total_checksum
 
 
     def save(self):
@@ -203,27 +212,28 @@ class Pipeline:
             PROC_LOGGER.process_info(f"Process finish-time: {datetime.now().strftime(TIME_FORMAT_DISPLAY)}")
 
 
-            type = self.pipeline_type.split('_')[0]
+            ptype = self.pipeline_type.split('_')[0]
             sttime = self.system_envs['experimental_start_time']
             exp_name = self.system_envs['experimental_name']
             exp_version = self.system_envs['experimental_version']
-            self.system_envs[f"{type}_history"]['id'] = f'{sttime}-{type}-{exp_name}-{exp_version}'
-            self.system_envs[f"{type}_history"]['start_time'] = sttime
-            self.system_envs[f"{type}_history"]['end_time'] = self.system_envs['experimental_end_time']
+            random_number = '{:08}'.format(random.randint(0, 99999999))
+            self.system_envs[f"{ptype}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
+            self.system_envs[f"{ptype}_history"]['start_time'] = sttime
+            self.system_envs[f"{ptype}_history"]['end_time'] = self.system_envs['experimental_end_time']
             if self.pipeline_type == 'inference_pipeline':
                 try:
-                    self.system_envs[f"{type}_history"]['train_id'] = self.system_envs["train_history"]['id']
+                    self.system_envs[f"{ptype}_history"]['train_id'] = self.system_envs["train_history"]['id']
                 except: ## single pipeline (only inference)
-                    self.system_envs[f"{type}_history"]['train_id'] = "none"
+                    self.system_envs[f"{ptype}_history"]['train_id'] = "none"
 
             if self.control['backup_artifacts'] == True:
                 # system_envs 에서 data, code, param id 를 저장함
-                if type == 'train':
+                if ptype == 'train':
                     path = TRAIN_ARTIFACTS_PATH + 'log/experimental_history.json'
                 else:
                     path = INFERENCE_ARTIFACTS_PATH + 'log/experimental_history.json'
                 with open(path, 'w') as f:
-                    json.dump(self.system_envs[f"{type}_history"], f, indent=4)    
+                    json.dump(self.system_envs[f"{ptype}_history"], f, indent=4)    
 
         ###################################
         ## Step9: Artifacts 를 history 에 backup
@@ -297,7 +307,7 @@ class Pipeline:
         df['end_time'] = df['end_time'].dt.strftime(TIME_FORMAT_DISPLAY)
 
         df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT_DISPLAY)
-        df = df.sort_values(by='start_time', ascending=False)
+        df = df.sort_values(by='end_time', ascending=False)
 
         return df
 

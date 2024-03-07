@@ -16,6 +16,7 @@ from src.constants import *
 from src.artifacts import Aritifacts
 from src.install import Packages
 from src.pipeline import Pipeline
+from src.solution_register import SolutionRegister
 
 # 이름을 한번 다시 생각
 from src.assets import Assets
@@ -92,6 +93,8 @@ class ALO:
         
         # artifacts home 초기화 (from src.utils)
         self.system_envs['artifacts'] = self.artifact.set_artifacts()
+        self.system_envs['train_history'] ={}
+        self.system_envs['inference_history'] ={}
 
         if self.system_envs['boot_on'] and self.system is not None:
             self.q = init_redis(self.system)
@@ -236,6 +239,11 @@ class ALO:
             # 딱히 안해도 문제는 없는듯 하지만 혹시 모르니 설정했던 환경 변수를 제거 
             os.unsetenv("AWS_PROFILE")
 
+    def register(self, solution_info, infra_setup,  train_id = '', inference_id = ''):
+
+        register = SolutionRegister(infra_setup=infra_setup, solution_info=solution_info)
+        return register
+        
 
     #####################################
     ####    Part1. Initialization    ####
