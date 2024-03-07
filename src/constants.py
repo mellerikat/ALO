@@ -9,6 +9,9 @@ ALO_LIB = PROJECT_HOME + "alolib/"
 
 ALO_LIB_URI = "http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git"
 
+TIME_FORMAT = '%Y%m%dT%H%M%SZ'
+TIME_FORMAT_DISPLAY = '%Y-%m-%d %H:%M:%S'
+
 # interface mode support type 
 INTERFACE_TYPES = ['memory', 'file']
 # asset 코드들의 위치

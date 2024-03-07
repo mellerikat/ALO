@@ -12,12 +12,15 @@ from collections import Counter
 import git
 import json
 
+import yaml
+
 from src.constants import *
 # from src.assets import *
 from src.install import Packages
 from src.external import ExternalHandler
 from src.logger import ProcessLogger
 from src.artifacts import Aritifacts
+import pandas as pd
 
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
@@ -195,14 +198,32 @@ class Pipeline:
             # save_artifacts 내에도 edgeapp redis 전송 있음
             self._save_artifacts()
 
-            # system_envs 에서 data, code, param id 를 저장함
+            ## backup 까지는 최종 실행 시간으로 정의
+            self.system_envs['experimental_end_time'] = datetime.now().strftime(TIME_FORMAT)
+            PROC_LOGGER.process_info(f"Process finish-time: {datetime.now().strftime(TIME_FORMAT_DISPLAY)}")
+
+
             type = self.pipeline_type.split('_')[0]
-            if type == 'train':
-                path = TRAIN_ARTIFACTS_PATH + 'log/experimental_history.json'
-            else:
-                path = INFERENCE_ARTIFACTS_PATH + 'log/experimental_history.json'
-            with open(path, 'w') as f:
-                json.dump(self.system_envs[f"{type}_history"], f, indent=4)    
+            sttime = self.system_envs['experimental_start_time']
+            exp_name = self.system_envs['experimental_name']
+            exp_version = self.system_envs['experimental_version']
+            self.system_envs[f"{type}_history"]['id'] = f'{sttime}-{type}-{exp_name}-{exp_version}'
+            self.system_envs[f"{type}_history"]['start_time'] = sttime
+            self.system_envs[f"{type}_history"]['end_time'] = self.system_envs['experimental_end_time']
+            if self.pipeline_type == 'inference_pipeline':
+                try:
+                    self.system_envs[f"{type}_history"]['train_id'] = self.system_envs["train_history"]['id']
+                except: ## single pipeline (only inference)
+                    self.system_envs[f"{type}_history"]['train_id'] = "none"
+
+            if self.control['backup_artifacts'] == True:
+                # system_envs 에서 data, code, param id 를 저장함
+                if type == 'train':
+                    path = TRAIN_ARTIFACTS_PATH + 'log/experimental_history.json'
+                else:
+                    path = INFERENCE_ARTIFACTS_PATH + 'log/experimental_history.json'
+                with open(path, 'w') as f:
+                    json.dump(self.system_envs[f"{type}_history"], f, indent=4)    
 
         ###################################
         ## Step9: Artifacts 를 history 에 backup
@@ -212,6 +233,73 @@ class Pipeline:
                 self.artifact.backup_history(self.pipeline_type, self.system_envs, size=self.control['backup_size'])
             except:
                 PROC_LOGGER.process_error("Failed to backup artifacts into << .history >>")
+
+    def history(self):
+        """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
+        """
+        ## step1: history 폴더에서 폴더 명을 dict key 화 하기 
+        type = self.pipeline_type.split('_')[0]
+        base_path = HISTORY_PATH + f'{type}/'
+        entries = os.listdir(base_path)
+        # 엔트리 중에서 디렉토리만 필터링하여 리스트에 추가합니다.
+        folders = [entry for entry in entries if os.path.isdir(os.path.join(base_path, entry))]
+
+        history_dict = {}
+        empty_score_dict = {
+            "date": '',
+            "file_path": '',
+            "note": '',
+            "probability": {},
+            "result": '',
+            "score": "",
+            "version": "",
+        }
+        for folder in folders: 
+            file = base_path + folder + f"/log/experimental_history.json"
+            if os.path.exists(file):
+                with open(file, 'r') as f:
+                    history = json.load(f)
+                    history_dict[folder] = history
+            else:
+                empty_dict = {
+                    "data_id_description": {},
+                    "data_id": "" ,
+                    "param_id": "",
+                    "code_id_description": {},
+                    "code_id": "",
+                    "id": "",
+                    "start_time": "20000101T000000Z",
+                    "end_time": "20000101T000000Z"
+                }
+                history_dict[folder] = empty_dict
+
+            file_score = base_path + folder + f"/score/{type}_summary.yaml"
+            if os.path.exists(file_score):
+                try:
+                    with open(file_score, 'r') as f:
+                        history_score = yaml.safe_load(f)
+                        history_dict[folder].update(history_score)
+                except:
+                    history_dict[folder].update(empty_score_dict)
+            else:
+                history_dict[folder].update(empty_score_dict)
+        
+        ## Make Table
+        df = pd.DataFrame.from_dict(history_dict, orient='index')
+        drop_col = ['data_id_description', 'code_id_description', 'file_path']
+        df.drop(drop_col, axis=1, inplace=True)
+
+        new_order = ['id', 'start_time', 'end_time', 'score', 'result', 'note', 'probability', 'version', 'data_id', 'code_id', 'param_id']
+        df = df[new_order].reset_index(drop=True)
+        df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT)
+        df['start_time'] = df['start_time'].dt.strftime(TIME_FORMAT_DISPLAY)
+        df['end_time'] = pd.to_datetime(df['end_time'], format=TIME_FORMAT)
+        df['end_time'] = df['end_time'].dt.strftime(TIME_FORMAT_DISPLAY)
+
+        df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT_DISPLAY)
+        df = df.sort_values(by='start_time', ascending=False)
+
+        return df
 
     def _parameter_checksum(self, params):
         # params를 문자열로 변환하여 해시 입력값으로 사용

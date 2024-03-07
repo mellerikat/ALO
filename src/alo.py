@@ -123,8 +123,6 @@ class ALO:
                 pipeline.run()
                 pipeline.save()
 
-                self.system_envs['proc_finish_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                self.proc_logger.process_info(f"Process finish-time: {self.system_envs['proc_finish_time']}")
                 
                 # FIXME loop 모드로 동작 / solution_metadata를 어떻게 넘길지 고민 / update yaml 위치를 새로 선정할 필요가 있음 ***
                 if self.loop: 
@@ -173,7 +171,7 @@ class ALO:
         """
         
         # init solution metadata
-        self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+        self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
         sol_meta = self.load_solution_metadata()
         self.system_envs['solution_metadata'] = sol_meta
         self.system_envs['experimental_plan'] = experimental_plan
