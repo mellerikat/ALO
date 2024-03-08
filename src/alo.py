@@ -441,7 +441,7 @@ class ALO:
         """
 
         ## from external.py
-        self.ext_data.external_load_data(pipeline, self.external_path, self.external_path_permission, self.control['get_external_data'])
+        self.ext_data.external_load_data(pipeline, self.external_path, self.external_path_permission, )
 
     def _external_load_model(self):
         """외부에서 모델파일을 가져옴 (model.tar.gz)

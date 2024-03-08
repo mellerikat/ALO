@@ -188,7 +188,7 @@ class ExternalHandler:
         pass
 
     # FIXME pipeline name까지 추후 반영해야할지? http://clm.lge.com/issue/browse/DXADVTECH-352?attachmentSortBy=dateTime&attachmentOrder=asc
-    def external_load_data(self, pipe_mode, external_path, external_path_permission, get_external_data): 
+    def external_load_data(self, pipe_mode, external_path, external_path_permission): 
         """ Description
             -----------
                 - external_path로부터 데이터를 다운로드 
@@ -197,22 +197,14 @@ class ExternalHandler:
                 - pipe_mode: 호출 시의 파이프라인 (train_pipeline, inference_pipeline)
                 - external_path: experimental_plan.yaml에 적힌 external_path 전체를 dict로 받아옴 
                 - external_path_permission: experimental_plan.yaml에 적힌 external_path_permission 전체를 dict로 받아옴 
-                - get_external_data: external data를 load하는 행위를 한 번만 할 지 여러번 할지 (once, every)
             Return
             -----------
                 - 
             Example
             -----------
-                - external_load_data(pipe_mode, self.external_path, self.external_path_permission, self.control['get_external_data'])
+                - external_load_data(pipe_mode, self.external_path, self.external_path_permission, )
         """
         # train, inference pipeline 공통 
-        # 미입력 시 every로 default 설정 
-        if get_external_data is None:
-            get_external_data = 'every'
-            PROC_LOGGER.process_warning('You did not entered << get_external_data >> control parameter in your experimental_plan.yaml \n << every >> is automatically set as default. \n')
-        # once 나 every로 입력하지 않고 이상한 값 입력 시 혹은 비워놨을 시 에러 
-        if get_external_data not in ['once', 'every']:
-            PROC_LOGGER.process_error(f"Check your << get_external_data >> control parameter in experimental_plan.yaml. \n You entered: {get_external_data}. Only << once >> or << every >> is allowed.")
         # s3 key 경로 가져오기 시도 (없으면 환경 변수나 aws config에 설정돼 있어야 추후 s3에서 데이터 다운로드시 에러 안남)
         aws_key_profile = external_path_permission['aws_key_profile'] # 무조건 1개 (str) or None 
         if aws_key_profile is None: 
@@ -266,34 +258,20 @@ class ExternalHandler:
 
         ################################################################################################################
         # external base 폴더 이름들과 현재 input 폴더 내 구성의 일치여부 확인 후 once, every에 따른 동작 분기 
-        if get_external_data == 'once':
-            if external_base_dirs == os.listdir(input_data_dir): # 외부 경로와 input 폴더 내 구성이 완전히 동등하면 데이터 새로 가져오지 않고 return 
-                # FIXME 폴더 구성만 같고 파일 구성, 내용 다른건 걸러주지 못함 
-                PROC_LOGGER.process_info(f"Skip loading external data. All the data in the external load data path already exist in << {INPUT_DATA_HOME} >> equally. \n : << {external_base_dirs} >>")
-                return # 외부 데이터 가져오지 않고 return 
-            else: 
-                get_external_data = 'every' # external과 input 폴더 내 구성이 갖지 않으면 once라도 every처럼 동작
-            
-            ## TODO-SSH: data_cheksums 만들기. artifacts 에서 metadata 읽어와서 처리하도록 artifacts 에 파일 추가 하기
-
-        
         # 현재 pipe mode 에 따른 설정 완료 후 실제 데이터 가져오기 시작 
-        elif get_external_data == 'every': 
-            # copy (로컬 절대경로, 상대경로) or download (s3) data (input 폴더로)
-            try: 
-                shutil.rmtree(input_data_dir, ignore_errors=True) # 새로 데이터 가져오기 전 폴더 없애기 (ex. input/train) >> 어짜피 아래서 _load_data 시 새로 폴더 만들것임 
-                PROC_LOGGER.process_info(f"Successfuly removed << {input_data_dir} >> before loading external data.")
-            except: 
-                PROC_LOGGER.process_error(f"Failed to remove << {input_data_dir} >> before loading external data.")
-            # external 데이터 가져오기 
-            for ext_path in external_data_path:
-                ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
-                data_checksums = self._load_data(pipe_mode, ext_type, ext_path, aws_key_profile)
-                PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
+        # copy (로컬 절대경로, 상대경로) or download (s3) data (input 폴더로)
+        try: 
+            shutil.rmtree(input_data_dir, ignore_errors=True) # 새로 데이터 가져오기 전 폴더 없애기 (ex. input/train) >> 어짜피 아래서 _load_data 시 새로 폴더 만들것임 
+            PROC_LOGGER.process_info(f"Successfuly removed << {input_data_dir} >> before loading external data.")
+        except: 
+            PROC_LOGGER.process_error(f"Failed to remove << {input_data_dir} >> before loading external data.")
+        # external 데이터 가져오기 
+        for ext_path in external_data_path:
+            ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
+            data_checksums = self._load_data(pipe_mode, ext_type, ext_path, aws_key_profile)
+            PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
 
-            return data_checksums
-        else:
-            raise Exception(f"You entered wrong value in your expermimental_plan.yaml: << get_external_data: {get_external_data} >>")
+        return data_checksums
             
 
     def external_load_model(self, external_path, external_path_permission): 

@@ -12,7 +12,6 @@ from typing import Dict, List, Tuple, Union, Optional, Any
 from collections import Counter
 import git
 import json
-
 import yaml
 
 from src.constants import *
@@ -21,7 +20,6 @@ from src.install import Packages
 from src.external import ExternalHandler
 from src.logger import ProcessLogger
 from src.artifacts import Aritifacts
-import pandas as pd
 
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
@@ -113,7 +111,7 @@ class Pipeline:
         if self.system_envs['boot_on'] == False:  ## boot_on 시, skip
             # NOTE [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
             # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
-            data_checksums = self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission, self.control['get_external_data'])
+            data_checksums = self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission)
 
             # v2.3.0 NEW: 실험 history 를 위한 data_id 생성
             ptype = self.pipeline_type.split('_')[0]
@@ -295,21 +293,48 @@ class Pipeline:
                 history_dict[folder].update(empty_score_dict)
         
         ## Make Table
-        df = pd.DataFrame.from_dict(history_dict, orient='index')
-        drop_col = ['data_id_description', 'code_id_description', 'file_path']
-        df.drop(drop_col, axis=1, inplace=True)
+        # df = pd.DataFrame.from_dict(history_dict, orient='index')
+        # drop_col = ['data_id_description', 'code_id_description', 'file_path']
+        # df.drop(drop_col, axis=1, inplace=True)
 
+        # new_order = ['id', 'start_time', 'end_time', 'score', 'result', 'note', 'probability', 'version', 'data_id', 'code_id', 'param_id']
+        # df = df[new_order]
+        # df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT)
+        # df['start_time'] = df['start_time'].dt.strftime(TIME_FORMAT_DISPLAY)
+        # df['end_time'] = pd.to_datetime(df['end_time'], format=TIME_FORMAT)
+        # df['end_time'] = df['end_time'].dt.strftime(TIME_FORMAT_DISPLAY)
+
+        # df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT_DISPLAY)
+        # df = df.sort_values(by='end_time', ascending=False).reset_index(drop=True)
+
+        # The original dictionary of records
+        history_dict = {
+        }
+
+        # List of keys we want to remove
+        drop_keys = ['data_id_description', 'code_id_description', 'file_path']
         new_order = ['id', 'start_time', 'end_time', 'score', 'result', 'note', 'probability', 'version', 'data_id', 'code_id', 'param_id']
-        df = df[new_order]
-        df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT)
-        df['start_time'] = df['start_time'].dt.strftime(TIME_FORMAT_DISPLAY)
-        df['end_time'] = pd.to_datetime(df['end_time'], format=TIME_FORMAT)
-        df['end_time'] = df['end_time'].dt.strftime(TIME_FORMAT_DISPLAY)
 
-        df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT_DISPLAY)
-        df = df.sort_values(by='end_time', ascending=False).reset_index(drop=True)
+        # A new dictionary to hold our processed records
+        processed_dict = {}
+        for key, record in history_dict.items():
+            # Exclude unwanted keys
+            processed_record = {k: v for k, v in record.items() if k not in drop_keys}
+            # Reorder and select keys, fill missing keys with None for consistency
+            processed_record = {k: processed_record.get(k, None) for k in new_order}
+            # Format the 'start_time' and 'end_time'
+            processed_record['start_time'] = datetime.strptime(processed_record['start_time'], TIME_FORMAT).strftime(TIME_FORMAT_DISPLAY)
+            processed_record['end_time'] = datetime.strptime(processed_record['end_time'], TIME_FORMAT).strftime(TIME_FORMAT_DISPLAY)
+            # Add record to the new processed_dict
+            processed_dict[key] = processed_record
 
-        return df
+        # Sort the records by end_time in descending order (not easily achievable with a dictionary, might need to convert to a list of tuples or a list of dictionaries)
+        processed_records_list = list(processed_dict.values())
+        processed_records_list.sort(key=lambda x: datetime.strptime(x['end_time'], TIME_FORMAT_DISPLAY), reverse=True)
+
+        # Now 'processed_records_list' contains the list of dictionaries sorted by 'end_time' and you can use it as you wish.
+
+        return processed_records_list
 
     def _parameter_checksum(self, params):
         # params를 문자열로 변환하여 해시 입력값으로 사용

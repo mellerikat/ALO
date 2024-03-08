@@ -20,13 +20,11 @@ asset_source: []
 control:
     ## 1. whether to install assets and dependency packages once or every time. 
     - get_asset_source: once ## once, every
-    ## 2. whether to fetch external load data into < alo/input/ > path once or every time.   
-    - get_external_data: once ## once, every
-    ## 3. whether to backup saved artifacts
+    ## 2. whether to backup saved artifacts
     - backup_artifacts: True ## True, False
-    ## 4. whether to backup log
+    ## 3. whether to backup log
     - backup_log: True  ## True, False
-    ## 5. determine artifacts backup size(MB)
+    ## 4. determine artifacts backup size(MB)
     - backup_size: 1000
-    ## 6. asset data, config interfacing method - memory: (fast) / file: (saved; non-volatilizing) 
+    ## 5. asset data, config interfacing method - memory: (fast) / file: (saved; non-volatilizing) 
     - interface_mode: memory ## memory, file

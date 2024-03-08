@@ -2283,9 +2283,6 @@ class SolutionRegister:
             if list(map(str, _dict.keys()))[0] == 'get_asset_source':
                 if list(map(str, _dict.values()))[0] =='every':
                     exp_plan_dict['control'][idx]['get_asset_source'] = 'once'
-            if list(map(str, _dict.keys()))[0] == 'get_external_data':
-                if list(map(str, _dict.values()))[0] == 'once':
-                    exp_plan_dict['control'][idx]['get_external_data'] = 'every'
 
         ## 선택한 사항 삭제
         if self.pipeline == 'train':

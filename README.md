@@ -266,8 +266,6 @@ control:
     ## 1. 패키지 설치 및 asset 존재 여부를 실험 시마다 체크할지, 한번만 할지 결정
     ## 1-2 requirements.txt 및 종속 패키지들 한번만 설치할 지 매번 설치할지도 결정 
     - get_asset_source: once ## once, every
-    # pipeline 실행 할 때 마다 데이터 가져올지를 결정 
-    - get_external_data: once ## once, every
     ## 2. 생성된 artifacts 를 backup 할지를 결정 True/False
     - backup_artifacts: True
     ## 3. pipeline 로그를 backup 할지를 결정 True/False

@@ -319,7 +319,4 @@ class Metadata:
                 # if self.external_path[f"save_inference_artifacts_path"] is None:  
                 #     PROC_LOGGER.process_error(f"You did not enter the << save_inference_artifacts_path >> in the experimental_plan.yaml") 
 
-        # [중요] system 인자가 존재해서 _update_yaml이 실행될 때는 항상 get_external_data를 every로한다. every로 하면 항상 input/train (or input/inference)를 비우고 새로 데이터 가져온다.
-        self.exp_plan['control'][0]['get_external_data'] = 'every'
-
         return system_envs
