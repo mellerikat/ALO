@@ -67,7 +67,7 @@ SOLUTION_REQ_FILE = PROJECT_HOME + "solution_requirements.txt"
 ##### Experimental Plan 
 ###################################
 # experimental plan yaml의 위치
-EXP_PLAN = SOLUTION_HOME + "experimental_plan.yaml"
+EXP_PLAN_DEFAULT_FILE = SOLUTION_HOME + "experimental_plan.yaml"
 EXPERIMENTAL_PLAN_FORMAT_FILE = PROJECT_HOME + "src/experimental_plan_format/experimental_plan_format.yaml"
 EXPERIMENTAL_OPTIONAL_KEY_LIST = ['ui_args_detail']
 

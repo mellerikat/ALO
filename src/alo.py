@@ -79,7 +79,7 @@ class ALO:
 
         # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
         if experimental_plan == "" or experimental_plan == None:
-            experimental_plan = EXP_PLAN
+            experimental_plan = EXP_PLAN_DEFAULT_FILE
 
         # 입력 받은 args를 전역변수로 변환
         # config, system, mode, loop, computing
@@ -147,7 +147,7 @@ class ALO:
                 pipeline.load()
                 pipeline.run()
                 pipeline.save()
-                # pipeline.history()
+                pipeline.history()
 
                 
                 # FIXME loop 모드로 동작 / solution_metadata를 어떻게 넘길지 고민 / update yaml 위치를 새로 선정할 필요가 있음 ***
@@ -190,7 +190,7 @@ class ALO:
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
 
 
-    def set_metadata(self, experimental_plan = EXP_PLAN, pipeline_type = 'train_pipeline'):
+    def set_metadata(self, experimental_plan = EXP_PLAN_DEFAULT_FILE, pipeline_type = 'train_pipeline'):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.

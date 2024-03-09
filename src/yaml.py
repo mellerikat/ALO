@@ -29,11 +29,12 @@ class Metadata:
         return yaml_dict 
 
 
-    def read_yaml(self, sol_me_file, exp_plan_file, system_envs):
+    def read_yaml(self, exp_plan_file,  sol_me_file=None, system_envs={}, update_envs=True):
         # exp_plan_file은 config 폴더로 복사해서 가져옴. 단, 외부 exp plan 파일 경로는 로컬 절대 경로만 지원 
         try:
-            exp_plan_file = self.load_experimental_plan(exp_plan_file) 
-            PROC_LOGGER.process_info(f"Successfully loaded << experimental_plan.yaml >> from: \n {exp_plan_file}") 
+            exp_plan_file = self.check_and_copy_expplan(exp_plan_file) 
+            if update_envs:  
+                PROC_LOGGER.process_info(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan_file})") 
             
             self.exp_plan = self.get_yaml(exp_plan_file)  ## from compare_yamls.py
             # self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드  ## from compare_yamls.py
@@ -54,14 +55,16 @@ class Metadata:
                     setattr(self, key, value)
             
             ## v2.3.0 NEW : name, version 을 system_envs 에 저장한다. 
-            system_envs["experimental_name"] = self.name
-            system_envs["experimental_version"] = self.version
+            if update_envs:
+                system_envs["experimental_name"] = self.name
+                system_envs["experimental_version"] = self.version
             
             # solution metadata yaml --> exp plan yaml overwrite
             if sol_me_file is not None:
                 self.sol_meta = sol_me_file
-                # 주의: _update_yaml에서 self.exp_plan의 내용이 바뀜
-                system_envs = self._update_yaml(system_envs=system_envs)
+                if update_envs:
+                    # 주의: _update_yaml에서 self.exp_plan의 내용이 바뀜
+                    system_envs = self._update_yaml(system_envs=system_envs)
                 PROC_LOGGER.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
         except:
             PROC_LOGGER.process_error("Failed to read experimental plan yaml.")
@@ -107,12 +110,12 @@ class Metadata:
         if (len(missed_keys) > 0) or (len(not_allowed_keys) > 0): 
             PROC_LOGGER.process_error(common_error_msg + f"\n - missed keys: {missed_keys} \n" + f"\n - not allowed keys: {not_allowed_keys}\n ")
          
-    def load_experimental_plan(self, exp_plan_file_path): # called at preset func.
+    def check_and_copy_expplan(self, exp_plan_file_path): # called at preset func.
         if exp_plan_file_path == None: 
-            if os.path.exists(EXP_PLAN):
-                return EXP_PLAN
+            if os.path.exists(EXP_PLAN_DEFAULT_FILE):
+                return EXP_PLAN_DEFAULT_FILE
             else: 
-                PROC_LOGGER.process_error(f"<< {EXP_PLAN} >> not found.")
+                PROC_LOGGER.process_error(f"<< {EXP_PLAN_DEFAULT_FILE} >> not found.")
         else: 
             try: 
                 # 입력한 경로가 상대 경로이면 config 기준으로 경로 변환  
@@ -122,22 +125,29 @@ class Metadata:
                 else: 
                     exp_plan_file_path = _path + "/" + _file  
                     _path, _file = os.path.split(exp_plan_file_path) 
+
                 # 경로가 config랑 동일하면 (samefile은 dir, file 다 비교가능) 그냥 바로 return 
                 if os.path.samefile(_path, SOLUTION_HOME): 
+                    return  SOLUTION_HOME + _file 
+                else:
+                    if os.path.exists(exp_plan_file_path) == False:
+                        PROC_LOGGER.process_error(f"<< {exp_plan_file_path} >> not found.")
+                    else:
+                        return  exp_plan_file_path 
+
+                    ## v2.3 SPEC-OUT: solution 으로 복사하는 기능 삭제. 사용자 반복 실험에서 문제 발생 여지 많음. pipeline.history 에도 문제 
+                    '''
+                    # 경로가 config랑 동일하지 않으면 외부 exp plan yaml을 config/ 밑으로 복사 
+                    if _file in os.listdir(SOLUTION_HOME):
+                        PROC_LOGGER.process_warning(f"<< {_file} >> already exists in config directory. The file is overwritten.")
+                    try: 
+                        shutil.copy(exp_plan_file_path, SOLUTION_HOME)
+                    except: 
+                        PROC_LOGGER.process_error(f"Failed to copy << {exp_plan_file_path} >> into << {SOLUTION_HOME} >>")
+                    # self.exp_plan_file 변수에 config/ 경로로 대입하여 return 
                     PROC_LOGGER.process_info(f"Successfully loaded experimental plan yaml: \n {SOLUTION_HOME + _file}")
                     return  SOLUTION_HOME + _file 
-                
-                # 경로가 config랑 동일하지 않으면 
-                # 외부 exp plan yaml을 config/ 밑으로 복사 
-                if _file in os.listdir(SOLUTION_HOME):
-                    PROC_LOGGER.process_warning(f"<< {_file} >> already exists in config directory. The file is overwritten.")
-                try: 
-                    shutil.copy(exp_plan_file_path, SOLUTION_HOME)
-                except: 
-                    PROC_LOGGER.process_error(f"Failed to copy << {exp_plan_file_path} >> into << {SOLUTION_HOME} >>")
-                # self.exp_plan_file 변수에 config/ 경로로 대입하여 return 
-                PROC_LOGGER.process_info(f"Successfully loaded experimental plan yaml: \n {SOLUTION_HOME + _file}")
-                return  SOLUTION_HOME + _file 
+                    '''
             except: 
                 PROC_LOGGER.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {exp_plan_file_path}")
 

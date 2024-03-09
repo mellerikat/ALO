@@ -20,6 +20,7 @@ from src.install import Packages
 from src.external import ExternalHandler
 from src.logger import ProcessLogger
 from src.artifacts import Aritifacts
+from src.yaml import Metadata
 
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
@@ -251,7 +252,7 @@ class Pipeline:
             except:
                 PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
 
-    def history(self, data_id="", param_id="", code_id=""):
+    def history(self, data_id="", param_id="", code_id="", parameter_steps=[]):
         """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
         """
         ## step1: history 폴더에서 폴더 명을 dict key 화 하기 
@@ -271,7 +272,11 @@ class Pipeline:
             "score": "",
             "version": "",
         }
+
+        ## TODO: sqllite 도입 고려 (속도 이슈가 있다고 할 경우)
         for folder in folders: 
+            ########################## 
+            #### Set1: data/code/param id 탐색
             file = base_path + folder + f"/log/experimental_history.json"
             if os.path.exists(file):
                 with open(file, 'r') as f:
@@ -294,6 +299,8 @@ class Pipeline:
                     empty_dict["train_id"] = "none"
                 history_dict[folder] = empty_dict
 
+            ########################## 
+            #### Set2: score 탐색
             file_score = base_path + folder + f"/score/{ptype}_summary.yaml"
             if os.path.exists(file_score):
                 try:
@@ -304,6 +311,34 @@ class Pipeline:
                     history_dict[folder].update(empty_score_dict)
             else:
                 history_dict[folder].update(empty_score_dict)
+
+            ########################## 
+            #### Set3: score 탐색
+            file_exp = base_path + folder + f"/experimental_plan.yaml"
+            meta = Metadata()
+            if os.path.exists(file_exp):
+                meta.read_yaml(exp_plan_file=file_exp, update_envs=False)  ## read 하면 exp 변수화 됨
+                value_empty=False
+            else:
+                meta.read_yaml(exp_plan_file=EXP_PLAN_DEFAULT_FILE, update_envs=False)
+                value_empty=True
+
+            for pipe, steps_dict in meta.user_parameters.items():
+                if pipe == self.pipeline_type:
+                    ## parameter_steps 가 유효 한지 검사
+                    exp_step_list = sorted([i['step'] for i in meta.user_parameters[pipe]])
+
+                    if not all(iten in exp_step_list for iten in parameter_steps):
+                        raise ValueError(f"parameter_steps {parameter_steps} is not valid. It should be one of {exp_step_list}")
+
+                    for step_dict in steps_dict:  ## step 별 args 출력 
+                        step = step_dict['step']
+                        if step in parameter_steps:
+                            for key, value in step_dict['args'][0].items():
+                                if value_empty:
+                                    history_dict[folder][f"{step}.{key}"] = "none"
+                                else:
+                                    history_dict[folder][f"{step}.{key}"] = value
         
         ## Make Table
         # List of keys we want to remove
@@ -316,9 +351,16 @@ class Pipeline:
         processed_dict = {}
         for key, record in history_dict.items():
             # Exclude unwanted keys
-            processed_record = {k: v for k, v in record.items() if k not in drop_keys}
-            # Reorder and select keys, fill missing keys with None for consistency
-            processed_record = {k: processed_record.get(k, None) for k in new_order}
+            filtered_record = {k: v for k, v in record.items() if k not in drop_keys}
+    
+            # Reorder and select keys according to new_order, filling missing keys with None
+            processed_record = {k: filtered_record.get(k, None) for k in new_order}
+    
+            # Add remaining keys in their original order
+            remaining_keys = [k for k in filtered_record.keys() if k not in new_order]
+            for k in remaining_keys:
+                processed_record[k] = filtered_record[k]
+
             # Format the 'start_time' and 'end_time'
             processed_record['start_time'] = datetime.strptime(processed_record['start_time'], TIME_FORMAT).strftime(TIME_FORMAT_DISPLAY)
             processed_record['end_time'] = datetime.strptime(processed_record['end_time'], TIME_FORMAT).strftime(TIME_FORMAT_DISPLAY)

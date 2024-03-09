@@ -107,7 +107,7 @@ class SolutionRegister:
         ## internal variables
         self.sm_yaml = {}  ## core
         self.exp_yaml = {} ## core
-        self._read_experimentalplan_yaml(EXP_PLAN, type='experimental_plan')  ## set exp_yaml
+        self._read_experimentalplan_yaml(EXP_PLAN_DEFAULT_FILE, type='experimental_plan')  ## set exp_yaml
 
         self.pipeline = None 
         self.aic_cookie = None
@@ -2269,8 +2269,8 @@ class SolutionRegister:
     def _reset_alo_solution(self):
         """ select = all, train, inference 를 지원. experimental 에서 삭제할 사항 선택
         """
-        shutil.copy2(EXP_PLAN, REGISTER_EXPPLAN)
-        print_color(f'[INFO] copy from " {EXP_PLAN} " to "{REGISTER_EXPPLAN}" ', color='blue')
+        shutil.copy2(EXP_PLAN_DEFAULT_FILE, REGISTER_EXPPLAN)
+        print_color(f'[INFO] copy from " {EXP_PLAN_DEFAULT_FILE} " to "{REGISTER_EXPPLAN}" ', color='blue')
 
         ## Experimental_plan 에서 필수적으로 변경되어야 할 부분을 수정 합니다. 
         try:
