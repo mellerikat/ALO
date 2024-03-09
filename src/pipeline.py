@@ -97,16 +97,22 @@ class Pipeline:
 
     def load(self, data_path=[]):
 
+        ############  Load Model  ##################
+        if self.pipeline_type == 'inference_pipeline':
+            if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""):
+                self.external.external_load_model(self.external_path, self.external_path_permission)
+
+                ## v2.3.0 NEW: 실험 history 의 train_id 를 제거하고, 특수 문장을 기록
+                self.system_envs['inference_history']['train_id'] = "load-external-model"
+
+
+        ############  Load Data  ##################
+        ## 데이터 Path 를 args 로 입력 받을 수 있다.
         ptype = self.pipeline_type.split('_')[0]
         if isinstance(data_path, str):
             data_path = [data_path]
         if len(data_path) > 0:
             self.external_path[f'load_{ptype}_data_path'] = data_path
-
-        # TODO 분기 태우는 코드가 필요
-        if self.pipeline_type == 'inference_pipeline':
-            if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""):
-                self.external.external_load_model(self.external_path, self.external_path_permission)
 
         if self.system_envs['boot_on'] == False:  ## boot_on 시, skip
             # NOTE [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
@@ -115,7 +121,7 @@ class Pipeline:
 
             # v2.3.0 NEW: 실험 history 를 위한 data_id 생성
             ptype = self.pipeline_type.split('_')[0]
-            self.system_envs[f'{ptype}_history'] = data_checksums
+            self.system_envs[f'{ptype}_history'].update(data_checksums)
 
 
         # TODO return 구성
@@ -168,7 +174,7 @@ class Pipeline:
         params = self.user_parameters[self.pipeline_type]
         ptype = self.pipeline_type.split('_')[0]
         self.system_envs[f'{ptype}_history']['param_id'] = self._parameter_checksum(params)
-        
+
         ## v2.3.0 NEW: code id 생성
         total_checksum = hashlib.md5()
         checksum_dict = {}
@@ -180,11 +186,12 @@ class Pipeline:
             # 폴더별 checksum을 문자열로 변환 후 total_checksum 업데이트
             total_checksum.update(str(checksum).encode())
 
-        # 최종 total_checksum을 64비트 정수로 변환
-        total_checksum = int(total_checksum.hexdigest(), 16) & ((1 << 64) - 1)
-        self.system_envs[f'{ptype}_history']['code_id_description'] = checksum_dict
-        self.system_envs[f'{ptype}_history']['code_id'] = total_checksum
+        # MD5 해시값을 16진수 문자열로 변환 후 처음부터 12자리만 사용하여 길이를 12로 제한
+        total_checksum_str = total_checksum.hexdigest()[:12]
 
+        self.system_envs[f'{ptype}_history']['code_id_description'] = checksum_dict
+        # 수정된 부분: total_checksum을 문자열의 형태로 저장하며, 길이가 12가 되도록 조정
+        self.system_envs[f'{ptype}_history']['code_id'] = total_checksum_str 
 
     def save(self):
 
@@ -218,11 +225,13 @@ class Pipeline:
             self.system_envs[f"{ptype}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
             self.system_envs[f"{ptype}_history"]['start_time'] = sttime
             self.system_envs[f"{ptype}_history"]['end_time'] = self.system_envs['experimental_end_time']
-            if self.pipeline_type == 'inference_pipeline':
+
+            ## train 종료 시, inference_history 에 미리 저장. train_id 는 inference 중에 변경될 수 있기 때문.
+            if self.pipeline_type == 'train_pipeline':
                 try:
-                    self.system_envs[f"{ptype}_history"]['train_id'] = self.system_envs["train_history"]['id']
+                    self.system_envs[f"inference_history"]['train_id'] = self.system_envs["train_history"]['id']
                 except: ## single pipeline (only inference)
-                    self.system_envs[f"{ptype}_history"]['train_id'] = "none"
+                    self.system_envs[f"inference_history"]['train_id'] = "none"
 
             if self.control['backup_artifacts'] == True:
                 # system_envs 에서 data, code, param id 를 저장함
@@ -242,12 +251,12 @@ class Pipeline:
             except:
                 PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
 
-    def history(self):
+    def history(self, data_id="", param_id="", code_id=""):
         """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
         """
         ## step1: history 폴더에서 폴더 명을 dict key 화 하기 
-        type = self.pipeline_type.split('_')[0]
-        base_path = HISTORY_PATH + f'{type}/'
+        ptype = self.pipeline_type.split('_')[0]
+        base_path = HISTORY_PATH + f'{ptype}/'
         entries = os.listdir(base_path)
         # 엔트리 중에서 디렉토리만 필터링하여 리스트에 추가합니다.
         folders = [entry for entry in entries if os.path.isdir(os.path.join(base_path, entry))]
@@ -279,9 +288,13 @@ class Pipeline:
                     "start_time": "20000101T000000Z",
                     "end_time": "20000101T000000Z"
                 }
+
+                # experiment_history.json 이 없는 경우 inference 일 경우 train_id 를 none 으로 설정함.
+                if ptype == "inference":
+                    empty_dict["train_id"] = "none"
                 history_dict[folder] = empty_dict
 
-            file_score = base_path + folder + f"/score/{type}_summary.yaml"
+            file_score = base_path + folder + f"/score/{ptype}_summary.yaml"
             if os.path.exists(file_score):
                 try:
                     with open(file_score, 'r') as f:
@@ -293,27 +306,11 @@ class Pipeline:
                 history_dict[folder].update(empty_score_dict)
         
         ## Make Table
-        # df = pd.DataFrame.from_dict(history_dict, orient='index')
-        # drop_col = ['data_id_description', 'code_id_description', 'file_path']
-        # df.drop(drop_col, axis=1, inplace=True)
-
-        # new_order = ['id', 'start_time', 'end_time', 'score', 'result', 'note', 'probability', 'version', 'data_id', 'code_id', 'param_id']
-        # df = df[new_order]
-        # df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT)
-        # df['start_time'] = df['start_time'].dt.strftime(TIME_FORMAT_DISPLAY)
-        # df['end_time'] = pd.to_datetime(df['end_time'], format=TIME_FORMAT)
-        # df['end_time'] = df['end_time'].dt.strftime(TIME_FORMAT_DISPLAY)
-
-        # df['start_time'] = pd.to_datetime(df['start_time'], format=TIME_FORMAT_DISPLAY)
-        # df = df.sort_values(by='end_time', ascending=False).reset_index(drop=True)
-
-        # The original dictionary of records
-        history_dict = {
-        }
-
         # List of keys we want to remove
         drop_keys = ['data_id_description', 'code_id_description', 'file_path']
         new_order = ['id', 'start_time', 'end_time', 'score', 'result', 'note', 'probability', 'version', 'data_id', 'code_id', 'param_id']
+        if ptype == 'inference':
+            new_order.append('train_id')
 
         # A new dictionary to hold our processed records
         processed_dict = {}
@@ -330,11 +327,19 @@ class Pipeline:
 
         # Sort the records by end_time in descending order (not easily achievable with a dictionary, might need to convert to a list of tuples or a list of dictionaries)
         processed_records_list = list(processed_dict.values())
-        processed_records_list.sort(key=lambda x: datetime.strptime(x['end_time'], TIME_FORMAT_DISPLAY), reverse=True)
+
+        # Filtering logic based on data_id, param_id, and code_id
+        filtered_records_list = []
+        for record in processed_records_list:
+            if (not data_id or record.get('data_id') == data_id) and \
+            (not param_id or record.get('param_id') == param_id) and \
+            (not code_id or record.get('code_id') == code_id):
+                filtered_records_list.append(record)
 
         # Now 'processed_records_list' contains the list of dictionaries sorted by 'end_time' and you can use it as you wish.
+        filtered_records_list.sort(key=lambda x: datetime.strptime(x['end_time'], TIME_FORMAT_DISPLAY), reverse=True)
 
-        return processed_records_list
+        return filtered_records_list
 
     def _parameter_checksum(self, params):
         # params를 문자열로 변환하여 해시 입력값으로 사용
@@ -344,8 +349,8 @@ class Pipeline:
         checksum = hashlib.sha256(params_str.encode('utf-8'))
         # 해시 객체에서 hexdigest 메소드를 호출하여 16진수 해시 문자열 얻기
         hexdigest_str = checksum.hexdigest()
-        # 16진수 문자열을 정수로 변환하고, 64비트로 제한
-        return int(hexdigest_str, 16) & ((1 << 64) - 1)
+        # 16진수 문자열을 처음부터 12자리만 사용하여 길이를 12로 제한하고 반환
+        return hexdigest_str[:12]
 
     def _code_checksum(self,folder_path):
         """폴더 내 모든 Python 파일들의 내용 기반으로 checksum을 계산합니다."""

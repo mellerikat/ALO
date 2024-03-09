@@ -45,24 +45,18 @@ class Aritifacts:
             ----------- 
                 - pipelines: pipeline mode (train, inference)
                 - exp_plan_file: 사용자가 입력한, 혹은 default (experimental_plan.yaml) yaml 파일의 절대경로 
-                - proc_start_time: ALO instance 생성 시간 (~프로세스 시작시간)
                 - error: error 발생 시 backup artifact할 땐 구분을 위해 폴더명 구분 
             Return
             -----------
                 - 
             Example
             -----------
-                - backup_artifacts(pipeline, self.exp_plan_file, self.proc_start_time, error=False)
+                - backup_artifacts(pipeline, self.exp_plan_file,  error=False)
         """
         
         exp_plan_file = system_envs['experimental_plan'] 
-        proc_start_time = system_envs['experimental_start_time']
-        exp_name = system_envs['experimental_name']
-        exp_version = system_envs['experimental_version']
-
 
         size_limit = size * 1024 * 1024
-
         backup_size = self._get_folder_size(HISTORY_PATH)
         
         if backup_size > size_limit:

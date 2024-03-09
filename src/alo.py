@@ -102,7 +102,29 @@ class ALO:
     #############################
     ####    Main Function    ####
     #############################
-    def pipeline(self, pipes = 'train_pipeline'):
+    def pipeline(self, pipes = 'train_pipeline', train_id=''):
+
+        if not pipes in ['train_pipeline', 'inference_pipeline']:
+            raise Exception(f"The pipes must be one of train_pipeline or inference_pipeline. (pipes={pipes})") 
+
+        ## train_id 는 inference pipeline 에서만 지원
+        if not train_id == '':
+            if pipes == 'train_pipeline':
+                raise Exception(f"The train_id must be empty. (train_id={train_id})")
+            else:
+                self._load_history_model(train_id)
+                self.system_envs['inference_history']['train_id'] = train_id
+        else:
+            ## train_id 를 이전 정보로 업로드 해두고 시작한다. (데이터를 이미 train_artifacts 에 존재)
+            file = TRAIN_ARTIFACTS_PATH + f"/log/experimental_history.json"
+            if os.path.exists(file):
+                with open(file, 'r') as f:
+                    history = json.load(f)
+                    self.system_envs['inference_history']['train_id'] = history['id']
+            else:
+                self.system_envs['inference_history']['train_id'] = 'none'
+
+
         pipeline = Pipeline(self.exp_yaml, pipes, self.system_envs)
         return pipeline
 
@@ -125,6 +147,7 @@ class ALO:
                 pipeline.load()
                 pipeline.run()
                 pipeline.save()
+                # pipeline.history()
 
                 
                 # FIXME loop 모드로 동작 / solution_metadata를 어떻게 넘길지 고민 / update yaml 위치를 새로 선정할 필요가 있음 ***
@@ -432,6 +455,24 @@ class ALO:
     ####    Part3. Internal fuctions    ####
     ########################################
     
+    def _load_history_model(self, train_id):
+        ## train_id 가 history 에 존재 하는지 확인 
+        base_path = HISTORY_PATH + 'train/'
+        entries = os.listdir(base_path)
+        folders = [entry for entry in entries if os.path.isdir(os.path.join(base_path, entry))]
+
+        if not train_id in folders:
+            raise Exception(f"The train_id must be one of {folders}. (train_id={train_id})")
+
+        ## history 에서 model 을 train_artifacts 에 복사
+        src_path = HISTORY_PATH + 'train/' + train_id + '/models/'
+        dst_path = TRAIN_ARTIFACTS_PATH + 'models/'
+
+        # 대상 폴더가 존재하는지 확인
+        if os.path.exists(dst_path):
+            shutil.rmtree(dst_path)
+        shutil.copytree(src_path, dst_path)
+        self.proc_logger.process_info(f"The model is copied from {src_path} to {dst_path}.")
             
     def _external_load_data(self, pipeline):
         """외부 데이터를 가져 옴 (local storage, S3)

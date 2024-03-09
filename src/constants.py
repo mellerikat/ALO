@@ -21,7 +21,7 @@ ASSET_HOME = PROJECT_HOME + "assets/"
 INPUT_DATA_HOME = PROJECT_HOME + "input/"
 
 TRAIN_ARTIFACTS_PATH = PROJECT_HOME + "train_artifacts/"
-INFERENCE_ARTIFACTS_PATH = PROJECT_HOME + "train_artifacts/"
+INFERENCE_ARTIFACTS_PATH = PROJECT_HOME + "inference_artifacts/"
 TRAIN_LOG_PATH = PROJECT_HOME + "train_artifacts/log/"
 TRAIN_MODEL_PATH = PROJECT_HOME + "train_artifacts/models/"
 # artifacts.tar.gz  압축 파일을 외부 업로드하기 전 로컬 임시 저장 경로 

@@ -479,7 +479,6 @@ class ExternalHandler:
 
     def _load_data(self, pipeline, ext_type, ext_path, aws_key_profile): 
 
-
         ## v.2.3 spec-in: DATA_ID 생성 (데이터 변경 확인 용)
         def copy_and_checksums(src, dst):
             """디렉토리의 내용을 복사하고 모든 파일의 체크값을 계산하거나,
@@ -495,13 +494,16 @@ class ExternalHandler:
 
             # 전체 파일 체크값을 결합하여 하나의 값을 생성합니다.
             def _aggregate_checksums(checksums_dict):
-                total_checksum = 0
+                # hashlib을 사용하여 전체 체크섬에 대한 해시 객체 생성
+                total_hash = hashlib.sha256()
                 for checksum in checksums_dict.values():
-                    # 64비트 체크값을 total_checksum에 결합
-                    bytes_value = checksum.to_bytes(8, byteorder='little')
-                    total_checksum = zlib.adler32(bytes_value, total_checksum)
-                return total_checksum & ((1 << 64) - 1)
-
+                    # 64비트 체크값을 문자열로 변환하여 바이트로 인코딩
+                    checksum_str = str(checksum)
+                    total_hash.update(checksum_str.encode())
+    
+                # 최종 해시를 16진수 문자열로 변환 후 12자리로 제한
+                total_checksum_hex = total_hash.hexdigest()[:12]
+                return total_checksum_hex
             checksums_dict = {}
 
             if src and os.path.isdir(src):
