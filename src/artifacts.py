@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from src.constants import *
 from src.logger import ProcessLogger
+import yaml
 
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
@@ -37,25 +38,24 @@ class Aritifacts:
         
         return artifacts_dict
 
-    def backup_history(self, pipelines, system_envs,  error=False, size=1000):
+    def backup_history(self, pipelines, system_envs, backup_exp_plan,  error=False, size=1000):
         """ Description
             -----------
                 - 파이프라인 실행 종료 후 사용한 yaml과 결과 artifacts를 history에 백업함 
             Parameters
             ----------- 
                 - pipelines: pipeline mode (train, inference)
-                - exp_plan_file: 사용자가 입력한, 혹은 default (experimental_plan.yaml) yaml 파일의 절대경로 
+                - system_envs: 파이프라인을 실행하면서 발생한 정보를 backup 에 저장
+                - backup_exp_plan: 실험중에 변경된 experimental_plan 을 반영하여 history 에 저장
                 - error: error 발생 시 backup artifact할 땐 구분을 위해 폴더명 구분 
             Return
             -----------
                 - 
             Example
             -----------
-                - backup_artifacts(pipeline, self.exp_plan_file,  error=False)
+                - backup_artifacts(pipeline, self.exp_plan_file, self.system_envs, backup_exp_plan, error=False)
         """
         
-        exp_plan_file = system_envs['experimental_plan'] 
-
         size_limit = size * 1024 * 1024
         backup_size = self._get_folder_size(HISTORY_PATH)
         
@@ -76,11 +76,12 @@ class Aritifacts:
 
 
         # 이전에 실행이 가능한 환경을 위해 yaml 백업
-        try: 
-            shutil.copy(exp_plan_file, backup_path)
+        try:
+            with open(backup_path + 'experimental_plan.yaml', 'w') as f:
+                yaml.dump(backup_exp_plan, f, default_flow_style=False)
         except: 
             shutil.rmtree(backup_path) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
-            PROC_LOGGER.process_error(f"Failed to copy << {exp_plan_file} >> into << {backup_path} >>")
+            PROC_LOGGER.process_error(f"Failed to copy << experimental_plan (updated) >> into << {backup_path} >>")
 
 
         ## 솔루션 등록을 위한 준비물 백업

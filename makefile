@@ -19,6 +19,8 @@ clean :
 	rm -rf $(FOLDER_PATH)* ./solution
 	rm -rf $(FOLDER_PATH)* Dockerfile solution_requirements.txt
 	rm -rf $(FOLDER_PATH)* .package_list
+clean-history : 
+	rm -rf  ./history
 clean-cache:
 	@find . -type d -name '__pycache__' -exec rm -r {} +
 
