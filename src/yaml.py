@@ -16,6 +16,104 @@ class Metadata:
     # def __init__():
     #     pass
 
+    def _get_yaml_data(self, exp_plan, prefix='', pipeline_type='all'):
+        """ exp_plan 의 key 를 내부 변수화 하기 """
+        
+        def get_yaml_data(key, pipeline_type = 'all'): # inner func.
+            data_dict = {}
+            if key == "name" or key == "version":
+                return exp_plan[key]
+
+            for data in exp_plan[key]:
+                data_dict.update(data)
+
+            return data_dict
+
+        # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
+        values = {}
+        for key, value in exp_plan.items():
+            if not prefix=='':
+                setattr(self, prefix + key, get_yaml_data(key, pipeline_type))
+            else:
+                setattr(self, key, get_yaml_data(key, pipeline_type))
+    
+    def merged_exp_plan(self, exp_plan, pipeline_type='all'):
+        if not pipeline_type in ['train', 'inference', 'all']:
+            raise ValueError("pipeline_type must be 'all', 'train' or 'inference'")
+
+        self._get_yaml_data(exp_plan, prefix = 'update_' )
+        PROC_LOGGER.process_info(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan})") 
+
+
+        if self.name != self.update_name:
+            PROC_LOGGER.process_info(f"Update name : {self.update_name}")
+            self.name = self.update_name
+
+        if self.version != self.update_version: 
+            PROC_LOGGER.process_info(f"Update version : {self.update_version}")
+            self.version = self.update_version
+
+        ##### external path 
+        if self.external_path != self.update_external_path:
+            PROC_LOGGER.process_info(f"Update external_path : {self.update_external_path}")
+            self.external_path = self.update_external_path
+
+        if self.external_path_permission != self.update_external_path_permission:
+            PROC_LOGGER.process_info(f"Update external_path_permission : {self.update_external_path_permission}")
+            self.external_path_permission = self.update_external_path_permission
+
+        ##### asset source 와 user parameters 
+        if self.user_parameters != self.update_user_parameters:
+            if pipeline_type == 'train':
+                self.user_parameters['train_pipeline'] = self.update_user_parameters['train_pipeline']
+            elif pipeline_type == 'inference':
+                self.user_parameters['inference_pipeline'] = self.update_user_parameters['inference_pipeline']
+            else:
+                self.user_parameters = self.update_user_parameters
+            PROC_LOGGER.process_info(f"Update user_parameters : {self.update_user_parameters}")
+
+        if self.asset_source != self.update_asset_source:
+            if pipeline_type == 'train':
+                self.asset_source['train_pipeline'] = self.update_asset_source['train_pipeline']
+            elif pipeline_type == 'inference':
+                self.asset_source['inference_pipeline'] = self.update_asset_source['inference_pipeline']
+            else:
+                self.asset_source = self.update_asset_source
+            PROC_LOGGER.process_info(f"Update asset_source : {self.update_asset_source}")
+
+        if self.ui_args_detail != self.update_ui_args_detail:
+            if pipeline_type == 'train':
+                self.ui_args_detail['train_pipeline'] = self.update_ui_args_detail['train_pipeline']
+            elif pipeline_type == 'inference':
+                self.ui_args_detail['inference_pipeline'] = self.update_ui_args_detail['inference_pipeline']
+            else:
+                self.ui_args_detail = self.update_ui_args_detail
+            PROC_LOGGER.process_info(f"Update ui_args_detail : {self.update_ui_args_detail}")
+
+        ##### asset source 와 user parameters 
+        
+        ##### control        
+        if self.control != self.update_control:
+            PROC_LOGGER.process_info(f"Update control : {self.update_control}")
+            self.control = self.update_control
+        
+        ## exp_plan 만들기. 실험 중에 중간 값들이 변경되어 있으므로, 꼭 ~ 재구성하여 저장한다.
+        backup_exp_plan = {}
+        backup_exp_plan['name'] = self.name
+        backup_exp_plan['version'] = self.version
+        backup_exp_plan['external_path'] = [{k: v} for k, v in self.external_path.items()]
+        backup_exp_plan['external_path_permission'] = [self.external_path_permission]
+        backup_exp_plan['user_parameters'] = [self.user_parameters]
+        backup_exp_plan['asset_source'] = [self.asset_source]
+        backup_exp_plan['control'] = [{k: v} for k, v in self.control.items()]
+        try:
+            backup_exp_plan['ui_args_detail'] = [{k: v} for k, v in self.ui_args_detail.items()]
+        except:
+            pass   ## 존재하지 않는 경우 대응
+        return backup_exp_plan
+
+
+
     def get_yaml(self, _yaml_file):
         yaml_dict = dict()
         try:
@@ -40,19 +138,8 @@ class Metadata:
             # self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드  ## from compare_yamls.py
             self.check_exp_plan_keys(self.exp_plan) 
             
-            def get_yaml_data(key, exp_plan): # inner func.
-                data_dict = {}
-                for data in exp_plan[key]:
-                    data_dict.update(data)
-                return data_dict
-
             # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
-            values = {}
-            for key, value in self.exp_plan.items():
-                if type(value) != str:
-                    setattr(self, key, get_yaml_data(key, self.exp_plan))
-                else:
-                    setattr(self, key, value)
+            self._get_yaml_data(self.exp_plan)
             
             ## v2.3.0 NEW : name, version 을 system_envs 에 저장한다. 
             if update_envs:
@@ -71,6 +158,7 @@ class Metadata:
 
         # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭 (from src.utils)
         self._match_steps()
+
 
         return self.exp_plan, system_envs
     # TODO rel 2.2 --> 2.2.1 added 
