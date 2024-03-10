@@ -9,9 +9,9 @@
         "location": ""
       },
     "environment": {
-      "type": "LINUX_CONTAINER",
+      "type": "",
       "image": "aws/codebuild/standard:5.0",
-      "computeType": "BUILD_GENERAL1_SMALL"
+      "computeType": ""
     },
     "serviceRole": ""
   }
