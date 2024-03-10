@@ -62,10 +62,9 @@ class Pipeline:
 
         def get_yaml_data(key, pipeline_type = 'all'): # inner func.
             data_dict = {}
-            if key == "name":
-                return
-            if key == "version":
-                return
+            if key == "name" or key == "version":
+                return experiment_plan[key]
+
             for data in experiment_plan[key]:
                 data_dict.update(data)
 
@@ -113,6 +112,7 @@ class Pipeline:
         if isinstance(data_path, str):
             data_path = [data_path]
         if len(data_path) > 0:
+            ## save() 시, 업데이트 된 값으로 exp_plan 저장
             self.external_path[f'load_{ptype}_data_path'] = data_path
 
         if self.system_envs['boot_on'] == False:  ## boot_on 시, skip
@@ -248,7 +248,8 @@ class Pipeline:
         ###################################
         if self.control['backup_artifacts'] == True:
             try:
-                self.artifact.backup_history(self.pipeline_type, self.system_envs, size=self.control['backup_size'])
+                backup_exp_plan = self._make_expplan_dict()
+                self.artifact.backup_history(self.pipeline_type, self.system_envs, backup_exp_plan, size=self.control['backup_size'])
             except:
                 PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
 
@@ -382,6 +383,27 @@ class Pipeline:
         filtered_records_list.sort(key=lambda x: datetime.strptime(x['end_time'], TIME_FORMAT_DISPLAY), reverse=True)
 
         return filtered_records_list
+
+
+    ###############################################################
+    ####    Part2. Runs fuction    ####
+    ###############################################################
+    def _make_expplan_dict(self):
+        ## exp_plan 만들기. 실험 중에 중간 값들이 변경되어 있으므로, 꼭 ~ 재구성하여 저장한다.
+        backup_exp_plan = {}
+        backup_exp_plan['name'] = self.name
+        backup_exp_plan['version'] = self.version
+        backup_exp_plan['external_path'] = [{k: v} for k, v in self.external_path.items()]
+        backup_exp_plan['external_path_permission'] = [self.external_path_permission]
+        backup_exp_plan['user_parameters'] = [self.user_parameters]
+        backup_exp_plan['asset_source'] = [self.asset_source]
+        backup_exp_plan['control'] = [{k: v} for k, v in self.control.items()]
+        try:
+            backup_exp_plan['ui_args_detail'] = [{k: v} for k, v in self.ui_args_detail.items()]
+        except:
+            pass   ## 존재하지 않는 경우 대응
+        return backup_exp_plan
+
 
     def _parameter_checksum(self, params):
         # params를 문자열로 변환하여 해시 입력값으로 사용

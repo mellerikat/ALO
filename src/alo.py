@@ -147,7 +147,7 @@ class ALO:
                 pipeline.load()
                 pipeline.run()
                 pipeline.save()
-                pipeline.history()
+                # pipeline.history()
 
                 
                 # FIXME loop 모드로 동작 / solution_metadata를 어떻게 넘길지 고민 / update yaml 위치를 새로 선정할 필요가 있음 ***
@@ -178,7 +178,7 @@ class ALO:
             finally:
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
-                self.artifact.backup_history(pipes, self.system_envs, error=True, size=self.control['backup_size'])
+                self.artifact.backup_history(pipes, self.system_envs, backup_exp_plan={}, error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록        
                 ext_saved_path = self.ext_data.external_save_artifacts(pipes, self.external_path, self.external_path_permission)
                 if self.loop == True:
@@ -200,7 +200,7 @@ class ALO:
         self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
         sol_meta = self.load_solution_metadata()
         self.system_envs['solution_metadata'] = sol_meta
-        self.system_envs['experimental_plan'] = experimental_plan
+        self.system_envs['experimental_plan_path'] = experimental_plan
         self.exp_yaml, sys_envs = self.load_experiment_plan(sol_meta, experimental_plan, self.system_envs)
         self._set_attr()
         # loop 모드면 항상 boot 모드
