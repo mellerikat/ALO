@@ -133,7 +133,6 @@ class SolutionRegister:
         ###  Solution Name 입력
         #############################
         self.check_solution_name()
-
         self.load_system_resource()   ## ECR, S3 정보 받아오기
         self._init_solution_metadata()
 
@@ -151,9 +150,8 @@ class SolutionRegister:
         #############################
         ### contents type 추가 
         #############################
-
         ## common
-        self._s3_access_check()  ## s3 instnace 생성 
+        self._s3_access_check()  ## s3 instance 생성 
         self.set_resource_list()   
         ############################
         ### Train pipeline 설정
@@ -171,8 +169,7 @@ class SolutionRegister:
             else:
                 skip_build=True
 
-            self.make_docker_container(skip_build)
-        
+            self.make_docker(skip_build)
         ############################
         ### Inference pipeline 설정
         ############################
@@ -185,8 +182,7 @@ class SolutionRegister:
             skip_build=False
         else:
             skip_build=True
-
-        self.make_docker_container(skip_build)
+        self.make_docker(skip_build)
 
         if not self.debugging:
             self.register_solution()
@@ -406,10 +402,12 @@ class SolutionRegister:
         msg = f'[INFO] solution name list (workspace: {self.infra_setup["WORKSPACE_NAME"]}):'
         print(msg)
         # 이미 존재하는 solutino list 리스트업 
-        pre_existences = pd.DataFrame(solution_list, columns=["AI solutions"])
-        pre_existences = pre_existences.head(100)
-        print_color(pre_existences.to_markdown(tablefmt='fancy_grid'), color='cyan')
-
+        # pre_existences = pd.DataFrame(solution_list, columns=["AI solutions"])
+        # pre_existences = pre_existences.head(100)
+        # print_color(pre_existences.to_markdown(tablefmt='fancy_grid'), color='cyan')
+        print_color('< Pre-existing AI Solutions >', color='cyan')
+        for idx, sol in enumerate(solution_list): 
+            print_color(f'{idx}. {sol}', color='cyan')
         return self.solution_name
 
     def set_description(self, description={}):
@@ -538,7 +536,6 @@ class SolutionRegister:
             "page_size": 100
 
         }
-
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["SYSTEM_INFO"]
         try: 
@@ -547,18 +544,17 @@ class SolutionRegister:
         except: 
             raise NotImplementedError("[ERROR] Failed to get workspaces info.")
 
-
         resource_list = []
         try: 
-            df = pd.DataFrame(response_json["specs"])
+            # df = pd.DataFrame(response_json["specs"])
             for spec in response_json["specs"]:
                 resource_list.append(spec["name"])
         except: 
             raise ValueError("Got wrong workspace info.")
-
-        print(f"{self.pipeline} 에 사용될 resource 를 선택해주세요(type{resource_list}):")
-        print_color(df.to_markdown(tablefmt='fancy_grid'), color='cyan')
-
+        print(f"{self.pipeline} Available resource list (type{resource_list}):")
+        # print_color(df.to_markdown(tablefmt='fancy_grid'), color='cyan')
+        print_color(f"< Allowed Specs >", color='cyan')
+        print(response_json["specs"])
         ## 해당 함수는 두번 call 될 수 있기 때문에, global 변수로 관리함
         self.resource_list = resource_list
         return resource_list
@@ -665,7 +661,6 @@ class SolutionRegister:
                 data_path_base = "s3://" + self.bucket_name + "/" + prefix_uri
                 for data_path_sub in data_paths:
                     uri['dataset_uri'].append(data_path_base + data_path_sub)
-
         elif mode == "model":  ## model
             prefix_uri = "ai-solutions/" + self.solution_name + f"/v{self.solution_version_new}/" + 'train'  + "/artifacts/"
             uri = {'model_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
@@ -699,8 +694,6 @@ class SolutionRegister:
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{e}")
         
-            
-
         return prefix_uri
 
 
@@ -841,7 +834,6 @@ class SolutionRegister:
         # session 먼저 생성
 
         print("**********************************")
-        
         try:
             self.session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
             self.s3_client = self.session.client('s3', region_name=self.infra_setup['REGION'])
@@ -852,12 +844,13 @@ class SolutionRegister:
             ValueError("The credentials are not available.")
 
         print(f"[INFO] AWS region: {self.infra_setup['REGION']}")
-        if isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient) == True:       
+        access_check = isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient)
+        if access_check == True:       
             print_color(f"[INFO] AWS S3 access check: OK", color="green")
         else: 
             raise ValueError(f"[ERROR] AWS S3 access check: Fail")
 
-        return isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient)
+        return access_check
 
     def _s3_delete_and_update(self, s3, bucket_name, data_path, local_folder, s3_path, delete=True):
         if delete == True: 
@@ -888,14 +881,9 @@ class SolutionRegister:
         """input 폴더에 존재하는 데이터를 s3 에 업로드 합니다. 
         """
         self.print_step(f"Upload {self.pipeline} data to S3")
-
-        # inner func.
-
         if "train" in self.pipeline:
             local_folder = INPUT_DATA_HOME + "train/"
-            print_color(f'[SYSTEM] Start uploading data into S3 from local folder:', color='cyan')
-            print(f'{local_folder}')
-
+            print_color(f'[SYSTEM] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
             try: 
                 ## sol_metadata 업데이트 
                 data_uri_list = []
@@ -904,7 +892,6 @@ class SolutionRegister:
                     if os.path.isdir(sub_folder):
                         data_uri_list.append(item+"/")
                 s3_prefix_uri = self.set_pipeline_uri(mode="data", data_paths=data_uri_list)
-
                 ### upload data to S3
                 for root, dirs, files in os.walk(local_folder):
                     for idx, file in enumerate(files):
@@ -915,12 +902,9 @@ class SolutionRegister:
                             self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
             except Exception as e: 
                 raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
-
         elif "inference" in self.pipeline:
             local_folder = INPUT_DATA_HOME + "inference/"
-            print_color(f'[INFO] Start uploading data into S3 from local folder:', color='cyan')
-            print(f'{local_folder}')
-
+            print_color(f'[INFO] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
             try: 
                 ## sol_metadata 업데이트 
                 data_uri_list = []
@@ -929,7 +913,6 @@ class SolutionRegister:
                     if os.path.isdir(sub_folder):
                         data_uri_list.append(item+"/")
                 s3_prefix_uri = self.set_pipeline_uri(mode="data", data_paths=data_uri_list)
-
                 ### upload data to S3
                 for root, dirs, files in os.walk(local_folder):
                     for idx, file in enumerate(files):
@@ -948,15 +931,11 @@ class SolutionRegister:
             s3_upload_data 를 최적화 만 함. s3_upload_data 를 그대로 사용하기에는 조건문이 많아져서 최적화 힘들것으로 판단
         """
         self.print_step(f"Upload {self.pipeline} data to S3")
-
         ## stream 은 학습 데이터만 업로드 함
         local_folder = INPUT_DATA_HOME + "train/"
-        print_color(f'[SYSTEM] Start uploading data into S3 from local folder:', color='cyan')
-        print(f'{local_folder}')
-
+        print_color(f'[SYSTEM] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
         try:
             s3_prefix_uri = "streams/" + f"{stream_id}/{instance_id}/train/data/"
-
             ### upload data to S3
             for root, dirs, files in os.walk(local_folder):
                 for idx, file in enumerate(files):
@@ -967,15 +946,12 @@ class SolutionRegister:
                         self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
         except Exception as e: 
             raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
-
-        
         ## sol_metadata 업데이트 용 dict 생성
         data_paths = []
         for item in os.listdir(local_folder):
             sub_folder = os.path.join(local_folder, item)
             if os.path.isdir(sub_folder):
                 data_paths.append(item+"/")
-        
         if len(data_paths) ==0 :
             uri = {'dataset_uri': ["s3://" + self.bucket_name + "/" + s3_prefix_uri]}
         else:
@@ -986,39 +962,34 @@ class SolutionRegister:
 
         return uri
 
+    def s3_process(self, bucket_name, data_path, local_folder, s3_path, delete=True):
+        if delete == True: 
+            objects_to_delete = self.s3_client.list_objects(Bucket=bucket_name, Prefix=s3_path)
+            if 'Contents' in objects_to_delete:
+                for obj in objects_to_delete['Contents']:
+                    self.s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
+                    print_color(f'[INFO] Deleted pre-existing S3 object:', color = 'yellow')
+                    print(f'{obj["Key"]}')
+            self.s3_client.delete_object(Bucket=bucket_name, Key=s3_path)
+        self.s3_client.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
+        try:    
+            response = self.s3_client.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
+        except NoCredentialsError as e:
+            raise NoCredentialsError("NoCredentialsError: \n{e}")
+        except ClientError as e:
+            print(f"ClientError: ", e)
+            return False
+        # temp = s3_path + "/" + data_path[len(local_folder):]
+        uploaded_path = bucket_name + s3_path + data_path[len(local_folder):]
+        print_color(f"[SUSTEM] S3 object key (new): ", color='green')
+        print(f"{uploaded_path }")
+        return True
 
     def s3_upload_artifacts(self):
         """ 최종 실험결과물 (train & inference) 를 s3 에 업로드 한다. 
         테스트 용으로 활용한다. 
         """
-
         self.print_step(f"Upload {self.pipeline} artifacts to S3")
-
-
-        # inner func.
-        def s3_process(s3, bucket_name, data_path, local_folder, s3_path, delete=True):
-            if delete == True: 
-                objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
-                if 'Contents' in objects_to_delete:
-                    for obj in objects_to_delete['Contents']:
-                        self.s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                        print_color(f'[INFO] Deleted pre-existing S3 object:', color = 'yellow')
-                        print(f'{obj["Key"]}')
-                s3.delete_object(Bucket=bucket_name, Key=s3_path)
-            s3.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
-            try:    
-                response = s3.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
-            except NoCredentialsError as e:
-                raise NoCredentialsError("NoCredentialsError: \n{e}")
-            except ClientError as e:
-                print(f"ClientError: ", e)
-                return False
-            # temp = s3_path + "/" + data_path[len(local_folder):]
-            uploaded_path = bucket_name + s3_path + data_path[len(local_folder):]
-            print_color(f"[SUSTEM] S3 object key (new): ", color='green')
-            print(f"{uploaded_path }")
-            return True
-
         try: 
             s3_prefix_uri = self.set_pipeline_uri(mode="artifact")
         except Exception as e: 
@@ -1027,33 +998,24 @@ class SolutionRegister:
         if "train" in self.pipeline:
             artifacts_path = _tar_dir("train_artifacts")  # artifacts tar.gz이 저장된 local 경로 return
             local_folder = os.path.split(artifacts_path)[0] + '/'
-            print_color(f'[SYSTEM] Start uploading train artifacts into S3 from local folder:', color='cyan')
-            print(f'{local_folder}')
-
-            s3_process(self.s3_client, self.bucket_name, artifacts_path, local_folder, s3_prefix_uri) 
+            print_color(f'[SYSTEM] Start uploading train artifacts into S3 from local folder:\n {local_folder}', color='cyan')
+            self.s3_process(self.bucket_name, artifacts_path, local_folder, s3_prefix_uri) 
             shutil.rmtree(REGISTER_ARTIFACT_PATH , ignore_errors=True)
-
         elif "inference" in self.pipeline:
             ## inference artifacts tar gz 업로드 
             artifacts_path = _tar_dir("inference_artifacts")  # artifacts tar.gz이 저장된 local 경로 
             local_folder = os.path.split(artifacts_path)[0] + '/'
-            print_color(f'[INFO] Start uploading inference artifacts into S3 from local folder:', color='cyan')
-            print(f'{local_folder}')
-
-            s3_process(self.s3_client, self.bucket_name, artifacts_path, local_folder, s3_prefix_uri)
+            print_color(f'[INFO] Start uploading inference artifacts into S3 from local folder:\n {local_folder}', color='cyan')
+            self.s3_process(self.bucket_name, artifacts_path, local_folder, s3_prefix_uri)
             shutil.rmtree(REGISTER_ARTIFACT_PATH , ignore_errors=True)
-
-
             ## model tar gz 업로드 
             # [중요] model_uri는 inference type 밑에 넣어야되는데, 경로는 inference 대신 train이라고 pipeline 들어가야함 (train artifacts 경로에 저장)
             train_artifacts_s3_path = s3_prefix_uri.replace(f'v{self.solution_version_new}/inference', f'v{self.solution_version_new}/train')
             model_path = _tar_dir("train_artifacts/models")  # model tar.gz이 저장된 local 경로 return 
             local_folder = os.path.split(model_path)[0] + '/'
-            print_color(f'\n[SYSTEM] Start uploading << model >> into S3 from local folder:', color='cyan')
-            print(f'{local_folder}')
+            print_color(f'\n[SYSTEM] Start uploading << model >> into S3 from local folder: \n {local_folder}', color='cyan')
             # 주의! 이미 train artifacts도 같은 경로에 업로드 했으므로 model.tar.gz올릴 땐 delete object하지 않는다. 
-            s3_process(self.s3_client, self.bucket_name, model_path, local_folder, train_artifacts_s3_path, delete=False) 
-
+            self.s3_process(self.bucket_name, model_path, local_folder, train_artifacts_s3_path, delete=False) 
             ## model uri 기록
             try: 
                 self.set_pipeline_uri(mode="model")
@@ -1061,15 +1023,15 @@ class SolutionRegister:
                 raise NotImplementedError(f'[ERROR] Failed updating solution_metadata.yaml - << model_uri >> info / pipeline: {self.pipeline} \n{e}')
             finally:
                 shutil.rmtree(REGISTER_MODEL_PATH, ignore_errors=True)
-
         else:
             raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
+
 
     ################################
     ######    STEP3. Dcoker Container Control
     ################################
 
-    def make_docker_container(self, skip_build=False):
+    def make_docker(self, skip_build=False):
         """ECR 에 업로드 할 docker 를 제작 한다. 
         1) experimental_plan 에 사용된 source code 를 임시 폴더로 copy 한다. 
         2) Dockerfile 을 작성 한다. 
@@ -1081,19 +1043,25 @@ class SolutionRegister:
         if not skip_build:
             self._reset_alo_solution()  # copy alo folders
             ##TODO : ARM/AMD 에 따라 다른 dockerfile 설정
-            self._set_docker_contatiner()  ## set docerfile
+            self._set_dockerfile()  ## set docerfile
 
             self.print_step("Set AWS ECR")
             if self.infra_setup["BUILD_METHOD"] == 'docker':
-                ## docker login 실행 
+                ## docker login 실행 & create ecr repo 
                 self._set_aws_ecr(docker=True, tags=self.infra_setup["REPOSITORY_TAGS"])
-            else:  ##buildah
+            else:  ## buildah
                 self._set_aws_ecr(docker=False, tags=self.infra_setup["REPOSITORY_TAGS"]) 
 
             self.print_step("Upload Docker Container", sub_title=True)
 
-            self._build_docker()
-            self._docker_push()
+            if self.infra_setup['REMOTE_BUILD'] == True: 
+                try: 
+                    self._aws_codebuild() ## remote docker build & ecr push 
+                except Exception as e: # FIXME 
+                    raise NotImplementedError(str(e))
+            else: 
+                self._build_docker()
+                self._docker_push()
         else:
             if self.infra_setup["BUILD_METHOD"] == 'docker':
                 self._set_aws_ecr_skipbuild(docker=True, tags=self.infra_setup["REPOSITORY_TAGS"])
@@ -1118,7 +1086,6 @@ class SolutionRegister:
 
 
     def _set_aws_ecr(self, docker = True, tags = []):
-
         self.docker = docker
         self.ecr_url = self.ecr_name.split("/")[0]
         # FIXME 마지막에 붙는 container 이름은 solution_name 과 같게 
@@ -1141,7 +1108,7 @@ class SolutionRegister:
             ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
             print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
         except:
-            pass
+            ValueError("Failed to delete pre-existing ECR Repository.")
 
         print_color(f"[SYSTEM] target AWS ECR url: ", color='blue')
         print(f"{self.ecr_url}",)
@@ -1163,7 +1130,6 @@ class SolutionRegister:
         if self.docker:
             # import docker
             # from docker.errors import APIError
-
             # client = docker.from_env()
             # try:
             #     login_result = client.login(username=user, password=password, registry=self.ecr_url)
@@ -1174,7 +1140,6 @@ class SolutionRegister:
             # except APIError as error:
             #     print("Docker login failed with error:", error)
             run = 'docker'
-            # 혹시 안되면 복구
             p2 = subprocess.Popen(
             [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE)
             p1.stdout.close()
@@ -1183,7 +1148,6 @@ class SolutionRegister:
             print(f"{output.decode()}")
         else:
             run = 'buildah'
-            # 혹시 안되면 복구
             p2 = subprocess.Popen(
                 ['sudo', f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE
             )
@@ -1192,10 +1156,7 @@ class SolutionRegister:
             print_color(f"[SYSTEM] AWS ECR | docker login result:", color='cyan')
             print(f"{output.decode()}")
 
-        print_color(f"[SYSTEM] Target AWS ECR repository:", color='cyan')
-        print(f"{self.ecr_repo}")
-
-        # print(tags)
+        print_color(f"[SYSTEM] Target AWS ECR repository: \n {self.ecr_repo}", color='cyan')
 
         if len(tags) > 0:
             command = [
@@ -1240,7 +1201,116 @@ class SolutionRegister:
         except subprocess.CalledProcessError as e:
             raise NotImplementedError(f"Failed to AWS ECR create-repository:\n + {e}")
 
-    # FIXME 그냥 무조건 latest로 박히나? 
+    def _aws_codebuild(self):
+        from botocore.exceptions import ProfileNotFound
+
+        codebuild_role = self.infra_setup["AWS_CODEBUILD_ROLE"] # str 
+        assert type(codebuild_role) == str 
+        # 1. make buildspec.yml
+        with open(AWS_CODEBUILD_BUILDSPEC_FORMAT_FILE, 'r') as file: 
+            ## {'version': 0.2, 'phases': {'pre_build': {'commands': None}, 'build': {'commands': None}, 'post_build': {'commands': None}}}
+            buildspec = yaml.safe_load(file)
+        pre_command = [f'aws ecr get-login-password --region {self.infra_setup["REGION"]} \
+                       | docker login --username AWS --password-stdin {self.ecr_url}/{self.ecr_repo}']
+        build_command = [f'docker build . -t {self.ecr_full_url}:v{self.solution_version_new}']
+        post_command = [f'docker push {self.ecr_full_url}:v{self.solution_version_new}']
+        buildspec['phases']['pre_build']['commands'] = pre_command
+        buildspec['phases']['build']['commands'] = build_command
+        buildspec['phases']['post_build']['commands'] = post_command
+        # 2. make create-codebuild-project.json (trigger: s3)
+        s3_prefix_uri = "ai-solutions/" + self.solution_name + \
+              f"/v{self.solution_version_new}/" + self.pipeline  + "/codebuild"
+        bucket_uri = self.bucket_name + "/" + s3_prefix_uri 
+        with open(AWS_CODEBUILD_S3_PROJECT_FORMAT_FILE) as file:
+            codebuild_project_json = json.load(file)
+        codebuild_project_json['source']['location'] = bucket_uri + '/' + AWS_CODEBUILD_S3_SOLUTION_FILE + '.zip'
+        codebuild_project_json['artifacts']['location'] = bucket_uri 
+        codebuild_project_json['serviceRole'] = codebuild_role
+        codebuild_project_json['environment']['type'] = self.infra_setup["CODEBUILD_ENV_TYPE"]
+        codebuild_project_json['environment']['computeType'] = self.infra_setup["CODEBUILD_ENV_COMPUTE_TYPE"]
+        # 3. make solution.zip (including buildspec.yml)
+        ## .package_list 제외한 나머지 파일,폴더들은 .register_source 폴더로 한번 감싼다. 
+        ## .codebuild_solution_zip 폴더 초기화
+        if os.path.isdir(AWS_CODEBUILD_ZIP_PATH):
+            shutil.rmtree(AWS_CODEBUILD_ZIP_PATH)
+        os.makedirs(AWS_CODEBUILD_ZIP_PATH)
+        ## docker 내에 필요한 것들 복사
+        ## .package_list/{pipe}_pipeline, Dockerfile 및 buildspec.yml파일은 zip folder 바로 하위에 위치 
+        ## Dockerfile 복사 
+        shutil.copy2(PROJECT_HOME + "Dockerfile", AWS_CODEBUILD_ZIP_PATH)
+        ## REGISTER_SOURCE_PATH --> AWS_CODEBUILD_BUILD_SOURCE_PATH
+        shutil.copytree(REGISTER_SOURCE_PATH, AWS_CODEBUILD_BUILD_SOURCE_PATH)
+        build_package_path = ASSET_PACKAGE_PATH + f'{self.pipeline}_pipeline'
+        shutil.copytree(build_package_path, AWS_CODEBUILD_ZIP_PATH + \
+                        ASSET_PACKAGE_DIR + f'{self.pipeline}_pipeline')
+        try: # buildspec.yml 파일 save 
+            with open(AWS_CODEBUILD_ZIP_PATH + AWS_CODEBUILD_BUILDSPEC_FILE, 'w') as file:
+                yaml.safe_dump(buildspec, file)
+            print_color(f"[SUCCESS] Saved {AWS_CODEBUILD_BUILDSPEC_FILE} file for aws codebuild", color='green')
+        except: 
+            raise NotImplementedError(f"Failed to save {AWS_CODEBUILD_BUILDSPEC_FILE} file for aws codebuild")
+        # AWS_CODEBUILD_ZIP_PATH --> .zip (AWS_CODEBUILD_S3_SOLUTION_FILE)
+        try: 
+            shutil.make_archive(PROJECT_HOME + AWS_CODEBUILD_S3_SOLUTION_FILE, 'zip', AWS_CODEBUILD_ZIP_PATH)
+            print_color(f"[SUCCESS] Saved {AWS_CODEBUILD_S3_SOLUTION_FILE}.zip file for aws codebuild", color='green')
+        except: 
+            raise NotImplementedError(f"Failed to save {AWS_CODEBUILD_S3_SOLUTION_FILE}.zip file for aws codebuild")
+        # 4. s3 upload solution.zip
+        local_file_path = PROJECT_HOME + AWS_CODEBUILD_S3_SOLUTION_FILE + '.zip'
+        local_folder = os.path.split(local_file_path)[0] + '/'
+        print_color(f'\n[SYSTEM] Start uploading << {AWS_CODEBUILD_S3_SOLUTION_FILE}.zip >> into S3 from local folder:\n {local_folder}', color='cyan')
+        self.s3_process(self.bucket_name, local_file_path, local_folder, s3_prefix_uri)
+        # 5. run aws codebuild create-project
+        try:
+            session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
+            codebuild_client = session.client('codebuild', region_name=self.infra_setup['REGION'])
+        except ProfileNotFound:
+            print_color(f"[INFO] Start AWS codebuild access check without key file.", color="blue")
+            codebuild_client = boto3.client('codebuild', region_name=self.infra_setup['REGION'])
+        except Exception:
+            ValueError("The credentials are not available.")
+        print(codebuild_project_json)
+        resp_create_proj = codebuild_client.create_project(name = f'codebuild-proj-{self.solution_name}', \
+                                               source = codebuild_project_json['source'], \
+                                                artifacts = codebuild_project_json['artifacts'], \
+                                                environment = codebuild_project_json['environment'], \
+                                                serviceRole = codebuild_project_json['serviceRole'])
+        # 6. run aws codebuild start-build 
+        if type(resp_create_proj)==dict and 'project' in resp_create_proj.keys():
+            print_color(f"[SUCCESS] CodeBuild create project response: \n {resp_create_proj}", color='green')
+            proj_name = resp_create_proj['project']['name']
+            assert type(proj_name) == str
+            try: 
+                resp_start_build = codebuild_client.start_build(projectName = proj_name)
+            except: 
+                raise NotImplementedError(f"[FAIL] Failed to start-build CodeBuild project: {proj_name}")
+            if type(resp_start_build)==dict and 'build' in resp_start_build.keys(): 
+                build_id = resp_start_build['build']['id']
+            else: 
+                raise ValueError(f"[FAIL] << build id >> not found in response of codebuild - start_build")
+        else: 
+            raise NotImplementedError(f"[FAIL] Failed to create CodeBuild project \n {resp_create_proj}")           
+        
+        # FIXME while loop --> async 
+        # 7. async check remote build status (1check per 10seconds)
+        while True: 
+            time.sleep(10) # FIXME 
+            resp_batch_get_builds = codebuild_client.batch_get_builds(ids = [build_id])  
+            if type(resp_batch_get_builds)==dict and 'builds' in resp_batch_get_builds.keys():
+                assert len(resp_batch_get_builds) == 1 # pipeline 당 build 1회만 할 것이므로 ids 목록엔 1개만 내장
+                build_status = resp_batch_get_builds['builds'][0]['buildStatus']
+                ## 'SUCCEEDED'|'FAILED'|'FAULT'|'TIMED_OUT'|'IN_PROGRESS'|'STOPPED'
+                if build_status == 'SUCCEEDED':
+                    print_color(f"[SUCCESS] Completes remote build with AWS CodeBuild", color='green')
+                    break # FIXME delete after async 
+                elif build_status == 'IN_PROGRESS': 
+                    print_color(f"[IN PROGRESS] In progress.. remote building with AWS CodeBuild", color='blue')
+                else: 
+                    raise NotImplementedError(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
+        # 8. s3 delete .zip ? 
+
+        
+
     def _build_docker(self):
 
         if self.docker:
@@ -1316,10 +1386,8 @@ class SolutionRegister:
                     user_parameters.append(output_data.copy())
                     step_list.append(step['step'])
  
- 
                 subkeys['selected_user_parameters'] = selected_user_parameters
                 subkeys['user_parameters'] = user_parameters
- 
                 ## ui 로 표현할 parameter 존재하는지 확인
                 try:
                     ui_dict = deepcopy(self.exp_yaml['ui_args_detail'])
@@ -1339,15 +1407,14 @@ class SolutionRegister:
                             if steps['step'] == new_step['step']:
                                 subkeys['user_parameters'][cnt]['args'] = new_step['args']
  
- 
                     ## ui_args_detail 존재 여부 체크
                     print_color("[SYSTEM] experimental_plan.yaml 에 ui_args_detail 이 정상 기록 되었는지 체크 합니다.", color='green')
                     for candi_step_dict in pipe_dict['candidate_parameters']:
                         if 'ui_args' in candi_step_dict:
-                            # print(step)
+                            if candi_step_dict['ui_args']==None or candi_step_dict['ui_args']==[]:
+                                continue
                             for ui_arg in candi_step_dict['ui_args']:
                                 flag = False
- 
                                 ## 존재 여부 검색 시작
                                 ui_dict = deepcopy(self.exp_yaml['ui_args_detail'])
                                 for ui_pipe_dict in ui_dict:
@@ -1365,12 +1432,10 @@ class SolutionRegister:
                 # print(subkeys)
                 self._save_yaml()
 
-
-            
         ## display
         params2 = deepcopy(self.exp_yaml['user_parameters'])
         columns = ['pipeline', 'step', 'parmeter', 'value']
-        df = pd.DataFrame(columns=columns)
+        # df = pd.DataFrame(columns=columns)
         table_idx = 0
         self.candidate_format = {} ## return format 만들기 
         for pipe_dict in params2:
@@ -1384,17 +1449,17 @@ class SolutionRegister:
                 pipe_name = None
 
             step_idx = 0
+            item_list = []
             for step_dict in pipe_dict[f'{pipe_name}_pipeline']:
                 step_name = step_dict['step']
                 new_dict = {'step': step_name, 
                             'args': []}
                 self.candidate_format[f'{pipe_name}_pipeline'].append(new_dict)
-
                 try: 
                     for key, value in step_dict['args'][0].items():
                         item = [pipe_name, step_name, key, value]
-                        df.loc[table_idx] = item
-
+                        # df.loc[table_idx] = item
+                        item_list.append(item)
                         new_dict2 = {
                             'name': key,
                             'description': '',
@@ -1406,16 +1471,17 @@ class SolutionRegister:
                     self.candidate_format[f'{pipe_name}_pipeline'][step_idx]['args'].append({})
                     table_idx += 1
                 step_idx += 1
-
         ## 길이 제한
         # 'text' 컬럼 값을 미리 10글자로 제한
-        MAX_LEN = 40
-        df['value'] = df['value'].astype(str)
-        df['value'] = df['value'].apply(lambda x: x[:MAX_LEN] + '...' if len(x) > MAX_LEN else x)
+        # MAX_LEN = 40
+        # df['value'] = df['value'].astype(str)
+        # df['value'] = df['value'].apply(lambda x: x[:MAX_LEN] + '...' if len(x) > MAX_LEN else x)
 
         if display_table:
-            print_color(df.to_markdown(tablefmt='fancy_grid'), color='cyan')
-
+            # print_color(df.to_markdown(tablefmt='fancy_grid'), color='cyan')
+            print_color(columns, color='cyan')
+            for i in item_list: 
+                print_color(i, color='cyan')
         return self.candidate_format
     
     #####################################
@@ -1633,9 +1699,7 @@ class SolutionRegister:
           - FAILED : 실패 상태 
 
         """
-
         self.print_step("Get AI solution stream status")
-
         ## stream file load 한다. 
         path = REGISTER_INTERFACE_PATH + self.stream_run_file
         msg = f"[SYSTEM] Stream 실행 정보를 {path} 에서 확인합니다."
@@ -1726,7 +1790,6 @@ class SolutionRegister:
             return bucket, rest_of_the_path
 
         ## s3_client 생성
- 
         # if not self.aws_access_key:
         #     s3_client = boto3.client('s3',
         #                         aws_access_key_id=self.aws_access_key,
@@ -1754,7 +1817,6 @@ class SolutionRegister:
     #####################################
 
     def delete_stream_history(self): 
-
         self.print_step("Delete stream history")
 
         ## file load 한다. 
@@ -2244,17 +2306,13 @@ class SolutionRegister:
 
 
     def _set_alo(self):
-
         self.print_step("Set alo source code for docker container", sub_title=True)
-
         alo_src = ['main.py', 'src', 'assets', 'solution', 'alolib', '.git', 'requirements.txt', 'solution_requirements.txt']
-
         ## 폴더 초기화
         if os.path.isdir(REGISTER_SOURCE_PATH):
             shutil.rmtree(REGISTER_SOURCE_PATH)
         os.mkdir(REGISTER_SOURCE_PATH)
-
-        ## 실행 할 상황 복사
+        ## docker 내에 필요한 것들 복사
         for item in alo_src:
             src_path = PROJECT_HOME + item
             if os.path.isfile(src_path):
@@ -2304,7 +2362,7 @@ class SolutionRegister:
 
         print_color("[SUCCESS] Success ALO directory setting.", color='green')
 
-    def _set_docker_contatiner(self):
+    def _set_dockerfile(self):
         try: 
             ## Dockerfile 준비
             if self.pipeline == 'train':

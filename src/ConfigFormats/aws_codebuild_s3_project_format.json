@@ -1,0 +1,17 @@
+{
+    "name": "",
+    "source": {
+      "type": "S3",
+      "location": ""
+    },
+    "artifacts": {
+        "type": "S3",
+        "location": ""
+      },
+    "environment": {
+      "type": "",
+      "image": "aws/codebuild/standard:5.0",
+      "computeType": ""
+    },
+    "serviceRole": ""
+  }
