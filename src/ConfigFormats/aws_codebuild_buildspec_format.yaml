@@ -1,0 +1,12 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      # - aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 438613450817.dkr.ecr.us-east-2.amazonaws.com
+      # - aws ecr create-repository --region us-east-2 --repository-name codebuild-test --image-scanning-configuration scanOnPush=true
+  build:
+    commands:
+      # - docker build . -t 438613450817.dkr.ecr.us-east-2.amazonaws.com/codebuild-test
+  post_build:
+    commands:
+      # - docker push 438613450817.dkr.ecr.us-east-2.amazonaws.com/codebuild-test
