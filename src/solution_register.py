@@ -15,7 +15,6 @@ import subprocess
 import os
 import json
 import requests
-import pandas as pd 
 import shutil
 import tarfile 
 from copy import deepcopy 
