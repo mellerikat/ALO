@@ -124,6 +124,8 @@ class Packages:
         extracted_requirements_dict = dict() 
         for step_name, requirements_list in requirements_dict.items(): 
             # yaml의 requirements에 requirements.txt를 적었다면, 해당 step 폴더에 requirements.txt가 존재하는 지 확인하고 존재한다면 내부에 작성된 패키지 명들을 추출하여 아래 loop에서 check & install 수행 
+            if requirements_list==None or requirements_list ==[]: 
+                continue 
             if fixed_txt_name in requirements_list:
                 requirements_txt_list = self.extract_requirements_txt(step_name)
                 requirements_txt_list = sorted(set(requirements_txt_list), key = lambda x: requirements_txt_list.index(x)) 
