@@ -42,9 +42,7 @@ class AssetStructure:
 
 class Pipeline:
     # TODO ALO에 init한 class를 넘겨주면서 사용하는게 맞는건지 논의
-    # def __init__(self, experiment_plan: Dict, skip_mode: Dict, pipeline_type: str, redis: bool, system_envs: Dict ):
-    def __init__(self, experiment_plan: Dict, pipeline_type: str, system_envs: Dict ):
-        # self.experiment_plan = experiment_plan
+    def __init__(self, experimental_plan: Dict, pipeline_type: str, system_envs: Dict ):
         if not os.path.exists(ASSET_HOME):
             try:
                 os.makedirs(ASSET_HOME)
@@ -63,9 +61,9 @@ class Pipeline:
         def get_yaml_data(key, pipeline_type = 'all'): # inner func.
             data_dict = {}
             if key == "name" or key == "version":
-                return experiment_plan[key]
+                return experimental_plan[key]
 
-            for data in experiment_plan[key]:
+            for data in experimental_plan[key]:
                 data_dict.update(data)
 
             if 'train_pipeline' in data_dict and 'inference_pipeline' in data_dict:
@@ -80,7 +78,7 @@ class Pipeline:
 
         # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
         values = {}
-        for key, value in experiment_plan.items():
+        for key, value in experimental_plan.items():
             setattr(self, key, get_yaml_data(key, pipeline_type))
 
         ## pipeline.run() 만 실행 시, init 에 존재해야 함
@@ -255,6 +253,12 @@ class Pipeline:
 
     def history(self, data_id="", param_id="", code_id="", parameter_steps=[]):
         """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
+        Attributes:
+            - data_id (str): history 에서 experimental_history.yaml 의 data_id 와 동일여부 확인 후, table 생성
+            - parame_id (str): history 에서 experimental_history.yaml 의 param_id 와 동일여부 확인 후, table 생성
+            - code_id (str): history 에서 experimental_history.yaml 의 code_id 와 동일여부 확인 후, table 생성
+
+            - parameter_steps (list): table 생성 시, 어떤 step 의 parameter 를 같이 보여줄 지 결정
         """
         ## step1: history 폴더에서 폴더 명을 dict key 화 하기 
         ptype = self.pipeline_type.split('_')[0]

@@ -140,7 +140,9 @@ class ALO:
                 self.proc_logger.process_info("#########################################################################################################")
                 self.proc_logger.process_info(f"                                                 {pipes}                                                   ") 
                 self.proc_logger.process_info("#########################################################################################################")
-                # 이 방법이 맞나 확인 필요
+
+                self.register(train_id = '20240310T065814Z-16031242-demo-titanic')
+
                 pipeline = self.pipeline(pipes)
                 # TODO 한번에 하려고 하니 이쁘지 않음 논의
                 pipeline.setup()
@@ -148,6 +150,7 @@ class ALO:
                 pipeline.run()
                 pipeline.save()
                 # pipeline.history()
+
 
                 
                 # FIXME loop 모드로 동작 / solution_metadata를 어떻게 넘길지 고민 / update yaml 위치를 새로 선정할 필요가 있음 ***
@@ -262,7 +265,43 @@ class ALO:
             # 딱히 안해도 문제는 없는듯 하지만 혹시 모르니 설정했던 환경 변수를 제거 
             os.unsetenv("AWS_PROFILE")
 
-    def register(self, solution_info, infra_setup,  train_id = '', inference_id = ''):
+    def register(self, solution_info='', infra_setup='',  train_id = '', inference_id = ''):
+
+        ## train_id 존재 검사. exp_plan 불러오기 
+        meta = Metadata()
+        exp_plan = meta.read_yaml(exp_plan_file=None)
+
+        def load_pipeline_expplan(pipeline_type, history_id, meta):
+
+            if not pipeline_type in ['train', 'inference']:
+                raise ValueError("pipeline_type must be 'train' or 'inference'.")
+
+            base_path = HISTORY_PATH + f'{pipeline_type}/'
+            entries = os.listdir(base_path)
+            folders = [entry for entry in entries if os.path.isdir(os.path.join(base_path, entry))]
+
+            if not history_id in folders:
+                raise ValueError(f"{pipeline_type}_id is not exist.")
+            else:
+                path = base_path + history_id + '/experimental_plan.yaml'
+                exp_plan = meta.get_yaml(path)
+                merged_exp_plan = meta.merged_exp_plan(exp_plan, pipeline_type=pipeline_type)
+                return merged_exp_plan
+
+
+        if train_id != '':
+            train_exp_plan = load_pipeline_expplan('train', train_id, meta)
+        if inference_id != '':
+            inference_exp_plan = load_pipeline_expplan('inference', inference_id, meta)
+        
+        if train_id != '':
+            if inference_id != '':
+                exp_plan = inference_exp_plna
+            else:
+                exp_plan = train_exp_plan
+        else:
+            if inference_id != '':
+                exp_plan = inference_exp_plan
 
         register = SolutionRegister(infra_setup=infra_setup, solution_info=solution_info)
         return register

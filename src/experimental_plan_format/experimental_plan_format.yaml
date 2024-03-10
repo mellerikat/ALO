@@ -28,3 +28,5 @@ control:
     - backup_size: 1000
     ## 5. asset data, config interfacing method - memory: (fast) / file: (saved; non-volatilizing) 
     - interface_mode: memory ## memory, file
+
+ui_args_detail: []
