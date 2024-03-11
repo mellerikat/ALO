@@ -145,8 +145,6 @@ class ALO:
                 self.proc_logger.process_info(f"                                                 {pipe}                                                   ") 
                 self.proc_logger.process_info("#########################################################################################################")
 
-                self.register(train_id = '20240310T065814Z-16031242-demo-titanic', upload=True)
-
                 pipeline = self.pipeline(pipeline_type=pipe)
                 # TODO 한번에 하려고 하니 이쁘지 않음 논의
                 pipeline.setup()
