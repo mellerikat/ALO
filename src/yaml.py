@@ -24,6 +24,9 @@ class Metadata:
             if key == "name" or key == "version":
                 return exp_plan[key]
 
+            if exp_plan[key] == None:
+                return []
+
             for data in exp_plan[key]:
                 data_dict.update(data)
 
@@ -179,7 +182,9 @@ class Metadata:
                             if child_k not in unchecked_keys: # unchecked_keys는 check 대상에서 제외 
                                 key_list.append(parent_k + ':' + child_k)     
                 elif type(v) == str: 
-                    pass # name 은 str 이므로 parent_k만 위에서 추가   
+                    pass # name 은 str 이므로 parent_k만 위에서 추가
+                elif parent_k == 'ui_args_detail' and type(v) == type(None):
+                    pass # ui_args_detail는 비어 있어도 실행이 되게 일단 진행
                 else:
                     PROC_LOGGER.process_error(f"experimental_plan.yaml key error: \n {parent_k}-{v} not allowed")  
             return sorted(key_list)
