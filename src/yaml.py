@@ -200,10 +200,10 @@ class Metadata:
          
     def check_and_copy_expplan(self, exp_plan_file_path): # called at preset func.
         if exp_plan_file_path == None: 
-            if os.path.exists(EXP_PLAN_DEFAULT_FILE):
-                return EXP_PLAN_DEFAULT_FILE
+            if os.path.exists(DEFAULT_EXP_PLAN):
+                return DEFAULT_EXP_PLAN
             else: 
-                PROC_LOGGER.process_error(f"<< {EXP_PLAN_DEFAULT_FILE} >> not found.")
+                PROC_LOGGER.process_error(f"<< {DEFAULT_EXP_PLAN} >> not found.")
         else: 
             try: 
                 # 입력한 경로가 상대 경로이면 config 기준으로 경로 변환  

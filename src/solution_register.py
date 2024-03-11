@@ -34,21 +34,49 @@ KUBEFLOW_STATUS = ("pending", "running", "succeeded", "skipped", "failed", "erro
 
 class SolutionRegister:
     #def __init__(self, workspaces, uri_scope, tag, name, pipeline):
-    def __init__(self, infra_setup=None, solution_info=None, api_uri=None,):
+    def __init__(self, infra_setup=None, solution_info=None, experimental_plan=None, api_uri=None, ):
+        """ 등록에 필요한 정보들을 입력 받습니다. 
+            - infra_setup (str or dict): str 일 경우, path 로 인지하여 file load 하여 dict 화 함 
+            - solution_info (str or dict): str 일 경우, path 로 인지하여 file load 하여 dict 화 함 
+
+            - experimental_plan (str or dict):  str 일 경우, path 로 인지하여 file load 하여 dict 화 함
+
+        """
         
         self.print_step("Initiate ALO operation mode")
         print_color("[SYSTEM] Solutoin 등록에 필요한 setup file 들을 load 합니다. ", color="green")
+        def check_and_load_yaml(path_or_dict, mode=''):
+            if not mode in ['infra_setup', 'solution_info', 'experimental_plan']:
+                raise ValueError("The mode must be infra_setup, solution_info, or experimental_plan. (type: {})".format(type))
+            
+            if path_or_dict == None or path_or_dict == '' :
+                if mode == 'infra_setup': path = DEFAULT_INFRA_SETUP
+                elif mode == 'solution_info': path = DEFAULT_SOLUTION_INFO
+                else: path = DEFAULT_EXP_PLAN
+                print(f"{mode} 파일이 존재 하지 않으므로, Default 파일을 load 합니다. (path: {path})")
+                try:    
+                    with open(path) as f:
+                        result_dict = yaml.safe_load(f)
+                except Exception as e : 
+                    raise ValueError(e)
+            else:
+                if isinstance(path_or_dict, str):
+                    print(f"{mode} 파일을 load 합니다. (path: {path_or_dict})")
+                    try:    
+                        with open(path_or_dict) as f:
+                            result_dict = yaml.safe_load(f)
+                    except Exception as e : 
+                        raise ValueError(e)
+                elif isinstance(path_or_dict, dict):
+                    result_dict = path_or_dict
+                else:
+                    raise ValueError(f"{mode} 파일이 유효하지 않습니다. (infra_setup: {path_or_dict})")
+            return result_dict
 
-        if infra_setup == None :
-            print(f"Infra setup 파일이 존재 하지 않으므로, Default 파일을 load 합니다. (path: {infra_setup})")
-            infra_setup = INFRA_CONFIG
-        else:
-            print(f"Infra setup 파일을 load 합니다. (path: {infra_setup})")
-            try:    
-                with open(infra_setup) as f:
-                    self.infra_setup = yaml.safe_load(f)
-            except Exception as e : 
-                raise ValueError(e)
+        self.infra_setup = check_and_load_yaml(infra_setup, mode='infra_setup')
+        self.solution_info = check_and_load_yaml(solution_info, mode='solution_info')
+        self.exp_yaml = check_and_load_yaml(experimental_plan, mode='experimental_plan')
+
         print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
         pprint(self.infra_setup, depth=5)
 
@@ -81,12 +109,6 @@ class SolutionRegister:
         self.api_uri_legacy_version = 1.5
         self.check_version()
 
-        if not solution_info:
-            raise ValueError("solution infomation 을 입력해야 합니다.")
-        else:
-            self.solution_info = solution_info
-
-
         ####################################
         ########### Configuration ##########
         ####################################
@@ -105,8 +127,6 @@ class SolutionRegister:
 
         ## internal variables
         self.sm_yaml = {}  ## core
-        self.exp_yaml = {} ## core
-        self._read_experimentalplan_yaml(EXP_PLAN_DEFAULT_FILE, type='experimental_plan')  ## set exp_yaml
 
         self.pipeline = None 
         self.aic_cookie = None
@@ -2326,8 +2346,8 @@ class SolutionRegister:
     def _reset_alo_solution(self):
         """ select = all, train, inference 를 지원. experimental 에서 삭제할 사항 선택
         """
-        shutil.copy2(EXP_PLAN_DEFAULT_FILE, REGISTER_EXPPLAN)
-        print_color(f'[INFO] copy from " {EXP_PLAN_DEFAULT_FILE} " to "{REGISTER_EXPPLAN}" ', color='blue')
+        shutil.copy2(DEFAULT_EXP_PLAN, REGISTER_EXPPLAN)
+        print_color(f'[INFO] copy from " {DEFAULT_EXP_PLAN} " to "{REGISTER_EXPPLAN}" ', color='blue')
 
         ## Experimental_plan 에서 필수적으로 변경되어야 할 부분을 수정 합니다. 
         try:
@@ -2405,25 +2425,6 @@ class SolutionRegister:
             print_color(f"[SUCESS] set DOCKERFILE for ({self.pipeline}) pipeline", color='green')
         except Exception as e: 
             raise NotImplementedError(f"Failed DOCKERFILE setting. \n - pipeline: {self.pipeline} \n {e}")
-
-
-    def _read_experimentalplan_yaml(self, yaml_file_path, type):
-        try:
-        # YAML 파일을 읽어옵니다.
-            with open(yaml_file_path, 'r') as yaml_file:
-                data = yaml.safe_load(yaml_file)
-
-        # 파싱된 YAML 데이터를 사용합니다.
-        except FileNotFoundError:
-            print(f'File {yaml_file_path} not found.')
-        
-        if type == "experimental_plan" :
-            self.exp_yaml = data
-        elif type == "solution_metada":
-            self.sm_yaml = data
-        else:
-            raise ValueError("Invalid type. Only 'experimental_plan' or 'solution_metadata' is allowed as input.")
-
 
     def _check_parammeter(self, param):
         if self._check_str(param):

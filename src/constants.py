@@ -60,7 +60,7 @@ SOLUTION_REQ_FILE = PROJECT_HOME + "solution_requirements.txt"
 ##### Experimental Plan 
 ###################################
 # experimental plan yaml의 위치
-EXP_PLAN_DEFAULT_FILE = SOLUTION_HOME + "experimental_plan.yaml"
+DEFAULT_EXP_PLAN = SOLUTION_HOME + "experimental_plan.yaml"
 EXPERIMENTAL_PLAN_FORMAT_FILE = PROJECT_HOME + "src/ConfigFormats/experimental_plan_format.yaml"
 EXPERIMENTAL_OPTIONAL_KEY_LIST = ['ui_args_detail']
 ###################################
@@ -87,7 +87,8 @@ TEMP_SAGEMAKER_MODEL_PATH = PROJECT_HOME + ".temp_sagemaker_model/"
 REGISTER_MODEL_PATH = PROJECT_HOME + ".register_model/"   ## AIC 에서 download 한 model.tar.gz 임시 저장
 REGISTER_ARTIFACT_PATH = PROJECT_HOME + ".register_artifacts/"
 REGISTER_SOURCE_PATH = PROJECT_HOME + ".register_source/"
-INFRA_CONFIG = PROJECT_HOME + "setting/infra_config.yaml"
+DEFAULT_INFRA_SETUP = PROJECT_HOME + "setting/infra_config.yaml"
+DEFAULT_SOLUTION_INFO = PROJECT_HOME + "setting/solution_info.yaml"
 
 REGISTER_WRANGLER_PATH = SOLUTION_HOME + "wrangler/wrangler.py"
 REGISTER_INTERFACE_PATH = PROJECT_HOME + ".register_interface/"

@@ -43,6 +43,9 @@ class AssetStructure:
 class Pipeline:
     # TODO ALO에 init한 class를 넘겨주면서 사용하는게 맞는건지 논의
     def __init__(self, experimental_plan: Dict, pipeline_type: str, system_envs: Dict ):
+        if not pipeline_type in ['all', 'train_pipeline', 'inference_pipeline']:
+            raise Exception(f"Invalid pipeline type: {pipeline_type}")
+
         if not os.path.exists(ASSET_HOME):
             try:
                 os.makedirs(ASSET_HOME)
@@ -325,7 +328,7 @@ class Pipeline:
                 meta.read_yaml(exp_plan_file=file_exp, update_envs=False)  ## read 하면 exp 변수화 됨
                 value_empty=False
             else:
-                meta.read_yaml(exp_plan_file=EXP_PLAN_DEFAULT_FILE, update_envs=False)
+                meta.read_yaml(exp_plan_file=DEFAULT_EXP_PLAN, update_envs=False)
                 value_empty=True
 
             for pipe, steps_dict in meta.user_parameters.items():

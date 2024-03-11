@@ -62,13 +62,13 @@ class Aritifacts:
         if backup_size > size_limit:
             self._delete_old_files(HISTORY_PATH, 10)
 
-        type = pipelines.split("_")[0]
+        ptype = pipelines.split("_")[0]
         # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
-        folder_name = system_envs[f"{type}_history"]["id"]
+        folder_name = system_envs[f"{ptype}_history"]["id"]
         backup_folder_name= f'{folder_name}/' if error == False else f'{folder_name}-error/'
         
         # TODO current_pipelines 는 차후에 workflow name으로 변경이 필요
-        backup_path = HISTORY_PATH + f'{type}/' + backup_folder_name
+        backup_path = HISTORY_PATH + f'{ptype}/' + backup_folder_name
         try: 
             os.makedirs(backup_path, exist_ok=True)
         except: 
@@ -92,17 +92,17 @@ class Aritifacts:
             src_path = PROJECT_HOME + item
             if os.path.isfile(src_path):
                 shutil.copy2(src_path, backup_source_path)
-                PROC_LOGGER.process_info(f'[INFO] copy from " {src_path} "  -->  " {backup_source_path} " ')
+                # PROC_LOGGER.process_info(f'[INFO] copy from " {src_path} "  -->  " {backup_source_path} " ')
             elif os.path.isdir(src_path):
                 dst_path = backup_source_path  + os.path.basename(src_path)
                 shutil.copytree(src_path, dst_path)
-                PROC_LOGGER.process_info(f'[INFO] copy from " {src_path} "  -->  " {backup_source_path} " ')
+                # PROC_LOGGER.process_info(f'[INFO] copy from " {src_path} "  -->  " {backup_source_path} " ')
 
 
         # artifacts 들을 백업
-        for key, value in artifacts_structure[f'{type}_artifacts'].items():
+        for key, value in artifacts_structure[f'{ptype}_artifacts'].items():
             dst_path = backup_path + key + "/"
-            src_path = PROJECT_HOME + f"{type}_artifacts/" + key + "/"
+            src_path = PROJECT_HOME + f"{ptype}_artifacts/" + key + "/"
             if os.path.exists(dst_path):
                 shutil.rmtree(dst_path)
             shutil.copytree(src_path, dst_path)

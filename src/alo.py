@@ -79,7 +79,7 @@ class ALO:
 
         # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
         if experimental_plan == "" or experimental_plan == None:
-            experimental_plan = EXP_PLAN_DEFAULT_FILE
+            experimental_plan = DEFAULT_EXP_PLAN
 
         # 입력 받은 args를 전역변수로 변환
         # config, system, mode, loop, computing
@@ -102,14 +102,14 @@ class ALO:
     #############################
     ####    Main Function    ####
     #############################
-    def pipeline(self, pipes = 'train_pipeline', train_id=''):
+    def pipeline(self, experimental_plan=None, pipeline_type = 'train_pipeline', train_id=''):
 
-        if not pipes in ['train_pipeline', 'inference_pipeline']:
-            raise Exception(f"The pipes must be one of train_pipeline or inference_pipeline. (pipes={pipes})") 
+        if not pipeline_type in ['train_pipeline', 'inference_pipeline']:
+            raise Exception(f"The pipes must be one of train_pipeline or inference_pipeline. (pipes={pipeline_type})") 
 
         ## train_id 는 inference pipeline 에서만 지원
         if not train_id == '':
-            if pipes == 'train_pipeline':
+            if pipeline_type == 'train_pipeline':
                 raise Exception(f"The train_id must be empty. (train_id={train_id})")
             else:
                 self._load_history_model(train_id)
@@ -124,8 +124,11 @@ class ALO:
             else:
                 self.system_envs['inference_history']['train_id'] = 'none'
 
+        if experimental_plan == "" or experimental_plan == None:
+            experimental_plan = self.exp_yaml
 
-        pipeline = Pipeline(self.exp_yaml, pipes, self.system_envs)
+
+        pipeline = Pipeline(experimental_plan, pipeline_type, self.system_envs)
         return pipeline
 
     # redis q init 하는 위치
@@ -141,15 +144,15 @@ class ALO:
                 self.proc_logger.process_info(f"                                                 {pipes}                                                   ") 
                 self.proc_logger.process_info("#########################################################################################################")
 
-                self.register(train_id = '20240310T065814Z-16031242-demo-titanic')
 
-                pipeline = self.pipeline(pipes)
+                pipeline = self.pipeline(pipeline_type=pipes)
                 # TODO 한번에 하려고 하니 이쁘지 않음 논의
                 pipeline.setup()
                 pipeline.load()
                 pipeline.run()
                 pipeline.save()
                 # pipeline.history()
+                # self.register(train_id = '20240310T065814Z-16031242-demo-titanic')
 
 
                 
@@ -193,7 +196,7 @@ class ALO:
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
 
 
-    def set_metadata(self, experimental_plan = EXP_PLAN_DEFAULT_FILE, pipeline_type = 'train_pipeline'):
+    def set_metadata(self, experimental_plan = DEFAULT_EXP_PLAN, pipeline_type = 'train_pipeline'):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
@@ -265,7 +268,7 @@ class ALO:
             # 딱히 안해도 문제는 없는듯 하지만 혹시 모르니 설정했던 환경 변수를 제거 
             os.unsetenv("AWS_PROFILE")
 
-    def register(self, solution_info='', infra_setup='',  train_id = '', inference_id = ''):
+    def register(self, solution_info=None, infra_setup=None,  train_id = '', inference_id = ''):
 
         ## train_id 존재 검사. exp_plan 불러오기 
         meta = Metadata()
@@ -289,21 +292,39 @@ class ALO:
                 return merged_exp_plan
 
 
+        def pipe_run(exp_plan, pipeline_type):
+            pipeline = self.pipeline(exp_plan, pipeline_type )
+            pipeline.setup()
+            pipeline.load()
+            pipeline.run()
+            pipeline.save()
+        ## id 폴더에서 exp_plan 가져와서, pipeline 을 실행한다. (artifact 상태를 보장할 수 없으므로)
         if train_id != '':
             train_exp_plan = load_pipeline_expplan('train', train_id, meta)
+            pipe_run(train_exp_plan, 'train_pipeline')    
+        else:
+            pipe_run(exp_plan, 'train_pipeline')    
+
         if inference_id != '':
             inference_exp_plan = load_pipeline_expplan('inference', inference_id, meta)
-        
+            pipe_run(inference_exp_plan, 'inference_pipeline')
+        else:
+            print(exp_plan)
+            pipe_run(exp_plan, 'inference_pipeline')
+
+        ## register 에 사용할 exp_plan 제작
         if train_id != '':
             if inference_id != '':
-                exp_plan = inference_exp_plna
+                exp_plan_register = inference_exp_plan
             else:
-                exp_plan = train_exp_plan
+                exp_plan_register = train_exp_plan
         else:
             if inference_id != '':
-                exp_plan = inference_exp_plan
+                exp_plan_register = inference_exp_plan
+            else:
+                exp_plan_register = exp_plan
 
-        register = SolutionRegister(infra_setup=infra_setup, solution_info=solution_info)
+        register = SolutionRegister(infra_setup=infra_setup, solution_info=solution_info, experimental_plan=exp_plan_register)
         return register
         
 
