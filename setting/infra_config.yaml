@@ -1,22 +1,18 @@
-'AIC_URI': "https://aic-kic.aidxlge.com/"  
+### system info. 
+'AIC_URI': "https://web.aic-dev.lgebigdata.com/"  ## 실 서버 
 "REGION": "ap-northeast-2"
-"WORKSPACE_NAME": "cism-ws"  
-"BUILD_METHOD": "buildah"  ## docker, buildah 
+"WORKSPACE_NAME": "cism-ws"  ## magna-ws, cism-ws
+"BUILD_METHOD": "docker"  ## docker, buildah 
 
 'VERSION': 1.1
-"LOGIN_MODE": "ldap" 
+"LOGIN_MODE": "static" ## ldap, static
+"ECR_TAG": "latest"   ## 없어질 사항
 "REPOSITORY_TAGS": 
-  - "Key=Company,Value=LGE"
-  - "Key=Owner,Value=IC360"
-  - "Key=HQ,Value=CDO"
-  - "Key=Division,Value=CDO"
-  - "Key=Infra Region,Value=KIC"
-  - "Key=Service Mode,Value=OP"
-  - "Key=Cost Type,Value=COMPUTING"
-  - "Key=Project,Value=CIS"
-  - "Key=Sub Project,Value=CISM"
-  - "Key=System,Value=AIDX"
-"AWS_KEY_PROFILE": ""
+  - "Key=Description,Value=Kubeflow Study"
+  - "Key=Owner,Value=DX엔지니어링팀"
+  - "Key=IamUser,Value=hyunsoo0802.lim"
+  - "Key=ExpriationDate,Value=2024-04"
+"AWS_KEY_PROFILE": "register-ai-conductor"
 "SUPPORT_TRAINING": True   ## True, False
 'REMOTE_BUILD': False
 ## 'type': 'WINDOWS_CONTAINER'|'LINUX_CONTAINER'|'LINUX_GPU_CONTAINER'|'ARM_CONTAINER'|'WINDOWS_SERVER_2019_CONTAINER'|'LINUX_LAMBDA_CONTAINER'|'ARM_LAMBDA_CONTAINER',

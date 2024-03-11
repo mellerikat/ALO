@@ -106,8 +106,8 @@ class Metadata:
         backup_exp_plan['version'] = self.version
         backup_exp_plan['external_path'] = [{k: v} for k, v in self.external_path.items()]
         backup_exp_plan['external_path_permission'] = [self.external_path_permission]
-        backup_exp_plan['user_parameters'] = [self.user_parameters]
-        backup_exp_plan['asset_source'] = [self.asset_source]
+        backup_exp_plan['user_parameters'] = [{k: v} for k, v in self.user_parameters.items()]
+        backup_exp_plan['asset_source'] = [{k: v} for k, v in self.asset_source.items()]
         backup_exp_plan['control'] = [{k: v} for k, v in self.control.items()]
         try:
             backup_exp_plan['ui_args_detail'] = [{k: v} for k, v in self.ui_args_detail.items()]

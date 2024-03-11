@@ -2360,15 +2360,18 @@ class SolutionRegister:
     def _reset_alo_solution(self):
         """ select = all, train, inference 를 지원. experimental 에서 삭제할 사항 선택
         """
-        shutil.copy2(DEFAULT_EXP_PLAN, REGISTER_EXPPLAN)
-        print_color(f'[INFO] copy from " {DEFAULT_EXP_PLAN} " to "{REGISTER_EXPPLAN}" ', color='blue')
+        # shutil.copy2(DEFAULT_EXP_PLAN, REGISTER_EXPPLAN)
+        # print_color(f'[INFO] copy from " {DEFAULT_EXP_PLAN} " to "{REGISTER_EXPPLAN}" ', color='blue')
 
-        ## Experimental_plan 에서 필수적으로 변경되어야 할 부분을 수정 합니다. 
-        try:
-            with open(REGISTER_EXPPLAN, 'r') as yaml_file:
-                exp_plan_dict = yaml.safe_load(yaml_file)
-        except FileNotFoundError:
-            print(f'File {REGISTER_EXPPLAN} not found.')
+        # ## Experimental_plan 에서 필수적으로 변경되어야 할 부분을 수정 합니다. 
+        # try:
+        #     with open(REGISTER_EXPPLAN, 'r') as yaml_file:
+        #         exp_plan_dict = yaml.safe_load(yaml_file)
+        # except FileNotFoundError:
+        #     print(f'File {REGISTER_EXPPLAN} not found.')
+        
+        ## v2.3.0 Update: instance 선언 시, self.exp_yaml 화 해두고 있음.(solution 폴더의 오리지널과 다름)
+        exp_plan_dict = self.exp_yaml.copy()
      
         for idx, _dict in enumerate(exp_plan_dict['control']):
             if list(map(str, _dict.keys()))[0] == 'get_asset_source':

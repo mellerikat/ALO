@@ -274,7 +274,7 @@ class ALO:
             # 딱히 안해도 문제는 없는듯 하지만 혹시 모르니 설정했던 환경 변수를 제거 
             os.unsetenv("AWS_PROFILE")
 
-    def register(self, solution_info=None, infra_setup=None,  train_id = '', inference_id = '', upload=False):
+    def register(self, solution_info=None, infra_setup=None,  train_id = '', inference_id = '', upload=False, username='', password=''):
 
         ## train_id 존재 검사. exp_plan 불러오기 
         meta = Metadata()
@@ -333,7 +333,8 @@ class ALO:
         register = SolutionRegister(infra_setup=infra_setup, solution_info=solution_info, experimental_plan=exp_plan_register)
 
         if upload:
-            reigster.login(username, password)
+            register.login(username, password)
+            register.run(username=username, password=password)
 
         return register
         
