@@ -207,9 +207,9 @@ class SolutionRegister:
 
         ## get async codebuild resp 
         if train_codebuild_client != None and train_build_id != None: 
-            self._batch_get_builds(train_codebuild_client, train_build_id)
+            self._batch_get_builds(train_codebuild_client, train_build_id, 10)
         if inference_codebuild_client != None and inference_build_id != None: 
-            self._batch_get_builds(inference_codebuild_client, inference_build_id)
+            self._batch_get_builds(inference_codebuild_client, inference_build_id, 10)
             
         if not self.debugging:
             self.register_solution()
@@ -1332,14 +1332,13 @@ class SolutionRegister:
             raise NotImplementedError(f"[FAIL] Failed to create CodeBuild project \n {resp_create_proj}")           
         return codebuild_client, build_id
 
-    def _batch_get_builds(self, codebuild_client, build_id):
+    def _batch_get_builds(self, codebuild_client, build_id, status_period):
         # 7. async check remote build status (1check per 10seconds)
         build_status = None 
         while True: 
-            time.sleep(1)
             resp_batch_get_builds = codebuild_client.batch_get_builds(ids = [build_id])  
             if type(resp_batch_get_builds)==dict and 'builds' in resp_batch_get_builds.keys():
-                print('###', resp_batch_get_builds)
+                # print('###', resp_batch_get_builds)
                 # assert len(resp_batch_get_builds) == 1 # pipeline 당 build 1회만 할 것이므로 ids 목록엔 1개만 내장
                 build_status = resp_batch_get_builds['builds'][0]['buildStatus']
                 ## 'SUCCEEDED'|'FAILED'|'FAULT'|'TIMED_OUT'|'IN_PROGRESS'|'STOPPED'
@@ -1348,6 +1347,7 @@ class SolutionRegister:
                     break 
                 elif build_status == 'IN_PROGRESS': 
                     print_color(f"[IN PROGRESS] In progress.. remote building with AWS CodeBuild", color='blue')
+                    time.sleep(status_period)
                 else: 
                     print_color(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
                     break
