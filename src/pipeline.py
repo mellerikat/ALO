@@ -66,6 +66,9 @@ class Pipeline:
             if key == "name" or key == "version":
                 return experimental_plan[key]
 
+            if experimental_plan[key] == None:
+                return []
+
             for data in experimental_plan[key]:
                 data_dict.update(data)
 
