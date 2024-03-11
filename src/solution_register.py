@@ -1357,8 +1357,14 @@ class SolutionRegister:
 
     def _build_docker(self):
 
+        log_file_path = f"{self.pipeline}_docker_build.log"
         if self.docker:
-            subprocess.run(['docker', 'build', '.', '-t', f'{self.ecr_full_url}:v{self.solution_version_new}'])
+            with open(log_file_path, "w") as log_file:
+                subprocess.run(
+                    ['docker', 'build', '.', '-t', f'{self.ecr_full_url}:v{self.solution_version_new}'],
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT  # stderr도 같은 파일로 리디렉션합니다
+                )
         else:
             subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:v{self.solution_version_new}'])
 
@@ -1729,6 +1735,58 @@ class SolutionRegister:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
             raise ValueError(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})")
 
+    def get_log_error(self):
+        
+        import tarfile
+        import io
+
+        def get_log_error(log_file_name, step = ""):
+            error_started = False
+            log_file = tar.extractfile(log_file_name)
+            if log_file:
+                for line in log_file:
+                    msg = line.decode('utf-8').strip()
+                    if "current step" in msg:
+                        step = msg.split(":")[1].replace(" ", "")
+                    if error_msg in msg:
+                        print(f"error step is {step}")
+                        error_started = True
+                    if error_started:
+                        print(msg)
+            log_file.close()
+
+        file_name = 'train_artifacts.tar.gz'
+
+        asset_error = "[ASSET]"
+        setup_error = "[PROCESS]"
+        error_msg = "[ERROR]"
+
+        process_log = 'log/process.log'
+        pipeline_log = 'log/pipeline.log'
+
+        step = ""
+
+        s3 = self.session.client('s3')
+
+        # train만 일단 진행하기에 train은 고정
+        s3_tar_file_key = "ai-solutions/" + self.solution_name + f"/v{self.solution_version_new}/" + 'train'  + f"/artifacts/{file_name}"
+
+        try:
+            s3_object = s3.get_object(Bucket=self.bucket_name, Key=s3_tar_file_key)
+            s3_streaming_body = s3_object['Body']
+
+            with io.BytesIO(s3_streaming_body.read()) as tar_gz_stream:
+                tar_gz_stream.seek(0)  # 스트림의 시작 지점으로 이동
+
+                with tarfile.open(fileobj=tar_gz_stream, mode='r:gz') as tar:
+                    try:
+                        get_log_error(process_log, step)
+                        get_log_error(pipeline_log, step)
+                    except KeyError:
+                        print(f'log file is not exist in the tar archive')
+        except Exception as e:
+            print(f'An error occurred: {e}')
+        
 
     def get_stream_status(self, status_period=10):
         """ KUBEFLOW_STATUS 에서 지원하는 status 별 action 처리를 진행 함. 
