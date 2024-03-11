@@ -148,7 +148,6 @@ class SolutionRegister:
     ################################################
     ################################################
     def run(self, username, password):
-
         #############################
         ###  Solution Name 입력
         #############################
@@ -173,6 +172,9 @@ class SolutionRegister:
         ## common
         self._s3_access_check()  ## s3 instance 생성 
         self.set_resource_list()   
+        # codebuild로 실행시 client와 id를 추후 받아옴
+        train_codebuild_client, train_build_id = None, None
+        inference_codebuild_client, inference_build_id = None, None
         ############################
         ### Train pipeline 설정
         ############################
@@ -188,8 +190,7 @@ class SolutionRegister:
                 skip_build=False
             else:
                 skip_build=True
-
-            self.make_docker(skip_build)
+            train_codebuild_client, train_build_id = self.make_docker(skip_build)
         ############################
         ### Inference pipeline 설정
         ############################
@@ -202,8 +203,14 @@ class SolutionRegister:
             skip_build=False
         else:
             skip_build=True
-        self.make_docker(skip_build)
+        inference_codebuild_client, inference_build_id = self.make_docker(skip_build)
 
+        ## get async codebuild resp 
+        if train_codebuild_client != None and train_build_id != None: 
+            self._batch_get_builds(train_codebuild_client, train_build_id)
+        if inference_codebuild_client != None and inference_build_id != None: 
+            self._batch_get_builds(inference_codebuild_client, inference_build_id)
+            
         if not self.debugging:
             self.register_solution()
             self.register_solution_instance()   ## AIC, Solution Storage 모두에서 instance 까지 항상 생성한다. 
@@ -1073,7 +1080,7 @@ class SolutionRegister:
 
             if self.infra_setup['REMOTE_BUILD'] == True: 
                 try: 
-                    self._aws_codebuild() ## remote docker build & ecr push 
+                    codebuild_client, build_id = self._aws_codebuild() ## remote docker build & ecr push 
                 except Exception as e: # FIXME 
                     raise NotImplementedError(str(e))
             else: 
@@ -1086,7 +1093,10 @@ class SolutionRegister:
                 self._set_aws_ecr_skipbuild(docker=False, tags=self.infra_setup["REPOSITORY_TAGS"]) 
 
         self._set_container_uri()
-
+        if self.infra_setup['REMOTE_BUILD'] == True: 
+            return codebuild_client, build_id
+        else: 
+            return None, None
 
     def _set_aws_ecr_skipbuild(self, docker = True, tags = []):
         self.docker = docker
@@ -1320,11 +1330,13 @@ class SolutionRegister:
                 raise ValueError(f"[FAIL] << build id >> not found in response of codebuild - start_build")
         else: 
             raise NotImplementedError(f"[FAIL] Failed to create CodeBuild project \n {resp_create_proj}")           
-        
-        # FIXME while loop --> async 
+        return codebuild_client, build_id
+
+    def _batch_get_builds(self, codebuild_client, build_id):
         # 7. async check remote build status (1check per 10seconds)
+        build_status = None 
         while True: 
-            time.sleep(10) # FIXME 
+            time.sleep(1)
             resp_batch_get_builds = codebuild_client.batch_get_builds(ids = [build_id])  
             if type(resp_batch_get_builds)==dict and 'builds' in resp_batch_get_builds.keys():
                 print('###', resp_batch_get_builds)
@@ -1333,14 +1345,15 @@ class SolutionRegister:
                 ## 'SUCCEEDED'|'FAILED'|'FAULT'|'TIMED_OUT'|'IN_PROGRESS'|'STOPPED'
                 if build_status == 'SUCCEEDED':
                     print_color(f"[SUCCESS] Completes remote build with AWS CodeBuild", color='green')
-                    break # FIXME delete after async 
+                    break 
                 elif build_status == 'IN_PROGRESS': 
                     print_color(f"[IN PROGRESS] In progress.. remote building with AWS CodeBuild", color='blue')
                 else: 
-                    raise NotImplementedError(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
+                    print_color(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
+                    break
+                    # raise NotImplementedError(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
         # 8. s3 delete .zip ? 
-
-        
+        return build_status
 
     def _build_docker(self):
 
