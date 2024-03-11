@@ -1,4 +1,5 @@
 import os
+import random
 import sys
 import json 
 import shutil
@@ -69,7 +70,7 @@ class ALO:
         # alolib을 설치
         self._set_alolib()
 
-        experimental_plan = config
+        exp_plan_path = config
         self.system = system
         self.loop = loop
         self.computing = computing
@@ -78,19 +79,16 @@ class ALO:
         self.system_envs = {}
 
         # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
-        if experimental_plan == "" or experimental_plan == None:
-            experimental_plan = DEFAULT_EXP_PLAN
+        if exp_plan_path == "" or exp_plan_path == None:
+            exp_plan_path = DEFAULT_EXP_PLAN
 
         # 입력 받은 args를 전역변수로 변환
         # config, system, mode, loop, computing
 
         self._get_alo_version()
-        self.set_metadata(experimental_plan, pipeline_type)
+        self.set_metadata(exp_plan_path, pipeline_type)
         # 현재 ALO 버전
 
-        # solution_metadata 존재 시 self.experimental_plan의 self 변수들 및 system_envs는 _update_yaml에서 업데이트 된다. 
-        # self.experimental_plan의 내용 (solution metadata 존재 시 self 변수들 업데이트 완료된)을 ALO 클래스 내부 변수화 
-        
         # artifacts home 초기화 (from src.utils)
         self.system_envs['artifacts'] = self.artifact.set_artifacts()
         self.system_envs['train_history'] ={}
@@ -138,21 +136,24 @@ class ALO:
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
         try:
-            for pipes in self.system_envs['pipeline_list']:
+            for pipe in self.system_envs['pipeline_list']:
+
+                ## 갑자기 죽는 경우, 기록에 남기기 위해 현 진행상황을 적어둔다.
+                self.system_envs['current_pipeline'] = pipe
 
                 self.proc_logger.process_info("#########################################################################################################")
-                self.proc_logger.process_info(f"                                                 {pipes}                                                   ") 
+                self.proc_logger.process_info(f"                                                 {pipe}                                                   ") 
                 self.proc_logger.process_info("#########################################################################################################")
 
+                self.register(train_id = '20240310T065814Z-16031242-demo-titanic', upload=True)
 
-                pipeline = self.pipeline(pipeline_type=pipes)
+                pipeline = self.pipeline(pipeline_type=pipe)
                 # TODO 한번에 하려고 하니 이쁘지 않음 논의
                 pipeline.setup()
                 pipeline.load()
                 pipeline.run()
                 pipeline.save()
                 # pipeline.history()
-                # self.register(train_id = '20240310T065814Z-16031242-demo-titanic')
 
 
                 
@@ -182,11 +183,18 @@ class ALO:
                 #self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
                 self.proc_logger.process_error(traceback.format_exc())
             finally:
+                ## id 생성 
+                sttime = self.system_envs['experimental_start_time']
+                exp_name = self.system_envs['experimental_name']
+                curr = self.system_envs['current_pipeline'].split('_')[0]
+                random_number = '{:08}'.format(random.randint(0, 99999999))
+                self.system_envs[f"{curr}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
+
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
-                self.artifact.backup_history(pipes, self.system_envs, backup_exp_plan={}, error=True, size=self.control['backup_size'])
+                self.artifact.backup_history(pipe, self.system_envs, backup_exp_plan={}, error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록        
-                ext_saved_path = self.ext_data.external_save_artifacts(pipes, self.external_path, self.external_path_permission)
+                empty = self.ext_data.external_save_artifacts(pipe, self.external_path, self.external_path_permission)
                 if self.loop == True:
                     fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
                     if self.system_envs['runs_status'] == 'init':
@@ -196,7 +204,7 @@ class ALO:
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
 
 
-    def set_metadata(self, experimental_plan = DEFAULT_EXP_PLAN, pipeline_type = 'train_pipeline'):
+    def set_metadata(self, exp_plan_path = DEFAULT_EXP_PLAN, pipeline_type = 'train_pipeline'):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
@@ -206,8 +214,8 @@ class ALO:
         self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
         sol_meta = self.load_solution_metadata()
         self.system_envs['solution_metadata'] = sol_meta
-        self.system_envs['experimental_plan_path'] = experimental_plan
-        self.exp_yaml, sys_envs = self.load_experiment_plan(sol_meta, experimental_plan, self.system_envs)
+        self.system_envs['experimental_plan_path'] = exp_plan_path
+        self.exp_yaml, sys_envs = self.load_exp_plan(sol_meta, exp_plan_path, self.system_envs)
         self._set_attr()
         # loop 모드면 항상 boot 모드
         if self.computing != 'local':
@@ -235,7 +243,7 @@ class ALO:
                 
             try:
                 # load sagemaker_config.yaml - (account_id, role, region, ecr_repository, s3_bucket_uri, train_instance_type)
-                sm_config = self.experimental_plan.get_yaml(SAGEMAKER_CONFIG) 
+                sm_config = self.meta.get_yaml(SAGEMAKER_CONFIG) 
                 sm_handler = SagemakerHandler(self.external_path_permission['aws_key_profile'], sm_config)
                 sm_handler.init()
             except Exception as e:
@@ -268,7 +276,7 @@ class ALO:
             # 딱히 안해도 문제는 없는듯 하지만 혹시 모르니 설정했던 환경 변수를 제거 
             os.unsetenv("AWS_PROFILE")
 
-    def register(self, solution_info=None, infra_setup=None,  train_id = '', inference_id = ''):
+    def register(self, solution_info=None, infra_setup=None,  train_id = '', inference_id = '', upload=False):
 
         ## train_id 존재 검사. exp_plan 불러오기 
         meta = Metadata()
@@ -292,7 +300,7 @@ class ALO:
                 return merged_exp_plan
 
 
-        def pipe_run(exp_plan, pipeline_type):
+        def _pipe_run(exp_plan, pipeline_type):
             pipeline = self.pipeline(exp_plan, pipeline_type )
             pipeline.setup()
             pipeline.load()
@@ -301,16 +309,16 @@ class ALO:
         ## id 폴더에서 exp_plan 가져와서, pipeline 을 실행한다. (artifact 상태를 보장할 수 없으므로)
         if train_id != '':
             train_exp_plan = load_pipeline_expplan('train', train_id, meta)
-            pipe_run(train_exp_plan, 'train_pipeline')    
+            _pipe_run(train_exp_plan, 'train_pipeline')    
         else:
-            pipe_run(exp_plan, 'train_pipeline')    
+            _pipe_run(exp_plan, 'train_pipeline')    
 
         if inference_id != '':
             inference_exp_plan = load_pipeline_expplan('inference', inference_id, meta)
-            pipe_run(inference_exp_plan, 'inference_pipeline')
+            _pipe_run(inference_exp_plan, 'inference_pipeline')
         else:
             print(exp_plan)
-            pipe_run(exp_plan, 'inference_pipeline')
+            _pipe_run(exp_plan, 'inference_pipeline')
 
         ## register 에 사용할 exp_plan 제작
         if train_id != '':
@@ -325,6 +333,10 @@ class ALO:
                 exp_plan_register = exp_plan
 
         register = SolutionRegister(infra_setup=infra_setup, solution_info=solution_info, experimental_plan=exp_plan_register)
+
+        if upload:
+            reigster.login(username, password)
+
         return register
         
 
@@ -409,8 +421,10 @@ class ALO:
                 print(f"The file {filename} does not exist.")
         return json.loads(self.system) if self.system != None else None # None or dict from json 
     
-    def load_experiment_plan(self, sol_meta, experimental_plan, system_envs):
-        return self.experimental_plan.read_yaml(sol_me_file = sol_meta, exp_plan_file = experimental_plan, system_envs = system_envs)
+    def load_exp_plan(self, sol_meta, experimental_plan, system_envs):
+        exp_plan = self.meta.read_yaml(sol_me_file = sol_meta, exp_plan_file = experimental_plan, system_envs = system_envs)
+        ## system_envs 를 linked 되어 있으므로, read_yaml 에서 update 된 사항이 자동 반영되어 있음
+        return exp_plan, system_envs 
 
     ###################################
     ####    Part2. Runs fuction    ####
@@ -620,7 +634,7 @@ class ALO:
         self.asset = Assets(ASSET_HOME)
         self.artifact = Aritifacts()
 
-        self.experimental_plan = Metadata()
+        self.meta = Metadata()
 
     def _set_alolib(self):
         """ALO 는 Master (파이프라인 실행) 와 slave (Asset 실행) 로 구분되어 ALO API 로 통신합니다. 
@@ -654,11 +668,11 @@ class ALO:
             self.proc_logger.process_error(f"Failed installing alolib requirements.txt : \n {result.stderr}")
 
     def _set_attr(self):
-        self.user_parameters = self.experimental_plan.user_parameters
-        self.asset_source = self.experimental_plan.asset_source
-        self.external_path = self.experimental_plan.external_path
-        self.external_path_permission = self.experimental_plan.external_path_permission
-        self.control = self.experimental_plan.control
+        self.user_parameters = self.meta.user_parameters
+        self.asset_source = self.meta.asset_source
+        self.external_path = self.meta.external_path
+        self.external_path_permission = self.meta.external_path_permission
+        self.control = self.meta.control
 
     def _get_alo_version(self):
         with open(PROJECT_HOME + '.git/HEAD', 'r') as f:

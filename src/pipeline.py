@@ -225,7 +225,6 @@ class Pipeline:
             ptype = self.pipeline_type.split('_')[0]
             sttime = self.system_envs['experimental_start_time']
             exp_name = self.system_envs['experimental_name']
-            exp_version = self.system_envs['experimental_version']
             random_number = '{:08}'.format(random.randint(0, 99999999))
             self.system_envs[f"{ptype}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
             self.system_envs[f"{ptype}_history"]['start_time'] = sttime

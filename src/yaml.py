@@ -161,9 +161,9 @@ class Metadata:
 
         # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭 (from src.utils)
         self._match_steps()
+        return self.exp_plan
 
 
-        return self.exp_plan, system_envs
     # TODO rel 2.2 --> 2.2.1 added 
     def check_exp_plan_keys(self, exp_plan: dict): 
         exp_plan_format = self.get_yaml(EXPERIMENTAL_PLAN_FORMAT_FILE) ## dict 

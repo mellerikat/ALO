@@ -770,17 +770,14 @@ class SolutionRegister:
               print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
         elif response.status_code == 400:
             print_color("[ERROR] AI Solution 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.response_solution["detail"])
+            raise ValueError("Error message: ", self.response_solution["detail"])
         elif response.status_code == 422:
             print_color("[ERROR] AI Solution 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.response_solution["detail"])
+            raise ValueError("Error message: ", self.response_solution["detail"])
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-            print(aic+api)
+            raise ValueError("UIR : ", aic+api)
     
-
-    
-
     ################################
     ######    STEP2. S3 Control
     ################################
@@ -2330,7 +2327,7 @@ class SolutionRegister:
 
     def _set_alo(self):
         self.print_step("Set alo source code for docker container", sub_title=True)
-        alo_src = ['main.py', 'src', 'assets', 'solution', 'alolib', '.git', 'requirements.txt', 'solution_requirements.txt']
+        alo_src = ['main.py', 'src', 'assets', 'alolib', '.git', 'requirements.txt', 'solution_requirements.txt']
         ## 폴더 초기화
         if os.path.isdir(REGISTER_SOURCE_PATH):
             shutil.rmtree(REGISTER_SOURCE_PATH)
@@ -2345,6 +2342,9 @@ class SolutionRegister:
                 dst_path = REGISTER_SOURCE_PATH  + os.path.basename(src_path)
                 shutil.copytree(src_path, dst_path)
                 print_color(f'[INFO] copy from " {src_path} "  -->  " {REGISTER_SOURCE_PATH} " ', color='blue')
+        
+        ## experimental_plan 을 변수화 된 값을 저장한다. 
+        self.exp_yaml
     
     def _reset_alo_solution(self):
         """ select = all, train, inference 를 지원. experimental 에서 삭제할 사항 선택
