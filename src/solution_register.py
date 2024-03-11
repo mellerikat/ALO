@@ -655,7 +655,7 @@ class SolutionRegister:
             
         print_color(f"[SYSTEM] AWS ECR:  ", color='green') 
         print(f"{self.ecr_name}") 
-        print_color(f"[SYSTEM] AWS S3 buckeet:  ", color='green') 
+        print_color(f"[SYSTEM] AWS S3 bucket:  ", color='green') 
         print(f"{self.bucket_name}") 
 
 
@@ -685,7 +685,7 @@ class SolutionRegister:
             prefix_uri = "ai-solutions/" + self.solution_name + f"/v{self.solution_version_new}/" + 'train'  + "/artifacts/"
             uri = {'model_uri': "s3://" + self.bucket_name + "/" + prefix_uri}
         else:
-            raise ValueError("mode must be one of [dataset, artifacts, model]")
+            raise ValueError("mode must be one of [data, artifact, model]")
 
         try: 
             if self.pipeline == 'train':
@@ -1000,8 +1000,8 @@ class SolutionRegister:
             print(f"ClientError: ", e)
             return False
         # temp = s3_path + "/" + data_path[len(local_folder):]
-        uploaded_path = bucket_name + s3_path + data_path[len(local_folder):]
-        print_color(f"[SUSTEM] S3 object key (new): ", color='green')
+        uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
+        print_color(f"[SYSTEM] S3 object key (new): ", color='green')
         print(f"{uploaded_path }")
         return True
 
@@ -1243,12 +1243,12 @@ class SolutionRegister:
         buildspec['phases']['post_build']['commands'] = post_command
         # 2. make create-codebuild-project.json (trigger: s3)
         s3_prefix_uri = "ai-solutions/" + self.solution_name + \
-              f"/v{self.solution_version_new}/" + self.pipeline  + "/codebuild"
+              f"/v{self.solution_version_new}/" + self.pipeline  + "/codebuild/"
         bucket_uri = self.bucket_name + "/" + s3_prefix_uri 
         with open(AWS_CODEBUILD_S3_PROJECT_FORMAT_FILE) as file:
             codebuild_project_json = json.load(file)
-        codebuild_project_json['source']['location'] = bucket_uri + '/' + AWS_CODEBUILD_S3_SOLUTION_FILE + '.zip'
-        codebuild_project_json['artifacts']['location'] = bucket_uri 
+        codebuild_project_json['source']['location'] = bucket_uri + AWS_CODEBUILD_S3_SOLUTION_FILE + '.zip'
+        codebuild_project_json['artifacts']['location'] = self.bucket_name # artifacts location에는 / 비허용
         codebuild_project_json['serviceRole'] = codebuild_role
         codebuild_project_json['environment']['type'] = self.infra_setup["CODEBUILD_ENV_TYPE"]
         codebuild_project_json['environment']['computeType'] = self.infra_setup["CODEBUILD_ENV_COMPUTE_TYPE"]
@@ -1259,9 +1259,13 @@ class SolutionRegister:
             shutil.rmtree(AWS_CODEBUILD_ZIP_PATH)
         os.makedirs(AWS_CODEBUILD_ZIP_PATH)
         ## docker 내에 필요한 것들 복사
-        ## .package_list/{pipe}_pipeline, Dockerfile 및 buildspec.yml파일은 zip folder 바로 하위에 위치 
+        ## .package_list/{pipe}_pipeline, Dockerfile, solution_metadata.yaml (추론일 때만) 및 buildspec.yml파일은 zip folder 바로 하위에 위치 
         ## Dockerfile 복사 
         shutil.copy2(PROJECT_HOME + "Dockerfile", AWS_CODEBUILD_ZIP_PATH)
+        ## solution_metdata.yaml 복사 (추론 일 때만)
+        if self.pipeline == 'inference':
+            shutil.copy2(SOLUTION_META, AWS_CODEBUILD_ZIP_PATH)
+        ## 중요 
         ## REGISTER_SOURCE_PATH --> AWS_CODEBUILD_BUILD_SOURCE_PATH
         shutil.copytree(REGISTER_SOURCE_PATH, AWS_CODEBUILD_BUILD_SOURCE_PATH)
         build_package_path = ASSET_PACKAGE_PATH + f'{self.pipeline}_pipeline'
@@ -1292,8 +1296,14 @@ class SolutionRegister:
             codebuild_client = boto3.client('codebuild', region_name=self.infra_setup['REGION'])
         except Exception:
             ValueError("The credentials are not available.")
-        print(codebuild_project_json)
-        resp_create_proj = codebuild_client.create_project(name = f'codebuild-proj-{self.solution_name}', \
+        # print(codebuild_project_json)
+        # 이미 같은 이름의 project 존재하면 삭제 
+
+        project_name = f'codebuild-project-{self.solution_name}-{self.solution_version_new}'
+        if project_name in codebuild_client.list_projects()['projects']: 
+            resp_delete_proj = codebuild_client.delete_project(name=project_name) 
+            print_color(f"[INFO] Deleted pre-existing codebuild project: {project_name} \n {resp_delete_proj}", color='yellow')
+        resp_create_proj = codebuild_client.create_project(name = project_name, \
                                                source = codebuild_project_json['source'], \
                                                 artifacts = codebuild_project_json['artifacts'], \
                                                 environment = codebuild_project_json['environment'], \
@@ -1320,7 +1330,8 @@ class SolutionRegister:
             time.sleep(10) # FIXME 
             resp_batch_get_builds = codebuild_client.batch_get_builds(ids = [build_id])  
             if type(resp_batch_get_builds)==dict and 'builds' in resp_batch_get_builds.keys():
-                assert len(resp_batch_get_builds) == 1 # pipeline 당 build 1회만 할 것이므로 ids 목록엔 1개만 내장
+                print('###', resp_batch_get_builds)
+                # assert len(resp_batch_get_builds) == 1 # pipeline 당 build 1회만 할 것이므로 ids 목록엔 1개만 내장
                 build_status = resp_batch_get_builds['builds'][0]['buildStatus']
                 ## 'SUCCEEDED'|'FAILED'|'FAULT'|'TIMED_OUT'|'IN_PROGRESS'|'STOPPED'
                 if build_status == 'SUCCEEDED':
