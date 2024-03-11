@@ -1223,9 +1223,13 @@ class SolutionRegister:
 
     def _aws_codebuild(self):
         from botocore.exceptions import ProfileNotFound
-
-        codebuild_role = self.infra_setup["AWS_CODEBUILD_ROLE"] # str 
-        assert type(codebuild_role) == str 
+        # 0. create boto3 session and get codebuild service role arn 
+        session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
+        try: 
+            iam_client = session.client('iam', region_name=self.infra_setup["REGION"])
+            codebuild_role = iam_client.get_role(RoleName = 'CodeBuildServiceRole')['Role']['Arn']
+        except: 
+            raise NotImplementedError("Failed to get aws codebuild arn")
         # 1. make buildspec.yml
         with open(AWS_CODEBUILD_BUILDSPEC_FORMAT_FILE, 'r') as file: 
             ## {'version': 0.2, 'phases': {'pre_build': {'commands': None}, 'build': {'commands': None}, 'post_build': {'commands': None}}}
@@ -1282,7 +1286,6 @@ class SolutionRegister:
         self.s3_process(self.bucket_name, local_file_path, local_folder, s3_prefix_uri)
         # 5. run aws codebuild create-project
         try:
-            session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
             codebuild_client = session.client('codebuild', region_name=self.infra_setup['REGION'])
         except ProfileNotFound:
             print_color(f"[INFO] Start AWS codebuild access check without key file.", color="blue")
