@@ -93,7 +93,7 @@ class SolutionRegister:
         self.api_uri = {
             'VERSION': 'api/v1/versions', # GET, 버전 확인
             'STATIC_LOGIN': 'api/v1/auth/login',  # POST
-            'LDAP_LOGIN': 'api/v1/auth/ldap/login',
+            'LDAP_LOGIN': 'api/v1/auth/login',
             'SYSTEM_INFO': 'api/v1/workspaces/info',  # GET, 1. 시스템 정보 획득
             'SOLUTION_LIST': 'api/v1/solutions/workspace', # 이름 설정 시 GET, 등록 시 POST, 2. AI Solution 이름 설정 / 3. AI Solution 등록
             'REGISTER_SOLUTION': 'api/v1/solutions', # 등록 시 POST, AI Solution 등록
@@ -182,7 +182,7 @@ class SolutionRegister:
             pass
         else:
             self._sm_append_pipeline(pipeline_name='train')
-            self.set_resource(resource='standard')  ## resource 선택은 spec-out 됨
+            self.set_resource(resource='high')  ## resource 선택은 spec-out 됨
             self.set_user_parameters()
             self.s3_upload_data()
             self.s3_upload_artifacts()
@@ -195,7 +195,7 @@ class SolutionRegister:
         ### Inference pipeline 설정
         ############################
         self._sm_append_pipeline(pipeline_name='inference')
-        self.set_resource(resource='standard')  ## resource 선택은 spec-out 됨
+        self.set_resource(resource='high')  ## resource 선택은 spec-out 됨
         self.set_user_parameters(display_table=False)
         self.s3_upload_data()
         self.s3_upload_artifacts()  ## inference 시, upload model 도 진행
@@ -207,9 +207,9 @@ class SolutionRegister:
 
         ## get async codebuild resp 
         if train_codebuild_client != None and train_build_id != None: 
-            self._batch_get_builds(train_codebuild_client, train_build_id, 10)
+            self._batch_get_builds(train_codebuild_client, train_build_id)
         if inference_codebuild_client != None and inference_build_id != None: 
-            self._batch_get_builds(inference_codebuild_client, inference_build_id, 10)
+            self._batch_get_builds(inference_codebuild_client, inference_build_id)
             
         if not self.debugging:
             self.register_solution()
@@ -217,7 +217,7 @@ class SolutionRegister:
 
 
 
-    def run_train(self, status_period=5, delete_instance=True, delete_solution=False):
+    def run_train(self, status_period=5, delete_solution=False):
         if self.solution_info['inference_only']:
             raise ValueError("inference_only=False 여야 합니다.")
         else:
@@ -225,17 +225,12 @@ class SolutionRegister:
             self.register_stream()
             self.request_run_stream()
             self.get_stream_status(status_period=status_period)
-
-        if delete_instance:
-            self.delete_stream_history()
+            # self.delete_stream_history()  ## stream 삭제 시, 자동 삭제 됨
             self.delete_stream()
-            self.delete_solution_instance()
 
         if delete_solution:
-            if delete_instance:
-                self.delete_solution()
-            else:
-                raise Exception("delete_instance 옵션을 켜야 solution 삭제가 가능합니다.")
+            self.delete_solution_instance()
+            self.delete_solution()
 
 
     def print_step(self, step_name, sub_title=False):
@@ -1332,13 +1327,14 @@ class SolutionRegister:
             raise NotImplementedError(f"[FAIL] Failed to create CodeBuild project \n {resp_create_proj}")           
         return codebuild_client, build_id
 
-    def _batch_get_builds(self, codebuild_client, build_id, status_period):
+    def _batch_get_builds(self, codebuild_client, build_id):
         # 7. async check remote build status (1check per 10seconds)
         build_status = None 
         while True: 
+            time.sleep(1)
             resp_batch_get_builds = codebuild_client.batch_get_builds(ids = [build_id])  
             if type(resp_batch_get_builds)==dict and 'builds' in resp_batch_get_builds.keys():
-                # print('###', resp_batch_get_builds)
+                print('###', resp_batch_get_builds)
                 # assert len(resp_batch_get_builds) == 1 # pipeline 당 build 1회만 할 것이므로 ids 목록엔 1개만 내장
                 build_status = resp_batch_get_builds['builds'][0]['buildStatus']
                 ## 'SUCCEEDED'|'FAILED'|'FAULT'|'TIMED_OUT'|'IN_PROGRESS'|'STOPPED'
@@ -1347,7 +1343,6 @@ class SolutionRegister:
                     break 
                 elif build_status == 'IN_PROGRESS': 
                     print_color(f"[IN PROGRESS] In progress.. remote building with AWS CodeBuild", color='blue')
-                    time.sleep(status_period)
                 else: 
                     print_color(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
                     break
