@@ -1,0 +1,130 @@
+pipeline {
+    agent any
+
+    parameters{
+        string(name: 'ID', defaultValue: '', description: 'Enter a LDAP login ID')
+        password(name: 'PASSWORD', defaultValue:'SECRET', description: 'Enter a LDAP login password')
+        booleanParam(name: 'INFERENCE_ONLY', defaultValue: false, description: '체크시 추론만 수행, otherwise 학습->추론')
+        booleanParam(name: 'SOLUTION_UPDATE', defaultValue: false, description: '체크시 솔루션 업데이트 수행')
+        string(name: 'SOLUTION_NAME', defaultValue: '', description: '솔루션 이름')
+        string(name: 'SOLUTION_TYPE', defaultValue: 'private', description: '솔루션 공개타입')
+        string(name: 'LABELING_COLUMN_NAME', defaultValue: '', description: 'labeling column name')
+        booleanParam(name: 'SUPPORT_LABELING', defaultValue: false, description: '체크 시 레이블 지원')
+        choice(name: 'INFERENCE_RESULT_TYPE', choices: ['table', 'image'])
+        choice(name: 'TRAIN_DATATYPE', choices: ['table', 'image'])
+        choice(name: 'INFRA_CONFIG_PATH', \
+               choices: ['setting/example_infra_config/infra_config.customer.yaml'])
+        booleanParam(name: 'TRAIN_GPU', defaultValue: false, description: '체크 시 학습에 GPU 사용')
+        booleanParam(name: 'INFERENCE_GPU', defaultValue: false, description: '체크 시 추론에 GPU 사용')
+        booleanParam(name: 'INFERENCE_ARM', defaultValue: false, description: '체크 시 ARM architecture 환경 구성')
+    }
+
+    stages {
+        stage('add_cli_builder') {
+            steps {
+                sh ''' cat <<"EOF" > cli_builder.py
+import os
+import sys
+
+try:
+    del sys.modules['src.solution_register'] 
+    del sys.modules['src.constants'] 
+except:
+    pass
+from src.solution_register import SolutionRegister
+
+
+def str2bool(string_bool:str) -> bool :
+    if string_bool.lower() == "true":
+        return True
+    else:
+        return False
+
+INFERENCE_ONLY = str2bool(os.getenv("INFERENCE_ONLY"))
+SOLUTION_UPDATE = str2bool(os.getenv("SOLUTION_UPDATE"))
+SOLUTION_NAME = os.getenv("SOLUTION_NAME")
+SOLUTION_TYPE = os.getenv("SOLUTION_TYPE", "private")
+LABELING_COLUMN_NAME = os.getenv("LABELING_COLUMN_NAME")
+SUPPORT_LABELING = str2bool(os.getenv("SUPPORT_LABELING"))
+INFERENCE_RESULT_DATATYPE = os.getenv("INFERENCE_RESULT_TYPE")
+TRAIN_DATATYPE =  os.getenv("TRAIN_DATATYPE")
+TRAIN_GPU = str2bool(os.getenv("TRAIN_GPU"))
+INFERENCE_GPU = str2bool(os.getenv("INFERENCE_GPU"))
+INFERENCE_ARM = str2bool(os.getenv("INFERENCE_ARM"))
+
+username = os.getenv("ID")
+password = os.getenv("PASSWORD")
+
+INFRA = os.getenv("INFRA_CONFIG_PATH")
+
+IS_DEBUG = os.getenv("IS_DEBUG", False)
+IS_SKIP_GENERATION_DOCKER = os.getenv("IS_SKIP_GENERATION_DOCKER", False)
+
+solution_info ={
+    'inference_only': INFERENCE_ONLY, # True, False
+    'solution_update': SOLUTION_UPDATE,
+    'solution_name': SOLUTION_NAME,
+    'solution_type': SOLUTION_TYPE,
+    'contents_type': {
+            'support_labeling': SUPPORT_LABELING,
+            'inference_result_datatype': INFERENCE_RESULT_DATATYPE, # 'image'
+            'train_datatype': TRAIN_DATATYPE, # 'image'
+            'labeling_column_name': LABELING_COLUMN_NAME
+    },
+    'train_gpu': TRAIN_GPU, ## cpu, gpu
+    'inference_gpu': INFERENCE_GPU,
+    "inference_arm": INFERENCE_ARM,  # amd, arm  
+}
+
+print("Your ID : ", username)
+print("Your PW : ", password.replace(password, '*' * len(password)))
+
+register = SolutionRegister(infra_setup=INFRA, solution_info=solution_info)
+
+register.login(username, password)
+register.debugging = IS_DEBUG  ## default: False (skip 항목: docker 생성, solution 등록)
+register.skip_generation_docker = IS_SKIP_GENERATION_DOCKER  ## default: False
+register.run(username=username, password=password)
+EOF
+'''
+            }
+        }
+        stage('inform build script'){
+            steps{
+                sh 'echo -e "[debug] show build script"'
+                sh 'cat cli_builder.py'
+            }
+        }
+        stage('check system conditions'){
+            steps{
+                sh 'echo -e "$Version Information\n(python --version)\n$(buildah --version)"'
+                sh 'aws sts get-caller-identity'
+            }
+        }
+        stage('install python requirements'){
+            steps{
+                sh 'echo "install python requirements to build ..."'
+                sh '''#!/bin/bash
+conda create -p ./temp_env python=3.10 -y
+'''
+            }
+        }
+        stage('installations and run'){
+            steps{
+                sh '''#!/bin/bash
+export PATH=/opt/conda/bin:$PATH
+eval "$(conda shell.bash hook)"
+conda activate ./temp_env
+which python
+pip3 install -r requirements.txt || exit 1
+pip3 install -r solution_requirements.txt || exit 1
+python3 cli_builder.py || exit 1
+echo -e "Finish build"
+conda deactivate
+conda env remove -p ./temp_env
+'''
+            }
+        }
+    }
+}
+
