@@ -251,7 +251,7 @@ class Pipeline:
         ###################################
         if self.control['backup_artifacts'] == True: 
             if self.system_envs['solution_metadata'] is not None:
-                PROC_LOGGER.process_info("Now in operation modde. Skip backup history.")
+                PROC_LOGGER.process_info("Now in operation mode. Skip backup history.")
                 pass
             else: 
                 try:
