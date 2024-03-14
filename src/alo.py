@@ -77,7 +77,6 @@ class ALO:
         pipeline_type = mode
 
         self.system_envs = {}
-
         # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
         if exp_plan_path == "" or exp_plan_path == None:
             exp_plan_path = DEFAULT_EXP_PLAN
@@ -152,8 +151,6 @@ class ALO:
                 pipeline.run()
                 pipeline.save()
                 # pipeline.history()
-
-
                 
                 # FIXME loop 모드로 동작 / solution_metadata를 어떻게 넘길지 고민 / update yaml 위치를 새로 선정할 필요가 있음 ***
                 if self.loop: 
@@ -216,11 +213,11 @@ class ALO:
         self.system_envs['experimental_plan_path'] = exp_plan_path
         self.exp_yaml, sys_envs = self.load_exp_plan(sol_meta, exp_plan_path, self.system_envs)
         self._set_attr()
-        # loop 모드면 항상 boot 모드
-        if self.computing != 'local':
+        # loop 모드면 항상 처음에 boot 모드
+        if self.computing != 'local': #sagemaker
             self.system_envs = self._set_system_envs(pipeline_type, True, self.system_envs)
         else:
-            if 'boot_on' in self.system_envs.keys(): # loop mode - boot on 이후 
+            if 'boot_on' in self.system_envs.keys(): # loop mode - boot on 이후 (boot on 꺼놨으므로 False임)
                 self.system_envs = self._set_system_envs(pipeline_type, self.system_envs['boot_on'], self.system_envs)
             else: # loop mode - 최초 boot on 시 / 일반 flow  
                 self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
@@ -376,7 +373,7 @@ class ALO:
         # 'init': initial status / 'summary': success until 'q_inference_summary'/ 'artifacts': success until 'q_inference_artifacts'
         system_envs['runs_status'] = 'init'         
         system_envs['boot_on'] = boot_on
-        system_envs['loop'] = boot_on
+        system_envs['loop'] = self.loop
         system_envs['start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
 
         if self.computing != 'local':

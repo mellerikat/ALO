@@ -60,7 +60,7 @@ class Pipeline:
         self.external = ExternalHandler()
         self.asset_structure = AssetStructure()
         self.artifact = Aritifacts()
-
+    
         def get_yaml_data(key, pipeline_type = 'all'): # inner func.
             data_dict = {}
             if key == "name" or key == "version":
@@ -497,7 +497,8 @@ class Pipeline:
         success_str = None
         summary_dir = INFERENCE_SCORE_PATH
         if 'inference_summary.yaml' in os.listdir(summary_dir):
-            summary_dict = self.experimental_plan.get_yaml(summary_dir + 'inference_summary.yaml')
+            meta = Metadata()
+            summary_dict = meta.get_yaml(summary_dir + 'inference_summary.yaml')
             success_str = json.dumps({'status':'success', 'message': summary_dict})
             self.system_envs['q_inference_summary'].rput(success_str)
             PROC_LOGGER.process_info("Successfully completes putting inference summary into redis queue.")
