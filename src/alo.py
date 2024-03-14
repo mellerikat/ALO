@@ -190,7 +190,7 @@ class ALO:
 
                 # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
                 # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
-                self.artifact.backup_history(pipe, self.system_envs, backup_exp_plan={}, error=True, size=self.control['backup_size'])
+                self.artifact.backup_history(pipe, self.system_envs, backup_exp_plan=self.exp_yaml, error=True, size=self.control['backup_size'])
                 # error 발생해도 external save artifacts 하도록        
                 empty = self.ext_data.external_save_artifacts(pipe, self.external_path, self.external_path_permission)
                 if self.loop == True:

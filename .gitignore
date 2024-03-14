@@ -26,3 +26,5 @@ solution_requirements.txt
 solution_metadata.yaml
 codebuild_solution.zip
 .codebuild_solution_zip/
+inference_docker_build.log
+train_docker_build.log

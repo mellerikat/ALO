@@ -349,11 +349,20 @@ class Pipeline:
                                     history_dict[folder][f"{step}.{key}"] = "none"
                                 else:
                                     history_dict[folder][f"{step}.{key}"] = value
+
+            ########################## 
+            #### Set4: 실패된 실험 탐색
+            if '-error' in folder:
+                history_dict[folder]['status'] = "error"
+            else:
+                history_dict[folder]['status'] = "success"
+
+
         
         ## Make Table
         # List of keys we want to remove
         drop_keys = ['data_id_description', 'code_id_description', 'file_path']
-        new_order = ['id', 'start_time', 'end_time', 'score', 'result', 'note', 'probability', 'version', 'data_id', 'code_id', 'param_id']
+        new_order = ['id', 'status', 'start_time', 'end_time', 'score', 'result', 'note', 'probability', 'version', 'data_id', 'code_id', 'param_id']
         if ptype == 'inference':
             new_order.append('train_id')
 
