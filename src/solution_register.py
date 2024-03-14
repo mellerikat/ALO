@@ -377,7 +377,7 @@ class SolutionRegister:
         pattern = re.compile('^[a-zA-Z0-9-]+$')
         # 정규 표현식으로 입력 문자열 검사
         if not pattern.match(name):
-            raise ValueError("The solution name can only contain alphanumeric characters and underscores.")
+            raise ValueError("The solution name can only contain lowercase letters / dash / number (ex. my-solution-v0)")
 
         ########## name-unique #########
         solution_data = {
