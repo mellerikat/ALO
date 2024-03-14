@@ -417,7 +417,7 @@ class ALO:
                 # 로드한 YAML 내용을 JSON 문자열로 변환
                 self.system = json.dumps(content)
             except FileNotFoundError:
-                print(f"The file {filename} does not exist.")
+                self.proc_logger.process_error(f"The file {filename} does not exist.")
         return json.loads(self.system) if self.system != None else None # None or dict from json 
     
     def load_exp_plan(self, sol_meta, experimental_plan, system_envs):
