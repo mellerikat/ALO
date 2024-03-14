@@ -161,6 +161,7 @@ class ALO:
                         # boot 모드 동작 후 boot 모드 취소
                         self.system_envs['boot_on'] = False
                         msg_dict = self._get_redis_msg() ## 수정
+                        
                         self.system = msg_dict['solution_metadata'] ## 수정
                         self.set_metadata(pipeline_type='inference') ## 수정
                         self.main()

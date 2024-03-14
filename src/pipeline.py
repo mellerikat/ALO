@@ -92,9 +92,10 @@ class Pipeline:
 
     def setup(self):
         self._empty_artifacts(self.pipeline_type)
-        _, packs, = self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
-
-        self._create_package(packs)
+        print(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
+        _, packs = self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
+        if packs is not None: 
+            self._create_package(packs)
 
         # TODO return 구성
         # return
@@ -617,7 +618,7 @@ class Pipeline:
 
         # 운영 무한 루프 구조일 땐 boot_on 시 에만 install 하고 이후에는 skip
         if (self.system_envs['boot_on'] == False) and (self.system_envs['redis_host'] is not None):
-            pass
+            return None, None
         else:
             return self._install_steps(asset_source, get_asset_source)
 
