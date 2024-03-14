@@ -249,7 +249,7 @@ class Pipeline:
         ###################################
         ## Step9: Artifacts 를 history 에 backup
         ###################################
-          if self.control['backup_artifacts'] == True: 
+        if self.control['backup_artifacts'] == True: 
             if self.system_envs['solution_metadata'] is not None:
                 PROC_LOGGER.process_info("Now in operation modde. Skip backup history.")
                 pass
