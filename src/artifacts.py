@@ -56,11 +56,9 @@ class Aritifacts:
                 - backup_artifacts(pipeline, self.exp_plan_file, self.system_envs, backup_exp_plan, error=False)
         """
         
+        ## history 폴더 oversize 시, 폳더 제거
         size_limit = size * 1024 * 1024
-        backup_size = self._get_folder_size(HISTORY_PATH)
-        
-        if backup_size > size_limit:
-            self._delete_old_files(HISTORY_PATH, 10)
+        self._delete_old_folders(size_limit)
 
         ptype = pipelines.split("_")[0]
         # FIXME 추론 시간이 1초 미만일 때는 train pipeline과 history  내 폴더 명 중복 가능성 존재. 임시로 cureent_pipelines 이름 추가하도록 대응. 고민 필요    
@@ -108,24 +106,80 @@ class Aritifacts:
             shutil.copytree(src_path, dst_path)
 
 
-    def _get_folder_size(self, folder_path):
+    def _delete_old_folders(self, folder_size_limit):
+        """
+        Deletes folders within 'train' and 'inference' subdirectories of a specified
+        directory proportionally to their sizes if the total size exceeds a given limit.
     
-        total_size = 0
-        for dirpath, dirnames, filenames in os.walk(folder_path):
-            for f in filenames:
-                fp = os.path.join(dirpath, f)
-                if not os.path.islink(fp) and os.path.isfile(fp):
-                    total_size += os.path.getsize(fp)
-        return total_size
+        The function calculates the current sizes of both 'train' and 'inference' folders.
+        If the sum of these sizes exceeds the specified limit, it calculates how much data
+        needs to be deleted from each based on their proportion of the total size.
+        Deletion happens from the oldest folders determined by the UTC timestamp in the folder name.
+    
+        Parameters:
+        - folder_path (str): The path to the directory containing 'train' and 'inference' folders.
+        - folder_size_limit (int): The maximum allowed size in bytes for the sum of the sizes of
+        the 'train' and 'inference' folders.
 
-    def _delete_old_files(self, folder_path, days_old):
-        cutoff_date = datetime.now() - timedelta(days=days_old)
-        for dirpath, dirnames, filenames in os.walk(folder_path):
-            for d in dirnames:
-                folder = os.path.join(dirpath, d)
-                if os.path.isdir(folder):
-                    folder_modified_date = datetime.fromtimestamp(os.path.getmtime(folder))
-                    if folder_modified_date < cutoff_date:
-                        os.rmdir(folder)
-                        print(folder)
+        Note: Folder names within 'train' and 'inference' must follow the '{UTC}-{random}-{title}'
+        format for the deletion priority to be determined based on their age.
+        """
 
+
+        # 각 폴더 경로 정의
+        train_path = os.path.join(HISTORY_PATH, 'train')
+        inference_path = os.path.join(HISTORY_PATH, 'inference')
+    
+        # 각 폴더의 크기 계산 함수
+        def get_folder_size(start_path):
+            total_size = 0
+            for dirpath, dirnames, filenames in os.walk(start_path):
+                for f in filenames:
+                    fp = os.path.join(dirpath, f)
+                    if not os.path.islink(fp) and os.path.exists(fp):
+                        total_size += os.path.getsize(fp)
+            return total_size
+
+        # 각 폴더 크기 계산
+        train_size = get_folder_size(train_path)
+        inference_size = get_folder_size(inference_path)
+        total_size = train_size + inference_size
+
+        # 폴더 사이즈가 제한을 초과하지 않으면 아무 것도 하지 않음
+        if total_size <= folder_size_limit:
+            PROC_LOGGER.process_info("[backup_history] Current total size is within the limit. No deletion required.")
+            return
+
+        # 삭제해야 할 전체 양 계산
+        total_to_delete = total_size - folder_size_limit
+
+        # 비율에 따라 삭제할 양 계산
+        train_to_delete = (train_size / total_size) * total_to_delete
+        inference_to_delete = (inference_size / total_size) * total_to_delete
+
+        def delete_from_folder(folder_path, target_size):
+            folders = []
+            for item in os.listdir(folder_path):
+                full_path = os.path.join(folder_path, item)
+                if os.path.isdir(full_path):
+                    try:
+                        utc_time_str = item.split('-')[0]
+                        utc_time = datetime.strptime(utc_time_str, TIME_FORMAT)
+                        folders.append((full_path, utc_time))
+                    except ValueError:
+                        continue
+
+            folders.sort(key=lambda x: x[1])
+
+            current_size = get_folder_size(folder_path)
+            for folder, _ in folders:
+                if current_size <= target_size:
+                    break
+                folder_size = get_folder_size(folder)
+                PROC_LOGGER.process_info(f"Delete history folder: {folder}")  # 삭제 로그 출력
+                shutil.rmtree(folder)
+                current_size -= folder_size  # 폴더 삭제 후 크기 업데이트
+
+        # 각 폴더에서 유지해야 할 크기로 삭제
+        delete_from_folder(train_path, train_size - train_to_delete)
+        delete_from_folder(inference_path, inference_size - inference_to_delete)

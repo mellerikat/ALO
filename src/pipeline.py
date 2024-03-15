@@ -251,15 +251,11 @@ class Pipeline:
         ## Step9: Artifacts 를 history 에 backup
         ###################################
         if self.control['backup_artifacts'] == True: 
-            if self.system_envs['solution_metadata'] is not None:
-                PROC_LOGGER.process_info("Now in operation mode. Skip backup history.")
-                pass
-            else: 
-                try:
-                    backup_exp_plan = self._make_expplan_dict()
-                    self.artifact.backup_history(self.pipeline_type, self.system_envs, backup_exp_plan, size=self.control['backup_size'])
-                except:
-                    PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
+            try:
+                backup_exp_plan = self._make_expplan_dict()
+                self.artifact.backup_history(self.pipeline_type, self.system_envs, backup_exp_plan, size=self.control['backup_size'])
+            except:
+                PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
 
     def history(self, data_id="", param_id="", code_id="", parameter_steps=[]):
         """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
