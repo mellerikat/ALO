@@ -72,6 +72,7 @@ AWS_CODEBUILD_S3_SOLUTION_FILE = "codebuild_solution" #.zip
 AWS_CODEBUILD_ZIP_PATH = PROJECT_HOME + ".codebuild_solution_zip/"
 AWS_CODEBUILD_BUILD_SOURCE_PATH = AWS_CODEBUILD_ZIP_PATH + ".register_source/"
 AWS_CODEBUILD_BUILDSPEC_FILE = "buildspec.yml" 
+
 ###################################
 ##### Set sagemaker 
 ###################################

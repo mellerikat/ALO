@@ -207,9 +207,9 @@ class SolutionRegister:
 
         ## get async codebuild resp 
         if train_codebuild_client != None and train_build_id != None: 
-            self._batch_get_builds(train_codebuild_client, train_build_id)
+            self._batch_get_builds(train_codebuild_client, train_build_id, status_period=10)
         if inference_codebuild_client != None and inference_build_id != None: 
-            self._batch_get_builds(inference_codebuild_client, inference_build_id)
+            self._batch_get_builds(inference_codebuild_client, inference_build_id, status_period=10)
             
         if not self.debugging:
             self.register_solution()
@@ -1232,28 +1232,17 @@ class SolutionRegister:
             codebuild_role = iam_client.get_role(RoleName = 'CodeBuildServiceRole')['Role']['Arn']
         except: 
             raise NotImplementedError("Failed to get aws codebuild arn")
-        # 1. make buildspec.yml
-        with open(AWS_CODEBUILD_BUILDSPEC_FORMAT_FILE, 'r') as file: 
-            ## {'version': 0.2, 'phases': {'pre_build': {'commands': None}, 'build': {'commands': None}, 'post_build': {'commands': None}}}
-            buildspec = yaml.safe_load(file)
-        pre_command = [f'aws ecr get-login-password --region {self.infra_setup["REGION"]} \
-                       | docker login --username AWS --password-stdin {self.ecr_url}/{self.ecr_repo}']
-        build_command = [f'docker build . -t {self.ecr_full_url}:v{self.solution_version_new}']
-        post_command = [f'docker push {self.ecr_full_url}:v{self.solution_version_new}']
-        buildspec['phases']['pre_build']['commands'] = pre_command
-        buildspec['phases']['build']['commands'] = build_command
-        buildspec['phases']['post_build']['commands'] = post_command
+        # 1. make buildspec.yml  
+        if self.solution_info['inference_arm'] == False:   
+            buildspec = self._make_buildspec_commands()
+        else: 
+            buildspec = self._make_cross_buildspec_commands()
+
         # 2. make create-codebuild-project.json (trigger: s3)
         s3_prefix_uri = "ai-solutions/" + self.solution_name + \
               f"/v{self.solution_version_new}/" + self.pipeline  + "/codebuild/"
         bucket_uri = self.bucket_name + "/" + s3_prefix_uri 
-        with open(AWS_CODEBUILD_S3_PROJECT_FORMAT_FILE) as file:
-            codebuild_project_json = json.load(file)
-        codebuild_project_json['source']['location'] = bucket_uri + AWS_CODEBUILD_S3_SOLUTION_FILE + '.zip'
-        codebuild_project_json['artifacts']['location'] = self.bucket_name # artifacts location에는 / 비허용
-        codebuild_project_json['serviceRole'] = codebuild_role
-        codebuild_project_json['environment']['type'] = self.infra_setup["CODEBUILD_ENV_TYPE"]
-        codebuild_project_json['environment']['computeType'] = self.infra_setup["CODEBUILD_ENV_COMPUTE_TYPE"]
+        codebuild_project_json = self._make_codebuild_s3_project(bucket_uri, codebuild_role)
         # 3. make solution.zip (including buildspec.yml)
         ## .package_list 제외한 나머지 파일,폴더들은 .register_source 폴더로 한번 감싼다. 
         ## .codebuild_solution_zip 폴더 초기화
@@ -1300,7 +1289,6 @@ class SolutionRegister:
             ValueError("The credentials are not available.")
         # print(codebuild_project_json)
         # 이미 같은 이름의 project 존재하면 삭제 
-
         project_name = f'codebuild-project-{self.solution_name}-{self.solution_version_new}'
         if project_name in codebuild_client.list_projects()['projects']: 
             resp_delete_proj = codebuild_client.delete_project(name=project_name) 
@@ -1327,14 +1315,59 @@ class SolutionRegister:
             raise NotImplementedError(f"[FAIL] Failed to create CodeBuild project \n {resp_create_proj}")           
         return codebuild_client, build_id
 
-    def _batch_get_builds(self, codebuild_client, build_id):
+    def _make_codebuild_s3_project(self, bucket_uri, codebuild_role):
+        with open(AWS_CODEBUILD_S3_PROJECT_FORMAT_FILE) as file:
+            codebuild_project_json = json.load(file)
+        codebuild_project_json['source']['location'] = bucket_uri + AWS_CODEBUILD_S3_SOLUTION_FILE + '.zip'
+        codebuild_project_json['artifacts']['location'] = self.bucket_name # artifacts location에는 / 비허용
+        codebuild_project_json['serviceRole'] = codebuild_role
+        codebuild_project_json['environment']['type'] = self.infra_setup["CODEBUILD_ENV_TYPE"]
+        codebuild_project_json['environment']['computeType'] = self.infra_setup["CODEBUILD_ENV_COMPUTE_TYPE"]
+        return codebuild_project_json
+        
+    def _make_buildspec_commands(self):
+        with open(AWS_CODEBUILD_BUILDSPEC_FORMAT_FILE, 'r') as file: 
+            ## {'version': 0.2, 'phases': {'pre_build': {'commands': None}, 'build': {'commands': None}, 'post_build': {'commands': None}}}
+            buildspec = yaml.safe_load(file)
+        pre_command = [f'aws ecr get-login-password --region {self.infra_setup["REGION"]} | docker login --username AWS --password-stdin {self.ecr_url}/{self.ecr_repo}']
+        build_command = [f'docker build . -t {self.ecr_full_url}:v{self.solution_version_new}']
+        post_command = [f'docker push {self.ecr_full_url}:v{self.solution_version_new}']
+        buildspec['phases']['pre_build']['commands'] = pre_command
+        buildspec['phases']['build']['commands'] = build_command
+        buildspec['phases']['post_build']['commands'] = post_command
+        del buildspec['phases']['install']
+        return buildspec
+
+    def _make_cross_buildspec_commands(self):
+        # make buildspec for amd --> arm cross build 
+        with open(AWS_CODEBUILD_BUILDSPEC_FORMAT_FILE, 'r') as file: 
+            ## {'version': 0.2, 'phases': {'pre_build': {'commands': None}, 'build': {'commands': None}, 'post_build': {'commands': None}}}
+            buildspec = yaml.safe_load(file)
+        # runtime_docker_version = {'docker': AWS_CODEBUILD_DOCKER_RUNTIME_VERSION} # 19
+        install_command = ['docker version', \
+                'curl -JLO https://github.com/docker/buildx/releases/download/v0.4.2/buildx-v0.4.2.linux-amd64', \
+                'mkdir -p ~/.docker/cli-plugins', \
+                'mv buildx-v0.4.2.linux-amd64 ~/.docker/cli-plugins/docker-buildx', \
+                'chmod a+rx ~/.docker/cli-plugins/docker-buildx', \
+                'docker run --privileged --rm tonistiigi/binfmt --install all']
+        pre_command = [f'aws ecr get-login-password --region {self.infra_setup["REGION"]} | docker login --username AWS --password-stdin {self.ecr_url}/{self.ecr_repo}']
+        build_command = ['docker buildx create --use --name crossx', \
+                f'docker buildx build --push --platform=linux/amd64,linux/arm64 -t {self.ecr_full_url}:v{self.solution_version_new} .']
+        # buildspec['phases']['install']['runtime-versions'] = runtime_docker_version
+        buildspec['phases']['install']['commands'] = install_command
+        buildspec['phases']['pre_build']['commands'] = pre_command
+        buildspec['phases']['build']['commands'] = build_command
+        del buildspec['phases']['post_build']
+        return buildspec
+    
+    def _batch_get_builds(self, codebuild_client, build_id, status_period=10):
         # 7. async check remote build status (1check per 10seconds)
         build_status = None 
         while True: 
-            time.sleep(1)
             resp_batch_get_builds = codebuild_client.batch_get_builds(ids = [build_id])  
             if type(resp_batch_get_builds)==dict and 'builds' in resp_batch_get_builds.keys():
-                print('###', resp_batch_get_builds)
+                print_color(f'Response-batch-get-builds: \n', color='blue')
+                print(resp_batch_get_builds)
                 # assert len(resp_batch_get_builds) == 1 # pipeline 당 build 1회만 할 것이므로 ids 목록엔 1개만 내장
                 build_status = resp_batch_get_builds['builds'][0]['buildStatus']
                 ## 'SUCCEEDED'|'FAILED'|'FAULT'|'TIMED_OUT'|'IN_PROGRESS'|'STOPPED'
@@ -1343,8 +1376,9 @@ class SolutionRegister:
                     break 
                 elif build_status == 'IN_PROGRESS': 
                     print_color(f"[IN PROGRESS] In progress.. remote building with AWS CodeBuild", color='blue')
+                    time.sleep(status_period)
                 else: 
-                    print_color(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
+                    print_color(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}", color='red')
                     break
                     # raise NotImplementedError(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
         # 8. s3 delete .zip ? 
