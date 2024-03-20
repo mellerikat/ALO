@@ -1,19 +1,17 @@
 # set up pipeline class
 import hashlib
 import importlib
-import inspect
 import random
 import sys
 import os
 import re
 from datetime import datetime
 import shutil
-from typing import Dict, List, Tuple, Union, Optional, Any
+from typing import Dict
 from collections import Counter
 import git
 import json
 import yaml
-
 from src.constants import *
 # from src.assets import *
 from src.install import Packages
@@ -45,33 +43,27 @@ class Pipeline:
     def __init__(self, experimental_plan: Dict, pipeline_type: str, system_envs: Dict ):
         if not pipeline_type in ['all', 'train_pipeline', 'inference_pipeline']:
             raise Exception(f"Invalid pipeline type: {pipeline_type}")
-
         if not os.path.exists(ASSET_HOME):
             try:
                 os.makedirs(ASSET_HOME)
             except:
                 PROC_LOGGER.process_error(f"Failed to create directory: {ASSET_HOME}")
-
         self.pipeline_type = pipeline_type
         self.system_envs = system_envs
-
         # TODO ALO 에 대한 클래스는 pipeline에서만 사용 나중에 옮겨야 할지 논의
         self.install = Packages()
         self.external = ExternalHandler()
         self.asset_structure = AssetStructure()
         self.artifact = Aritifacts()
     
-        def get_yaml_data(key, pipeline_type = 'all'): # inner func.
+        def _get_yaml_data(key, pipeline_type = 'all'): # inner func.
             data_dict = {}
             if key == "name" or key == "version":
                 return experimental_plan[key]
-
             if experimental_plan[key] == None:
                 return []
-
             for data in experimental_plan[key]:
                 data_dict.update(data)
-
             if 'train_pipeline' in data_dict and 'inference_pipeline' in data_dict:
                 if pipeline_type == 'train_pipeline':
                     remove_key = 'inference_pipeline'
@@ -79,14 +71,10 @@ class Pipeline:
                 else:
                     remove_key = 'train_pipeline'
                     del data_dict[remove_key]
-
             return data_dict
-
         # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
-        values = {}
         for key, value in experimental_plan.items():
-            setattr(self, key, get_yaml_data(key, pipeline_type))
-
+            setattr(self, key, _get_yaml_data(key, pipeline_type))
         ## pipeline.run() 만 실행 시, init 에 존재해야 함
         self._set_asset_structure()
 
@@ -96,21 +84,16 @@ class Pipeline:
         _, packs = self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         if packs is not None: 
             self._create_package(packs)
-
         # TODO return 구성
         # return
 
     def load(self, data_path=[]):
-
         ############  Load Model  ##################
         if self.pipeline_type == 'inference_pipeline':
             if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""):
                 self.external.external_load_model(self.external_path, self.external_path_permission)
-
                 ## v2.3.0 NEW: 실험 history 의 train_id 를 제거하고, 특수 문장을 기록
                 self.system_envs['inference_history']['train_id'] = "load-external-model"
-
-
         ############  Load Data  ##################
         ## 데이터 Path 를 args 로 입력 받을 수 있다.
         ptype = self.pipeline_type.split('_')[0]
@@ -119,21 +102,15 @@ class Pipeline:
         if len(data_path) > 0:
             ## save() 시, 업데이트 된 값으로 exp_plan 저장
             self.external_path[f'load_{ptype}_data_path'] = data_path
-
         if self.system_envs['boot_on'] == False:  ## boot_on 시, skip
             # NOTE [중요] wrangler_dataset_uri 가 solution_metadata.yaml에 존재했다면,
             # 이미 _update_yaml할 때 exeternal load inference data path로 덮어쓰기 된 상태
             data_checksums = self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission)
-
             # v2.3.0 NEW: 실험 history 를 위한 data_id 생성
             ptype = self.pipeline_type.split('_')[0]
             self.system_envs[f'{ptype}_history'].update(data_checksums)
-
-
         # TODO return 구성
         # return
-
-
 
     def run(self, steps = 'All'):
         if steps == 'All':
@@ -175,12 +152,10 @@ class Pipeline:
                     self.process_asset_step(asset_config, step)
                 except:
                     PROC_LOGGER.process_error(f"Failed to process step: << {steps} >>")
-        
         ## v2.3.0 NEW: param_id 생성 
         params = self.user_parameters[self.pipeline_type]
         ptype = self.pipeline_type.split('_')[0]
         self.system_envs[f'{ptype}_history']['param_id'] = self._parameter_checksum(params)
-
         ## v2.3.0 NEW: code id 생성
         total_checksum = hashlib.md5()
         checksum_dict = {}
@@ -188,41 +163,32 @@ class Pipeline:
             _path = ASSET_HOME + asset_config['step'] + "/"
             checksum = self._code_checksum(_path)
             checksum_dict[asset_config['step']] = checksum
-
             # 폴더별 checksum을 문자열로 변환 후 total_checksum 업데이트
             total_checksum.update(str(checksum).encode())
-
         # MD5 해시값을 16진수 문자열로 변환 후 처음부터 12자리만 사용하여 길이를 12로 제한
         total_checksum_str = total_checksum.hexdigest()[:12]
-
         self.system_envs[f'{ptype}_history']['code_id_description'] = checksum_dict
         # 수정된 부분: total_checksum을 문자열의 형태로 저장하며, 길이가 12가 되도록 조정
         self.system_envs[f'{ptype}_history']['code_id'] = total_checksum_str 
 
     def save(self):
-
         ###################################
         ## Step7: summary yaml, output 정상 생성 체크
         ###################################
         if (self.pipeline_type == 'inference_pipeline') and (self.system_envs['boot_on'] == False):
             self._check_output()
-
         # 추론 output 생성이 완료 됐다는 성공 msg를 edgeapp으로 전송
         if self.system_envs['loop'] and (self.system_envs['boot_on'] == False):
             self.system_envs['success_str'] = self._send_summary()
-
         ###################################
         ## Step8: Artifacts 저장
         ###################################
         if self.system_envs['boot_on'] == False:
             # save_artifacts 내에도 edgeapp redis 전송 있음
             self._save_artifacts()
-
             ## backup 까지는 최종 실행 시간으로 정의
             self.system_envs['experimental_end_time'] = datetime.now().strftime(TIME_FORMAT)
             PROC_LOGGER.process_info(f"Process finish-time: {datetime.now().strftime(TIME_FORMAT_DISPLAY)}")
-
-
             ptype = self.pipeline_type.split('_')[0]
             sttime = self.system_envs['experimental_start_time']
             exp_name = self.system_envs['experimental_name']
@@ -230,14 +196,12 @@ class Pipeline:
             self.system_envs[f"{ptype}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
             self.system_envs[f"{ptype}_history"]['start_time'] = sttime
             self.system_envs[f"{ptype}_history"]['end_time'] = self.system_envs['experimental_end_time']
-
             ## train 종료 시, inference_history 에 미리 저장. train_id 는 inference 중에 변경될 수 있기 때문.
             if self.pipeline_type == 'train_pipeline':
                 try:
                     self.system_envs[f"inference_history"]['train_id'] = self.system_envs["train_history"]['id']
                 except: ## single pipeline (only inference)
                     self.system_envs[f"inference_history"]['train_id'] = "none"
-
             if self.control['backup_artifacts'] == True:
                 # system_envs 에서 data, code, param id 를 저장함
                 if ptype == 'train':
@@ -246,16 +210,15 @@ class Pipeline:
                     path = INFERENCE_ARTIFACTS_PATH + 'log/experimental_history.json'
                 with open(path, 'w') as f:
                     json.dump(self.system_envs[f"{ptype}_history"], f, indent=4)    
-
-        ###################################
-        ## Step9: Artifacts 를 history 에 backup
-        ###################################
-        if self.control['backup_artifacts'] == True: 
-            try:
-                backup_exp_plan = self._make_expplan_dict()
-                self.artifact.backup_history(self.pipeline_type, self.system_envs, backup_exp_plan, size=self.control['backup_size'])
-            except:
-                PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
+            ###################################
+            ## Step9: Artifacts 를 history 에 backup
+            ###################################
+            if (self.control['backup_artifacts'] == True): 
+                try:
+                    backup_exp_plan = self._make_expplan_dict()
+                    self.artifact.backup_history(self.pipeline_type, self.system_envs, backup_exp_plan, size=self.control['backup_size'])
+                except:
+                    PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
 
     def history(self, data_id="", param_id="", code_id="", parameter_steps=[]):
         """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
@@ -272,7 +235,6 @@ class Pipeline:
         entries = os.listdir(base_path)
         # 엔트리 중에서 디렉토리만 필터링하여 리스트에 추가합니다.
         folders = [entry for entry in entries if os.path.isdir(os.path.join(base_path, entry))]
-
         history_dict = {}
         empty_score_dict = {
             "date": '',
@@ -283,7 +245,6 @@ class Pipeline:
             "score": "",
             "version": "",
         }
-
         ## TODO: sqllite 도입 고려 (속도 이슈가 있다고 할 경우)
         for folder in folders: 
             ########################## 
@@ -304,12 +265,10 @@ class Pipeline:
                     "start_time": "20000101T000000Z",
                     "end_time": "20000101T000000Z"
                 }
-
                 # experiment_history.json 이 없는 경우 inference 일 경우 train_id 를 none 으로 설정함.
                 if ptype == "inference":
                     empty_dict["train_id"] = "none"
                 history_dict[folder] = empty_dict
-
             ########################## 
             #### Set2: score 탐색
             file_score = base_path + folder + f"/score/{ptype}_summary.yaml"
@@ -322,7 +281,6 @@ class Pipeline:
                     history_dict[folder].update(empty_score_dict)
             else:
                 history_dict[folder].update(empty_score_dict)
-
             ########################## 
             #### Set3: score 탐색
             file_exp = base_path + folder + f"/experimental_plan.yaml"
@@ -333,15 +291,12 @@ class Pipeline:
             else:
                 meta.read_yaml(exp_plan_file=DEFAULT_EXP_PLAN, update_envs=False)
                 value_empty=True
-
             for pipe, steps_dict in meta.user_parameters.items():
                 if pipe == self.pipeline_type:
                     ## parameter_steps 가 유효 한지 검사
                     exp_step_list = sorted([i['step'] for i in meta.user_parameters[pipe]])
-
                     if not all(iten in exp_step_list for iten in parameter_steps):
                         raise ValueError(f"parameter_steps {parameter_steps} is not valid. It should be one of {exp_step_list}")
-
                     for step_dict in steps_dict:  ## step 별 args 출력 
                         step = step_dict['step']
                         if step in parameter_steps:
@@ -350,46 +305,36 @@ class Pipeline:
                                     history_dict[folder][f"{step}.{key}"] = "none"
                                 else:
                                     history_dict[folder][f"{step}.{key}"] = value
-
             ########################## 
             #### Set4: 실패된 실험 탐색
             if '-error' in folder:
                 history_dict[folder]['status'] = "error"
             else:
                 history_dict[folder]['status'] = "success"
-
-
-        
         ## Make Table
         # List of keys we want to remove
         drop_keys = ['data_id_description', 'code_id_description', 'file_path']
         new_order = ['id', 'status', 'start_time', 'end_time', 'score', 'result', 'note', 'probability', 'version', 'data_id', 'code_id', 'param_id']
         if ptype == 'inference':
             new_order.append('train_id')
-
         # A new dictionary to hold our processed records
         processed_dict = {}
         for key, record in history_dict.items():
             # Exclude unwanted keys
             filtered_record = {k: v for k, v in record.items() if k not in drop_keys}
-    
             # Reorder and select keys according to new_order, filling missing keys with None
             processed_record = {k: filtered_record.get(k, None) for k in new_order}
-    
             # Add remaining keys in their original order
             remaining_keys = [k for k in filtered_record.keys() if k not in new_order]
             for k in remaining_keys:
                 processed_record[k] = filtered_record[k]
-
             # Format the 'start_time' and 'end_time'
             processed_record['start_time'] = datetime.strptime(processed_record['start_time'], TIME_FORMAT).strftime(TIME_FORMAT_DISPLAY)
             processed_record['end_time'] = datetime.strptime(processed_record['end_time'], TIME_FORMAT).strftime(TIME_FORMAT_DISPLAY)
             # Add record to the new processed_dict
             processed_dict[key] = processed_record
-
         # Sort the records by end_time in descending order (not easily achievable with a dictionary, might need to convert to a list of tuples or a list of dictionaries)
         processed_records_list = list(processed_dict.values())
-
         # Filtering logic based on data_id, param_id, and code_id
         filtered_records_list = []
         for record in processed_records_list:
@@ -397,10 +342,8 @@ class Pipeline:
             (not param_id or record.get('param_id') == param_id) and \
             (not code_id or record.get('code_id') == code_id):
                 filtered_records_list.append(record)
-
         # Now 'processed_records_list' contains the list of dictionaries sorted by 'end_time' and you can use it as you wish.
         filtered_records_list.sort(key=lambda x: datetime.strptime(x['end_time'], TIME_FORMAT_DISPLAY), reverse=True)
-
         return filtered_records_list
 
 
@@ -422,7 +365,6 @@ class Pipeline:
         except:
             pass   ## 존재하지 않는 경우 대응
         return backup_exp_plan
-
 
     def _parameter_checksum(self, params):
         # params를 문자열로 변환하여 해시 입력값으로 사용
@@ -447,10 +389,8 @@ class Pipeline:
                     with open(file_path, 'rb') as f:
                         while chunk := f.read(8192):
                             checksum.update(chunk)
-    
         # 최종적인 checksum을 64비트 정수로 변환
         return int(checksum.hexdigest(), 16) & ((1 << 64) - 1)
-
 
     def _check_output(self):
         """inference_summary.yaml 및 output csv / image 파일 (jpg, png, svg) 정상 생성 체크
@@ -523,7 +463,6 @@ class Pipeline:
                 self.system_envs['runs_status'] = 'artifacts'
             else:
                 PROC_LOGGER.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
-
         return ext_saved_path
 
     def get_parameter(self, step_name):
@@ -542,14 +481,12 @@ class Pipeline:
                     return step['source']
                 else:
                     return step['source'][source]
-
         raise ValueError("error")
 
     # def process_asset_step(self, asset_config, step, pipeline, asset_structure):
     def process_asset_step(self, asset_config, step):
         # step: int
         self.asset_structure.envs['pipeline'] = self.pipeline_type
-
         _path = ASSET_HOME + asset_config['step'] + "/"
         _file = "asset_" + asset_config['step']
         # asset2등을 asset으로 수정하는 코드
@@ -558,11 +495,8 @@ class Pipeline:
         if self.system_envs['boot_on'] == True:
             PROC_LOGGER.process_info(f"===== Booting... completes importing << {_file} >>")
             return
-
         meta_dict = {'artifacts': self.system_envs['artifacts'], 'pipeline': self.pipeline_type, 'step': step, 'step_number': step, 'step_name': self.user_parameters[self.pipeline_type][step]['step']}
-
         self.asset_structure.config['meta'] = meta_dict #nested dict
-
         if step > 0:
             self.asset_structure.envs['prev_step'] = self.user_parameters[self.pipeline_type][step - 1]['step'] # asset.py에서 load config, load data 할때 필요
         self.asset_structure.envs['step'] = self.user_parameters[self.pipeline_type][step]['step']
@@ -575,7 +509,6 @@ class Pipeline:
         asset_structure.args = self.asset_structure.args[self.user_parameters[self.pipeline_type][step]['step']]
         ua = user_asset(asset_structure)
         self.asset_structure.data, self.asset_structure.config = ua.run()
-
         # FIXME memory release : on/off 필요
         try:
             if self.control['reset_assets']:
@@ -586,9 +519,7 @@ class Pipeline:
         except:
             self.memory_release(_path)
             sys.path = [item for item in sys.path if self.asset_structure.envs['step'] not in item]
-
         PROC_LOGGER.process_info(f"==================== Finish pipeline: {self.pipeline_type} / step: {asset_config['step']}")
-
 
     # 한번만 실행, 특정 에셋만 설치 할 수도 있음
     def _setup_asset(self, asset_source, get_asset_source):
@@ -612,7 +543,6 @@ class Pipeline:
         for value, count in step_counts.items():
             if count > 1:
                 PROC_LOGGER.process_error(f"Duplicate step exists: {value}")
-
         # 운영 무한 루프 구조일 땐 boot_on 시 에만 install 하고 이후에는 skip
         if (self.system_envs['boot_on'] == False) and (self.system_envs['redis_host'] is not None):
             return None, None
@@ -623,9 +553,7 @@ class Pipeline:
         """Asset 의 In/Out 을 data structure 로 전달한다.
         파이프라인 실행에 필요한 환경 정보를 envs 에 setup 한다.
         """
-
         self.asset_structure.envs['project_home'] = PROJECT_HOME
-
         self.asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
         self.asset_structure.envs['artifacts'] = self.system_envs['artifacts']
         self.asset_structure.envs['alo_version'] = self.system_envs['alo_version']
@@ -636,7 +564,6 @@ class Pipeline:
         self.asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
         self.asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
 
-
     def _install_steps(self, asset_source, get_asset_source='once'):
         requirements_dict = dict()
         for step, asset_config in enumerate(asset_source):
@@ -644,7 +571,6 @@ class Pipeline:
             # local or git pull 결정 및 scripts 폴더 내에 위치시킴
             self._install_asset(asset_config, get_asset_source)
             requirements_dict[asset_config['step']] = asset_config['source']['requirements']
-
         return self.install.check_install_requirements(requirements_dict)
 
     def _empty_artifacts(self, pipeline):
@@ -667,7 +593,6 @@ class Pipeline:
 
     def import_asset(self, _path, _file):
         _user_asset = 'none'
-
         try:
             # Asset import
             # asset_path = 상대경로로 지정 : PROJECT_HOME/scripts/data_input
@@ -675,10 +600,8 @@ class Pipeline:
             mod = importlib.import_module(_file)
         except ModuleNotFoundError:
             PROC_LOGGER.process_error(f'Failed to import asset. Not Found : {_path}{_file}.py')
-
         # UserAsset 클래스 획득
         _user_asset = getattr(mod, "UserAsset")
-
         return _user_asset
 
     def memory_release(self, _path):
@@ -707,9 +630,8 @@ class Pipeline:
             -----------
                 - setup_asset(asset_config, check_asset_source='once')
         """
-
         # FIXME 추후 단순 폴더 존재 유무 뿐 아니라 이전 실행 yaml과 비교하여 git주소, branch 등도 체크해야함
-        def renew_asset(step_path):
+        def _renew_asset(step_path): #inner func.
             """ Description
                 -----------
                     - asset을 git으로 부터 새로 당겨올지 말지 결정
@@ -721,7 +643,7 @@ class Pipeline:
                     - whether_renew_asset: Boolean
                 Example
                 -----------
-                    - whether_to_renew_asset =_renew_asset(step_path)
+                    - whether_to_renew_asset =__renew_asset(step_path)
             """
             whether_renew_asset = False
             if os.path.exists(step_path):
@@ -729,12 +651,10 @@ class Pipeline:
             else:
                 whether_renew_asset = True
             return whether_renew_asset
-
         # git url 확인 -> lib
-        def is_git_url(url):
+        def _is_git_url(url): #inner func.
             git_url_pattern = r'^(https?|git)://[^\s/$.?#].[^\s]*$'
             return re.match(git_url_pattern, url) is not None
-
         asset_source_code = asset_config['source']['code'] # local, git url
         step_name = asset_config['step']
         git_branch = asset_config['source']['branch']
@@ -752,9 +672,9 @@ class Pipeline:
                 PROC_LOGGER.process_error(f'Now << local >> asset_source_code mode: \n <{step_name}> asset folder does not exist in <assets> folder.')
         else: # git url & branch
             # git url 확인
-            if is_git_url(asset_source_code):
-                # _renew_asset(): 다시 asset 당길지 말지 여부 (bool)
-                if (check_asset_source == "every") or (check_asset_source == "once" and renew_asset(step_path)):
+            if _is_git_url(asset_source_code):
+                # __renew_asset(): 다시 asset 당길지 말지 여부 (bool)
+                if (check_asset_source == "every") or (check_asset_source == "once" and _renew_asset(step_path)):
                     PROC_LOGGER.process_info(f"Start renewing asset : {step_path}")
                     # git으로 또 새로 받는다면 현재 존재 하는 폴더를 제거 한다
                     if os.path.exists(step_path):
@@ -768,7 +688,7 @@ class Pipeline:
                     except:
                         PROC_LOGGER.process_error(f"Your have written incorrect git branch: {git_branch}")
                 # 이미 scripts내에 asset 폴더들 존재하고, requirements.txt도 설치된 상태
-                elif (check_asset_source == "once" and not renew_asset(step_path)):
+                elif (check_asset_source == "once" and not _renew_asset(step_path)):
                     modification_time = os.path.getmtime(step_path)
                     modification_time = datetime.fromtimestamp(modification_time) # 마지막 수정시간
                     PROC_LOGGER.process_info(f"<< {step_name} >> asset had already been created at {modification_time}")
@@ -777,7 +697,6 @@ class Pipeline:
                     PROC_LOGGER.process_error(f'You have written wrong check_asset_source: {check_asset_source}')
             else:
                 PROC_LOGGER.process_error(f'You have written wrong git url: {asset_source_code}')
-
         return
 
     def _create_package(self, packs):
@@ -786,7 +705,6 @@ class Pipeline:
         if os.path.exists(pipes_dir):
             shutil.rmtree(pipes_dir)
             print(f"Folder '{pipes_dir}' has been removed.")
-
         # 새로운 폴더를 생성합니다.
         os.makedirs(pipes_dir)
         print(f"Folder '{pipes_dir}' has been created.")
