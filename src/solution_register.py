@@ -332,7 +332,25 @@ class SolutionRegister:
                 print_color(f'\n>> Failed Login: {response_login}', color='red')   
         elif response.status_code == 401:
             print_color("[ERROR] login 실패. 잘못된 아이디 또는 비밀번호입니다.", color='red')
-            print("Error message: ", self.response_solution)
+            
+            if response_login['detail']['error_code'] == 'USER.LOGIN.000':
+                pass
+            if response_login['detail']['error_code'] == 'USER.LOGIN.001':
+                if 'login_fail_count' in list(response_login['detail'].keys()):
+                    count = response_login['detail']['login_fail_count']
+                    print(f"Password를 오기입하셨습니다 {count} / 5 번 남았습니다.")
+                else:
+                    print(f"{id}를 오기입 하셨습니다") # id 를 이용
+            if response_login['detail']['error_code'] == 'USER.LOGIN.002':
+                if 'login_fail_count' in list(response_login['detail'].keys()):
+                    if int(response_login['detail']['login_fail_count']) == 5:
+                        print(f"5번 잘못 입력하셨습니다. 계정이 잠겼으니 관리자에게 문의 하세요.")
+            if response_login['detail']['error_code'] == 'USER.LOGIN.003':
+                if 'unused_period' in list(response_login['detail'].keys()):
+                    up = response_login['detail']['unused_period']
+                    print(f'{up} 만큼 접속하지 않으셔서 계정이 잠겼습니다.')
+                    print(f'관리자에게 문의하세요.')
+                    
         elif response.status_code == 400:
             print_color("[ERROR] AI Solution 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
             print("Error message: ", self.response_solution["detail"])
