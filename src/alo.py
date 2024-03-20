@@ -378,7 +378,7 @@ class ALO:
         from sagemaker_training import environment      
         # save_train_artifacts_path를 sagemaker model 저장 경로로 변경 
         for i, v in enumerate(self.exp_yaml['external_path']):
-            if v == 'save_train_artifacts_path': 
+            if 'save_train_artifacts_path' in v.keys(): 
                 self.exp_yaml['external_path'][i] = environment.Environment().model_dir
         # pipline.py에서 바뀐 save path를 읽을 수 있게 yaml을 수정하여 저장
         self.meta.save_yaml(self.exp_yaml, DEFAULT_EXP_PLAN)

@@ -493,7 +493,7 @@ class Pipeline:
         _file = ''.join(filter(lambda x: x.isalpha() or x == '_', _file))
         user_asset = self.import_asset(_path, _file)
         if self.system_envs['boot_on'] == True:
-            PROC_LOGGER.process_info(f"===== Booting... completes importing << {_file} >>")
+            PROC_LOGGER.process_info(f"==================== Booting... completes importing << {_file} >>")
             return
         meta_dict = {'artifacts': self.system_envs['artifacts'], 'pipeline': self.pipeline_type, 'step': step, 'step_number': step, 'step_name': self.user_parameters[self.pipeline_type][step]['step']}
         self.asset_structure.config['meta'] = meta_dict #nested dict
@@ -509,16 +509,9 @@ class Pipeline:
         asset_structure.args = self.asset_structure.args[self.user_parameters[self.pipeline_type][step]['step']]
         ua = user_asset(asset_structure)
         self.asset_structure.data, self.asset_structure.config = ua.run()
-        # FIXME memory release : on/off 필요
-        try:
-            if self.control['reset_assets']:
-                self.memory_release(_path)
-                sys.path = [item for item in sys.path if self.asset_structure.envs['step'] not in item]
-            else:
-                pass
-        except:
-            self.memory_release(_path)
-            sys.path = [item for item in sys.path if self.asset_structure.envs['step'] not in item]
+        # FIXME memory release : on/off 필요? > 우선 spec-out 
+        self.memory_release(_path)
+        sys.path = [item for item in sys.path if self.asset_structure.envs['step'] not in item]
         PROC_LOGGER.process_info(f"==================== Finish pipeline: {self.pipeline_type} / step: {asset_config['step']}")
 
     # 한번만 실행, 특정 에셋만 설치 할 수도 있음
