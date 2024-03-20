@@ -173,7 +173,6 @@ class ALO:
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
-        
         # init solution metadata
         self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
         sol_meta = self.load_solution_metadata()
@@ -270,7 +269,7 @@ class ALO:
             inference_exp_plan = _load_pipeline_expplan('inference', inference_id, meta)
             _pipe_run(inference_exp_plan, 'inference_pipeline')
         else:
-            print(exp_plan)
+            print('experimental_plan: \n', exp_plan)
             _pipe_run(exp_plan, 'inference_pipeline')
         ## register 에 사용할 exp_plan 제작
         if train_id != '':
@@ -379,7 +378,7 @@ class ALO:
         # save_train_artifacts_path를 sagemaker model 저장 경로로 변경 
         for i, v in enumerate(self.exp_yaml['external_path']):
             if 'save_train_artifacts_path' in v.keys(): 
-                self.exp_yaml['external_path'][i] = environment.Environment().model_dir
+                self.exp_yaml['external_path'][i] = {'save_train_artifacts_path': environment.Environment().model_dir}
         # pipline.py에서 바뀐 save path를 읽을 수 있게 yaml을 수정하여 저장
         self.meta.save_yaml(self.exp_yaml, DEFAULT_EXP_PLAN)
         return system_envs 
