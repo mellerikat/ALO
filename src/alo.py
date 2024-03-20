@@ -213,7 +213,6 @@ class ALO:
             base_path = HISTORY_PATH + f'{pipeline_type}/'
             entries = os.listdir(base_path)
             folders = [entry for entry in entries if os.path.isdir(os.path.join(base_path, entry))]
-
             if not history_id in folders:
                 raise ValueError(f"{pipeline_type}_id is not exist.")
             else:
