@@ -1,5 +1,4 @@
 import os
-import shutil
 import yaml
 from src.constants import *
 from src.logger import ProcessLogger
