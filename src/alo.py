@@ -61,11 +61,12 @@ class ALO:
             computing: 학습하는 컴퓨팅 자원 (local, sagemaker)
         Returns:
         """
+        # logger 초기화
+        self._init_logger()
+
         # 필요 class init
         self._init_class()
         
-        # logger 초기화
-        self._init_logger()
 
         # alolib을 설치
         self._set_alolib()
@@ -94,7 +95,7 @@ class ALO:
         self.system_envs['inference_history'] ={}
 
         if self.system_envs['boot_on'] and self.system is not None:
-            self.q = init_redis(self.system)
+            self.q = init_redis(self.system)  ## from src.utils import init_redis
 
     #############################
     ####    Main Function    ####
@@ -199,34 +200,6 @@ class ALO:
                     elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
 
-
-    def set_metadata(self, exp_plan_path = DEFAULT_EXP_PLAN, pipeline_type = 'train_pipeline'):
-        """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
-        실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
-        운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
-        """
-        
-        # init solution metadata
-        self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
-        sol_meta = self.load_solution_metadata()
-        self.system_envs['solution_metadata'] = sol_meta
-        self.system_envs['experimental_plan_path'] = exp_plan_path
-        self.exp_yaml, sys_envs = self.load_exp_plan(sol_meta, exp_plan_path, self.system_envs)
-        self._set_attr()
-        # loop 모드면 항상 처음에 boot 모드
-        if self.computing != 'local': #sagemaker
-            self.system_envs = self._set_system_envs(pipeline_type, True, self.system_envs)
-        else:
-            if 'boot_on' in self.system_envs.keys(): # loop mode - boot on 이후 (boot on 꺼놨으므로 False임)
-                self.system_envs = self._set_system_envs(pipeline_type, self.system_envs['boot_on'], self.system_envs)
-            else: # loop mode - 최초 boot on 시 / 일반 flow  
-                self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
-                
-        # 입력 받은 config(exp)가 없는 경우 default path에 있는 내용을 사용
-        
-        # metadata까지 완성되면 출력
-        self._alo_info()
-        # ALO 설정 완료 info 와 로깅
 
             
     def sagemaker_runs(self): 
@@ -357,6 +330,101 @@ class ALO:
             raise NotImplementedError("Failed to empty log directory.")
         # redundant 하더라도 processlogger은 train, inference 양쪽 다남긴다. 
         self.proc_logger = ProcessLogger(PROJECT_HOME)  
+
+    def _init_class(self):
+        self._print_step("Uploading the ALO source code to memory.")
+
+        # TODO 지우기 -> Pipeline 클래스에서 사용 예정
+        self.ext_data = ExternalHandler()
+        self.install = Packages()
+        self.asset = Assets(ASSET_HOME)
+        self.artifact = Aritifacts()
+
+        self.meta = Metadata()
+
+        self.proc_logger.process_info("ALO source code initialization success.")
+
+    def _set_alolib(self):
+        """ALO 는 Master (파이프라인 실행) 와 slave (Asset 실행) 로 구분되어 ALO API 로 통신합니다. 
+        기능 업데이트에 따라 API 의 버전 일치를 위해 Master 가 slave 의 버전을 확인하여 최신 버전으로 설치 되도록 강제한다.
+
+
+        
+        """
+
+        self._print_step("Install ALO Library")
+
+        # TODO 버전 mis-match 시, git 재설치하기. (미존재시, 에러 발생 시키기)
+        try:
+            if not os.path.exists(PROJECT_HOME + 'alolib'): 
+                ALOMAIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                repo = Repo(ALOMAIN)
+                ALOVER = repo.active_branch.name
+                # repository_url = ALO_LIB_URI
+                # destination_directory = ALO_LIB
+                cloned_repo = Repo.clone_from(ALO_LIB_URI, ALO_LIB, branch=ALOVER)
+                self.proc_logger.process_info(f"alolib {ALOVER} git pull success.")
+            else: 
+                self.proc_logger.process_info("alolib already exists in local path.")
+            alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
+            sys.path.append(alolib_path)
+        except GitCommandError as e:
+            self.proc_logger.process_error(e)
+            raise NotImplementedError("alolib git pull failed.")
+        req = os.path.join(alolib_path, "requirements.txt")
+        # pip package의 안정성이 떨어지기 때문에 subprocess 사용을 권장함
+        result = subprocess.run(['pip', 'install', '-r', req], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            self.proc_logger.process_info("Success installing alolib requirements.txt")
+            self.proc_logger.process_info(result.stdout)
+        else:
+            self.proc_logger.process_error(f"Failed installing alolib requirements.txt : \n {result.stderr}")
+        
+        
+
+    def _get_alo_version(self):
+        with open(PROJECT_HOME + '.git/HEAD', 'r') as f:
+            ref = f.readline().strip()
+        # ref는 형식이 'ref: refs/heads/브랜치명' 으로 되어 있으므로, 마지막 부분만 가져옵니다.
+        if ref.startswith('ref:'):
+            __version__ = ref.split('/')[-1]
+        else:
+            __version__ = ref  # Detached HEAD 상태 (브랜치명이 아니라 커밋 해시)
+        self.system_envs['alo_version'] = __version__
+
+
+    def set_metadata(self, exp_plan_path = DEFAULT_EXP_PLAN, pipeline_type = 'train_pipeline'):
+        """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
+        실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
+        운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
+        """
+        
+        # init solution metadata
+        self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
+        sol_meta = self.load_solution_metadata()
+        self.system_envs['solution_metadata'] = sol_meta
+        self.system_envs['experimental_plan_path'] = exp_plan_path
+        self.exp_yaml, sys_envs = self.load_exp_plan(sol_meta, exp_plan_path, self.system_envs)
+        self._set_attr()
+        # loop 모드면 항상 처음에 boot 모드
+        if self.computing != 'local': #sagemaker
+            self.system_envs = self._set_system_envs(pipeline_type, True, self.system_envs)
+        else:
+            if 'boot_on' in self.system_envs.keys(): # loop mode - boot on 이후 (boot on 꺼놨으므로 False임)
+                self.system_envs = self._set_system_envs(pipeline_type, self.system_envs['boot_on'], self.system_envs)
+            else: # loop mode - 최초 boot on 시 / 일반 flow  
+                self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
+                
+        # 입력 받은 config(exp)가 없는 경우 default path에 있는 내용을 사용
+        
+        # metadata까지 완성되면 출력
+        self._alo_info()
+        # ALO 설정 완료 info 와 로깅
+
+
+
+
+    #############################
 
     def _set_system_envs(self, pipeline_type, boot_on, _system_envs):
         system_envs = _system_envs
@@ -624,62 +692,12 @@ class ALO:
         
         return asset_structure
     
-    def _init_class(self):
-        # TODO 지우기 -> Pipeline 클래스에서 사용 예정
-        self.ext_data = ExternalHandler()
-        self.install = Packages()
-        self.asset = Assets(ASSET_HOME)
-        self.artifact = Aritifacts()
-
-        self.meta = Metadata()
-
-    def _set_alolib(self):
-        """ALO 는 Master (파이프라인 실행) 와 slave (Asset 실행) 로 구분되어 ALO API 로 통신합니다. 
-        기능 업데이트에 따라 API 의 버전 일치를 위해 Master 가 slave 의 버전을 확인하여 최신 버전으로 설치 되도록 강제한다.
-        
-        """
-        # TODO 버전 mis-match 시, git 재설치하기. (미존재시, 에러 발생 시키기)
-        try:
-            if not os.path.exists(PROJECT_HOME + 'alolib'): 
-                ALOMAIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                repo = Repo(ALOMAIN)
-                ALOVER = repo.active_branch.name
-                # repository_url = ALO_LIB_URI
-                # destination_directory = ALO_LIB
-                cloned_repo = Repo.clone_from(ALO_LIB_URI, ALO_LIB, branch=ALOVER)
-                self.proc_logger.process_info(f"alolib {ALOVER} git pull success.")
-            else: 
-                self.proc_logger.process_info("alolib already exists in local path.")
-            alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
-            sys.path.append(alolib_path)
-        except GitCommandError as e:
-            self.proc_logger.process_error(e)
-            raise NotImplementedError("alolib git pull failed.")
-        req = os.path.join(alolib_path, "requirements.txt")
-        # pip package의 안정성이 떨어지기 때문에 subprocess 사용을 권장함
-        result = subprocess.run(['pip', 'install', '-r', req], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.returncode == 0:
-            self.proc_logger.process_info("Success installing alolib requirements.txt")
-            self.proc_logger.process_info(result.stdout)
-        else:
-            self.proc_logger.process_error(f"Failed installing alolib requirements.txt : \n {result.stderr}")
-
     def _set_attr(self):
         self.user_parameters = self.meta.user_parameters
         self.asset_source = self.meta.asset_source
         self.external_path = self.meta.external_path
         self.external_path_permission = self.meta.external_path_permission
         self.control = self.meta.control
-
-    def _get_alo_version(self):
-        with open(PROJECT_HOME + '.git/HEAD', 'r') as f:
-            ref = f.readline().strip()
-        # ref는 형식이 'ref: refs/heads/브랜치명' 으로 되어 있으므로, 마지막 부분만 가져옵니다.
-        if ref.startswith('ref:'):
-            __version__ = ref.split('/')[-1]
-        else:
-            __version__ = ref  # Detached HEAD 상태 (브랜치명이 아니라 커밋 해시)
-        self.system_envs['alo_version'] = __version__
 
     def _get_redis_msg(self):
         start_msg = self.q.lget(isBlocking=True)
@@ -689,3 +707,12 @@ class ALO:
             msg = "Empty message recevied for EdgeApp inference request."
             print("\033[91m" + "Error: " + str(msg) + "\033[0m") # print red
         return msg_dict
+
+
+    def _print_step(self, step_name, sub_title=False):
+        if not sub_title:
+            self.proc_logger.process_info("################################################################")
+            self.proc_logger.process_info(f'#######    {step_name}')
+            self.proc_logger.process_info("################################################################\n")
+        else:
+            self.proc_logger.process_info(f'\n#######  {step_name}')
