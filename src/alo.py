@@ -5,10 +5,7 @@ import json
 import shutil
 import traceback
 import subprocess
-# Packge
 from datetime import datetime, timezone
-from collections import Counter
-from copy import deepcopy
 from git import Repo, GitCommandError
 import yaml
 # local import
@@ -18,21 +15,14 @@ from src.artifacts import Aritifacts
 from src.install import Packages
 from src.pipeline import Pipeline
 from src.solution_register import SolutionRegister
-
-# 이름을 한번 다시 생각
 from src.assets import Assets
-
 from src.external import ExternalHandler 
-from src.redisqueue import RedisQueue
 from src.logger import ProcessLogger  
-# s3를 옮김
 from src.sagemaker_handler import SagemakerHandler 
 from src.yaml import Metadata
 #######################################################################################
-
 class AssetStructure: 
     """Asset 의 In/Out 정보를 저장하는 Data Structure 입니다.
-
     Attributes:
         self.envs: ALO 가 파이프라인을 실행하는 환경 정보
         self.args: Asset 에서 처리하기 위한 사용자 변수 (experimental_plan 에 정의한 변수를 Asset 내부에서 사용)
@@ -70,30 +60,21 @@ class ALO:
 
         # alolib을 설치
         self._set_alolib()
-
         exp_plan_path = config
         self.system = system
         self.loop = loop
         self.computing = computing
         pipeline_type = mode
-
         self.system_envs = {}
         # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
         if exp_plan_path == "" or exp_plan_path == None:
             exp_plan_path = DEFAULT_EXP_PLAN
-
-        # 입력 받은 args를 전역변수로 변환
-        # config, system, mode, loop, computing
-
         self._get_alo_version()
         self.set_metadata(exp_plan_path, pipeline_type)
-        # 현재 ALO 버전
-
         # artifacts home 초기화 (from src.utils)
         self.system_envs['artifacts'] = self.artifact.set_artifacts()
         self.system_envs['train_history'] ={}
         self.system_envs['inference_history'] ={}
-
         if self.system_envs['boot_on'] and self.system is not None:
             self.q = init_redis(self.system)  ## from src.utils import init_redis
 
@@ -101,10 +82,8 @@ class ALO:
     ####    Main Function    ####
     #############################
     def pipeline(self, experimental_plan=None, pipeline_type = 'train_pipeline', train_id=''):
-
         if not pipeline_type in ['train_pipeline', 'inference_pipeline']:
             raise Exception(f"The pipes must be one of train_pipeline or inference_pipeline. (pipes={pipeline_type})") 
-
         ## train_id 는 inference pipeline 에서만 지원
         if not train_id == '':
             if pipeline_type == 'train_pipeline':
@@ -121,11 +100,8 @@ class ALO:
                     self.system_envs['inference_history']['train_id'] = history['id']
             else:
                 self.system_envs['inference_history']['train_id'] = 'none'
-
         if experimental_plan == "" or experimental_plan == None:
             experimental_plan = self.exp_yaml
-
-
         pipeline = Pipeline(experimental_plan, pipeline_type, self.system_envs)
         return pipeline
 
@@ -137,14 +113,12 @@ class ALO:
         """
         try:
             for pipe in self.system_envs['pipeline_list']:
-
                 ## 갑자기 죽는 경우, 기록에 남기기 위해 현 진행상황을 적어둔다.
                 self.system_envs['current_pipeline'] = pipe
-
                 self.proc_logger.process_info("#########################################################################################################")
                 self.proc_logger.process_info(f"                                                 {pipe}                                                   ") 
                 self.proc_logger.process_info("#########################################################################################################")
-
+                # pipline instance 선언 
                 pipeline = self.pipeline(pipeline_type=pipe)
                 # TODO 한번에 하려고 하니 이쁘지 않음 논의
                 pipeline.setup()
@@ -152,7 +126,6 @@ class ALO:
                 pipeline.run()
                 pipeline.save()
                 # pipeline.history()
-                
                 # FIXME loop 모드로 동작 / solution_metadata를 어떻게 넘길지 고민 / update yaml 위치를 새로 선정할 필요가 있음 ***
                 if self.loop: 
                     try:
@@ -167,10 +140,8 @@ class ALO:
                         ## always-on 모드에서는 Error 가 발생해도 종료되지 않도록 한다. 
                         print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
                         continue
-
                 if self.computing == "sagemaker":
                     self.sagemaker_runs()
-                
             # train, inference 다 돌고 pip freeze 돼야함 
             # FIXME 무한루프 모드일 땐 pip freeze 할 일 없다 ?
             with open(PROJECT_HOME + 'solution_requirements.txt', 'w') as file_:
@@ -200,6 +171,34 @@ class ALO:
                     elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
                         self.system_envs['q_inference_artifacts'].rput(fail_str)
 
+
+    def set_metadata(self, exp_plan_path = DEFAULT_EXP_PLAN, pipeline_type = 'train_pipeline'):
+        """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
+        실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
+        운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
+        """
+        
+        # init solution metadata
+        self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
+        sol_meta = self.load_solution_metadata()
+        self.system_envs['solution_metadata'] = sol_meta
+        self.system_envs['experimental_plan_path'] = exp_plan_path
+        self.exp_yaml, sys_envs = self.load_exp_plan(sol_meta, exp_plan_path, self.system_envs)
+        self._set_attr()
+        # loop 모드면 항상 처음에 boot 모드
+        if self.computing != 'local': #sagemaker
+            self.system_envs = self._set_system_envs(pipeline_type, True, self.system_envs)
+        else:
+            if 'boot_on' in self.system_envs.keys(): # loop mode - boot on 이후 (boot on 꺼놨으므로 False임)
+                self.system_envs = self._set_system_envs(pipeline_type, self.system_envs['boot_on'], self.system_envs)
+            else: # loop mode - 최초 boot on 시 / 일반 flow  
+                self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
+                
+        # 입력 받은 config(exp)가 없는 경우 default path에 있는 내용을 사용
+        
+        # metadata까지 완성되면 출력
+        self._alo_info()
+        # ALO 설정 완료 info 와 로깅
 
             
     def sagemaker_runs(self): 
@@ -246,16 +245,12 @@ class ALO:
             os.unsetenv("AWS_PROFILE")
 
     def register(self, solution_info=None, infra_setup=None,  train_id = '', inference_id = '', username='', password='', upload=True ):
-
         ## train_id 존재 검사. exp_plan 불러오기 
         meta = Metadata()
         exp_plan = meta.read_yaml(exp_plan_file=None)
-
-        def load_pipeline_expplan(pipeline_type, history_id, meta):
-
+        def _load_pipeline_expplan(pipeline_type, history_id, meta): #inner func.
             if not pipeline_type in ['train', 'inference']:
                 raise ValueError("pipeline_type must be 'train' or 'inference'.")
-
             base_path = HISTORY_PATH + f'{pipeline_type}/'
             entries = os.listdir(base_path)
             folders = [entry for entry in entries if os.path.isdir(os.path.join(base_path, entry))]
@@ -267,9 +262,7 @@ class ALO:
                 exp_plan = meta.get_yaml(path)
                 merged_exp_plan = meta.merged_exp_plan(exp_plan, pipeline_type=pipeline_type)
                 return merged_exp_plan
-
-
-        def _pipe_run(exp_plan, pipeline_type):
+        def _pipe_run(exp_plan, pipeline_type): #inner func.
             pipeline = self.pipeline(exp_plan, pipeline_type )
             pipeline.setup()
             pipeline.load()
@@ -277,18 +270,16 @@ class ALO:
             pipeline.save()
         ## id 폴더에서 exp_plan 가져와서, pipeline 을 실행한다. (artifact 상태를 보장할 수 없으므로)
         if train_id != '':
-            train_exp_plan = load_pipeline_expplan('train', train_id, meta)
+            train_exp_plan = _load_pipeline_expplan('train', train_id, meta)
             _pipe_run(train_exp_plan, 'train_pipeline')    
         else:
             _pipe_run(exp_plan, 'train_pipeline')    
-
         if inference_id != '':
-            inference_exp_plan = load_pipeline_expplan('inference', inference_id, meta)
+            inference_exp_plan = _load_pipeline_expplan('inference', inference_id, meta)
             _pipe_run(inference_exp_plan, 'inference_pipeline')
         else:
             print(exp_plan)
             _pipe_run(exp_plan, 'inference_pipeline')
-
         ## register 에 사용할 exp_plan 제작
         if train_id != '':
             if inference_id != '':
@@ -300,13 +291,10 @@ class ALO:
                 exp_plan_register = inference_exp_plan
             else:
                 exp_plan_register = exp_plan
-
         register = SolutionRegister(infra_setup=infra_setup, solution_info=solution_info, experimental_plan=exp_plan_register)
-
         if upload:
             register.login(username, password)
             register.run(username=username, password=password)
-
         return register
         
 
@@ -317,7 +305,6 @@ class ALO:
         """ALO Master 의 logger 를 초기화 합니다. 
         ALO Slave (Asset) 의 logger 를 별도 설정 되며, configuration 을 공유 합니다. 
         """
-
         # 새 runs 시작 시 기존 log 폴더 삭제 
         train_log_path = TRAIN_LOG_PATH
         inference_log_path = INFERENCE_LOG_PATH
@@ -437,13 +424,11 @@ class ALO:
                 system_envs[k] = None
         if 'pipeline_mode' not in system_envs.keys():
             system_envs['pipeline_mode'] = pipeline_type
-
         # 'init': initial status / 'summary': success until 'q_inference_summary'/ 'artifacts': success until 'q_inference_artifacts'
         system_envs['runs_status'] = 'init'         
         system_envs['boot_on'] = boot_on
         system_envs['loop'] = self.loop
         system_envs['start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
-
         if self.computing != 'local':
             system_envs['pipeline_list'] = ['train_pipeline']
         elif boot_on:
@@ -451,16 +436,11 @@ class ALO:
         else:
             if pipeline_type == 'all':
                 if os.getenv('COMPUTING') == 'sagemaker':
-                    # TODO 2.2.1 added (sagemaker 일 땐 학습만 진행)
-                    system_envs['pipeline_list'] = ["train_pipeline"]
-                    from sagemaker_training import environment      
-                    self.external_path['save_train_artifacts_path'] = environment.Environment().model_dir
+                    system_envs = self._set_sagemaker(system_envs)    
                 else:
                     system_envs['pipeline_list'] = [*self.user_parameters]
             else:
                 system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
-            
-            
         return system_envs
 
     def _alo_info(self):
@@ -491,122 +471,32 @@ class ALO:
         ## system_envs 를 linked 되어 있으므로, read_yaml 에서 update 된 사항이 자동 반영되어 있음
         return exp_plan, system_envs 
 
-    ###################################
-    ####    Part2. Runs fuction    ####
-    ###################################
-    
-    def read_structure(self, pipeline, step):
-        import pickle 
-        
-        a = self.asset_structure.config['meta']['artifacts']['.asset_interface'] + pipeline + "/" + self.user_parameters[pipeline][step]['step'] + "_config.pkl"
-        b = self.asset_structure.config['meta']['artifacts']['.asset_interface'] + pipeline + "/" + self.user_parameters[pipeline][step]['step'] + "_data.pkl"
-
-        with open(a, 'rb') as f:
-            _config = pickle.load(f)
-        
-        with open(b, 'rb') as f:
-            _data = pickle.load(f)
-        return _config, _data
-
-    def set_asset_structure(self):
-        """Asset 의 In/Out 을 data structure 로 전달한다.
-        파이프라인 실행에 필요한 환경 정보를 envs 에 setup 한다.
-        """
-        self.asset_structure = AssetStructure() 
-        self.asset_structure.envs['project_home'] = PROJECT_HOME
-        self.asset_structure.envs['solution_metadata_version'] = self.system_envs['solution_metadata_version']
-        self.asset_structure.envs['artifacts'] = self.system_envs['artifacts']
-        self.asset_structure.envs['alo_version'] = self.system_envs['alo_version']
-        if self.control['interface_mode'] not in INTERFACE_TYPES:
-            self.proc_logger.process_error(f"Only << file >> or << memory >> is supported for << interface_mode >>")
-        self.asset_structure.envs['interface_mode'] = self.control['interface_mode']
-        self.asset_structure.envs['proc_start_time'] = self.system_envs['start_time']
-        self.asset_structure.envs['save_train_artifacts_path'] = self.external_path['save_train_artifacts_path']
-        self.asset_structure.envs['save_inference_artifacts_path'] = self.external_path['save_inference_artifacts_path']
-    
-    def setup_asset(self, pipeline):
-        """asset 의 git clone 및 패키지를 설치 한다. 
-        
-        중복된 step 명이 있는지를 검사하고, 존재하면 Error 를 발생한다. 
-        always-on 시에는 boot-on 시에만 설치 과정을 진행한다. 
-
-        Args:
-          - pipelne(str): train, inference 를 구분한다. 
-
-        Raises:
-          - step 명이 동일할 경우 에러 발생 
-        """
-        # setup asset (asset을 git clone (or local) 및 requirements 설치)
-        get_asset_source = self.control["get_asset_source"]  # once, every
-
-        # TODO 현재 pipeline에서 중복된 step 이 있는지 확인
-        step_values = [item['step'] for item in self.asset_source[pipeline]]
-        step_counts = Counter(step_values)
-        for value, count in step_counts.items():
-            if count > 1:
-                self.proc_logger.process_error(f"Duplicate step exists: {value}")
-
-        # 운영 무한 루프 구조일 땐 boot_on 시 에만 install 하고 이후에는 skip 
-        if (self.system_envs['boot_on'] == False) and (self.system_envs['redis_host'] is not None):
-            pass 
-        else:
-            return self._install_steps(pipeline, get_asset_source)
-    
-    def run_asset(self, pipeline):
-        """파이프라인 내의 asset 를 순차적으로 실행한다. 
-
-        Args:
-          - pipeline(str) : train, inference 를 구분한다. 
-
-        Raises:
-          - Asset 실행 중 에러가 발생할 경우 에러 발생 
-          - Asset 실행 중 에러가 발생하지 않았지만 예상하지 못한 에러가 발생할 경우 에러 발생        
-        """
-        for step, asset_config in enumerate(self.asset_source[pipeline]):    
-            self.proc_logger.process_info(f"==================== Start pipeline: {pipeline} / step: {asset_config['step']}")
-            # 외부에서 arg를 가져와서 수정이 가능한 구조를 위한 구조
-            self.asset_structure.args = self.get_args(pipeline, step)
-            try: 
-                self.asset_structure = self.process_asset_step(asset_config, step, pipeline, self.asset_structure)
-            except: 
-                self.proc_logger.process_error(f"Failed to process step: << {asset_config['step']} >>")
-
-    def _empty_artifacts(self, pipeline): 
-        '''
-        - pipe_prefix: 'train', 'inference'
-        - 주의: log 폴더는 지우지 않기 
-        '''
-        pipe_prefix = pipeline.split('_')[0]
-        dir_artifacts = PROJECT_HOME + f".{pipe_prefix}_artifacts/"
-        try: 
-            for subdir in os.listdir(dir_artifacts): 
-                if subdir == 'log':
-                    continue 
-                else: 
-                    shutil.rmtree(dir_artifacts + subdir, ignore_errors=True)
-                    os.makedirs(dir_artifacts + subdir)
-                    self.proc_logger.process_info(f"Successfully emptied << {dir_artifacts + subdir} >> ")
-        except: 
-            self.proc_logger.process_error(f"Failed to empty & re-make << .{pipe_prefix}_artifacts >>")
-            
-
+  
     ########################################
     ####    Part3. Internal fuctions    ####
     ########################################
-    
+    def _set_sagemaker(self, system_envs):
+        # TODO 2.2.1 added (sagemaker 일 땐 학습만 진행)
+        system_envs['pipeline_list'] = ["train_pipeline"]
+        from sagemaker_training import environment      
+        # save_train_artifacts_path를 sagemaker model 저장 경로로 변경 
+        for i, v in enumerate(self.exp_yaml['external_path']):
+            if 'save_train_artifacts_path' in v.keys(): 
+                self.exp_yaml['external_path'][i] = environment.Environment().model_dir
+        # pipline.py에서 바뀐 save path를 읽을 수 있게 yaml을 수정하여 저장
+        self.meta.save_yaml(self.exp_yaml, DEFAULT_EXP_PLAN)
+        return system_envs 
+        
     def _load_history_model(self, train_id):
         ## train_id 가 history 에 존재 하는지 확인 
         base_path = HISTORY_PATH + 'train/'
         entries = os.listdir(base_path)
         folders = [entry for entry in entries if os.path.isdir(os.path.join(base_path, entry))]
-
         if not train_id in folders:
             raise Exception(f"The train_id must be one of {folders}. (train_id={train_id})")
-
         ## history 에서 model 을 train_artifacts 에 복사
         src_path = HISTORY_PATH + 'train/' + train_id + '/models/'
         dst_path = TRAIN_ARTIFACTS_PATH + 'models/'
-
         # 대상 폴더가 존재하는지 확인
         if os.path.exists(dst_path):
             shutil.rmtree(dst_path)
@@ -619,7 +509,6 @@ class ALO:
         Args:
           - pipelne (str): train / inference 인지를 구분함
         """
-
         ## from external.py
         self.ext_data.external_load_data(pipeline, self.external_path, self.external_path_permission, )
 
@@ -692,6 +581,46 @@ class ALO:
         
         return asset_structure
     
+    def _init_class(self):
+        # TODO 지우기 -> Pipeline 클래스에서 사용 예정
+        self.ext_data = ExternalHandler()
+        self.install = Packages()
+        self.asset = Assets(ASSET_HOME)
+        self.artifact = Aritifacts()
+
+        self.meta = Metadata()
+
+    def _set_alolib(self):
+        """ALO 는 Master (파이프라인 실행) 와 slave (Asset 실행) 로 구분되어 ALO API 로 통신합니다. 
+        기능 업데이트에 따라 API 의 버전 일치를 위해 Master 가 slave 의 버전을 확인하여 최신 버전으로 설치 되도록 강제한다.
+        
+        """
+        # TODO 버전 mis-match 시, git 재설치하기. (미존재시, 에러 발생 시키기)
+        try:
+            if not os.path.exists(PROJECT_HOME + 'alolib'): 
+                ALOMAIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                repo = Repo(ALOMAIN)
+                ALOVER = repo.active_branch.name
+                # repository_url = ALO_LIB_URI
+                # destination_directory = ALO_LIB
+                cloned_repo = Repo.clone_from(ALO_LIB_URI, ALO_LIB, branch=ALOVER)
+                self.proc_logger.process_info(f"alolib {ALOVER} git pull success.")
+            else: 
+                self.proc_logger.process_info("alolib already exists in local path.")
+            alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
+            sys.path.append(alolib_path)
+        except GitCommandError as e:
+            self.proc_logger.process_error(e)
+            raise NotImplementedError("alolib git pull failed.")
+        req = os.path.join(alolib_path, "requirements.txt")
+        # pip package의 안정성이 떨어지기 때문에 subprocess 사용을 권장함
+        result = subprocess.run(['pip', 'install', '-r', req], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            self.proc_logger.process_info("Success installing alolib requirements.txt")
+            self.proc_logger.process_info(result.stdout)
+        else:
+            self.proc_logger.process_error(f"Failed installing alolib requirements.txt : \n {result.stderr}")
+
     def _set_attr(self):
         self.user_parameters = self.meta.user_parameters
         self.asset_source = self.meta.asset_source

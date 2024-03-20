@@ -14,8 +14,6 @@ PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 #--------------------------------------------------------------------------------------------------------------------------
 
 class Packages:
-    # def __init__(self):
-    #     pass
     def extract_requirements_txt(self, step_name): 
         """ Description
             -----------
@@ -32,7 +30,6 @@ class Packages:
         """
         fixed_txt_name  = 'requirements.txt'
         packages_in_txt = []
-
         if fixed_txt_name in os.listdir(ASSET_HOME + step_name):
             with open(ASSET_HOME + step_name + '/' + fixed_txt_name, 'r') as req_txt:  
                 for pkg in req_txt: 
@@ -46,7 +43,6 @@ class Packages:
 
     def _install_packages(self, dup_checked_requirements_dict, dup_chk_set): 
         fixed_txt_name  = 'requirements.txt'
-
         total_num_install = len(dup_chk_set)
         count = 1
         # 사용자 환경에 priority_sorted_pkg_list의 각 패키지 존재 여부 체크 및 없으면 설치
@@ -55,7 +51,6 @@ class Packages:
             for package in package_list:
                 PROC_LOGGER.process_info(f"Start checking existence & installing package - {package} | Progress: ( {count} / {total_num_install} total packages ) ")
                 count += 1
-                
                 if "--force-reinstall" in package: 
                     try: 
                         PROC_LOGGER.process_info(f'>>> Start installing package - {package}')
@@ -63,9 +58,7 @@ class Packages:
                     except OSError as e:
                         PROC_LOGGER.process_error(f"Error occurs while --force-reinstalling {package} ~ " + e)  
                     continue 
-                        
                 try: # 이미 같은 버전 설치 돼 있는지 
-                    # [pkg_resources 관련 참고] https://stackoverflow.com/questions/44210656/how-to-check-if-a-module-is-installed-in-python-and-if-not-install-it-within-t 
                     # 가령 aiplib @ git+http://mod.lge.com/hub/smartdata/aiplatform/module/aip.lib.git@ver2  같은 version 표기가 requirements.txt에 존재해도 conflict 안나는 것 확인 완료 
                     # FIXME 사용자가 가령 pandas 처럼 (==version 없이) 작성하여도 아래 코드는 통과함 
                     pkg_resources.get_distribution(package) # get_distribution tact-time 테스트: 약 0.001s
@@ -84,17 +77,11 @@ class Packages:
                     except OSError as e:
                         PROC_LOGGER.process_error(f"Error occurs while re-installing {package} ~ " + e)  
                 # FIXME 그 밖의 에러는 아래에서 그냥 에러 띄우고 프로세스 kill 
-                # pkg_resources의 exception 참고 코드 : https://github.com/pypa/pkg_resources/blob/main/pkg_resources/__init__.py#L315
                 except pkg_resources.ResolutionError: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
                     PROC_LOGGER.process_error(f'ResolutionError occurs while installing package {package} @ {step_name} step. \n Please check the package name or dependency with other asset.')
                 except pkg_resources.ExtractionError: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
                     PROC_LOGGER.process_error(f'ExtractionError occurs while installing package {package} @ {step_name} step. \n Please check the package name or dependency with other asset.')
-                # # FIXME 왜 unrechable 이지? https://github.com/pypa/pkg_resources/blob/main/pkg_resources/__init__.py#L315
-                # except pkg_resources.UnknownExtra: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
-                #     PROC_LOGGER.process_error(f'UnknownExtra occurs while installing package {package} @ {step_name} step. \n Please check the package name or dependency with other asset.')   
-                
         PROC_LOGGER.process_info(f"======================================== Finish dependency installation \n")
-        
         return 
 
     ## FIXME 사용자 환경의 패키지 설치 여부를 매 실행마다 체크하는 것을 on, off 하는 기능이 필요할 지?   
@@ -119,7 +106,6 @@ class Packages:
         # 2. experimental_plan.yaml에 requirements.txt가 기입 돼 있다면 먼저 assets 폴더 내 해당 asset 폴더 밑에 requirements.txt가 존재하는 지 확인 (없으면 에러)
         # 3. 만약 이미 설치돼 있는 패키지 중 버전이 달라서 재설치 하는 경우는 (pandas==3.4 & pandas==3.2) PROC_LOGGER.process_info로 사용자 notify  
         fixed_txt_name = 'requirements.txt'
-
         # 어떤 step에 requirements.txt가 존재하면, assets/asset폴더 내에 txt파일 존재유무 확인 후 그 내부에 기술된 패키지들을 추출  
         extracted_requirements_dict = dict() 
         for step_name, requirements_list in requirements_dict.items(): 
@@ -134,7 +120,6 @@ class Packages:
                 extracted_requirements_dict[step_name] = yaml_written_list[ : fixed_txt_index] + requirements_txt_list + yaml_written_list[fixed_txt_index + 1 : ]
             else: #requirements.txt 를 해당 step에 미기입한 경우 (yaml에서)
                 extracted_requirements_dict[step_name] = sorted(set(requirements_list), key = lambda x: requirements_list.index(x)) 
-
         # yaml 수동작성과 requirements.txt 간, 혹은 서로다른 asset 간에 같은 패키지인데 version이 다른 중복일 경우 아래 우선순위에 따라 한번만 설치하도록 지정         
         # 우선순위 : 1. ALO master 종속 패키지 / 2. 이번 파이프라인의 먼저 오는 step (ex. input asset) / 3. 같은 step이라면 requirements.txt보다는 yaml에 직접 작성한 패키지 우선 
         # 위 우선순위는 이미 main.py에서 requirements_dict 만들 때 부터 반영돼 있음 
@@ -163,28 +148,19 @@ class Packages:
                     base_pkg_name = pkg_name[ : pkg_name.index('=')]
                 else: # version 명시 안한 케이스 
                     base_pkg_name = pkg_name  
-                    
                 # package명 위가 아니라 옆 쪽에 주석 달은 경우, 제거  
                 if '#' in base_pkg_name: 
                     base_pkg_name = base_pkg_name[ : base_pkg_name.index('#')]
                 if '#' in pkg_name: 
-                    pkg_name = pkg_name[ : pkg_name.index('#')]
-                                    
+                    pkg_name = pkg_name[ : pkg_name.index('#')]      
                 # ALO master 및 모든 asset들의 종속 패키지를 취합했을 때 버전 다른 중복 패키지 존재 시 먼저 진행되는 step(=asset)의 종속 패키지만 설치  
                 if base_pkg_name in dup_chk_set: 
                     PROC_LOGGER.process_info(f'>>> Ignored installing << {pkg_name} >>. Another version would be installed in the previous step.')
                 else: 
                     dup_chk_set.add(base_pkg_name)
                     dup_checked_requirements_dict[step_name].append(pkg_name)
-        
         # force reinstall은 마지막에 한번 다시 설치 하기 위해 추가 
         dup_checked_requirements_dict['force-reinstall'] = force_reinstall_list
-        
         # 패키지 설치 
         self._install_packages(dup_checked_requirements_dict, dup_chk_set)
-
         return dup_checked_requirements_dict, extracted_requirements_dict
-
-class AssetSetup:
-    def __init__():
-        pass

@@ -1,5 +1,4 @@
 import os
-import sys 
 
 PROJECT_HOME = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) + "/"
 # alolib-url candidates
@@ -89,7 +88,6 @@ REGISTER_ARTIFACT_PATH = PROJECT_HOME + ".register_artifacts/"
 REGISTER_SOURCE_PATH = PROJECT_HOME + ".register_source/"
 DEFAULT_INFRA_SETUP = PROJECT_HOME + "setting/infra_config.yaml"
 DEFAULT_SOLUTION_INFO = PROJECT_HOME + "setting/solution_info.yaml"
-
 REGISTER_WRANGLER_PATH = SOLUTION_HOME + "wrangler/wrangler.py"
 REGISTER_INTERFACE_PATH = PROJECT_HOME + ".register_interface/"
 REGISTER_ICON_PATH = PROJECT_HOME + "src/icons/"

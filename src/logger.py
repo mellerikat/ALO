@@ -1,14 +1,10 @@
 import os 
 import logging
 import logging.config
-from datetime import datetime
 from copy import deepcopy 
-
-# https://medium.com/analytics-vidhya/python-logging-colorize-your-arguments-41567a754ac
 import logging
 import logging.handlers
 import re
-# https://stackoverflow.com/questions/75529839/how-can-i-impose-a-maximum-length-of-the-logger-message-before-an-automatic-line
 from textwrap import wrap
 
 class MultiLineHandler(logging.StreamHandler):
@@ -65,10 +61,8 @@ class ColorizedArgsFormatter(logging.Formatter):
 
     @staticmethod
     def rewrite_record(record: logging.LogRecord):
-
         if not BraceFormatStyleFormatter.is_brace_format_style(record):
             return
-        
         # color 
         msg = record.msg
         msg = msg.replace("{", "_{{")
@@ -84,11 +78,8 @@ class ColorizedArgsFormatter(logging.Formatter):
             msg = msg.replace("_{{", color + "{", 1)
             msg = msg.replace("_}}", "}" + ColorCodes.reset, 1)
             placeholder_count += 1
-
-        
         record.msg = msg.format(*record.args)
         record.args = []
-
 
     def format(self, record):
         orig_msg = record.msg
@@ -140,7 +131,6 @@ class BraceFormatStyleFormatter(logging.Formatter):
         orig_args = record.args
         self.rewrite_record(record)
         formatted = self.formatter.format(record)
-
         # restore log record to original state for other handlers
         record.msg = orig_msg
         record.args = orig_args
@@ -192,7 +182,6 @@ def print_color(msg, _color):
 #--------------------------------------------------------------------------------------------------------------------------
 #    ProcessLogger Class : (ALO master에서만 사용)
 #--------------------------------------------------------------------------------------------------------------------------
-# TODO https://betterstack.com/community/questions/how-to-color-python-logging-output/ 등 참고하여 log config의 stream handler에 색깔 넣는 방법 있다면 현재 print_color로 출력후 file handler만 쓴는 방식 수정하는게 좋을듯 
 class ProcessLogger: 
     # [%(filename)s:%(lineno)d]
     # envs 미입력 시 설치 과정, 프로세스 진행 과정 등 전체 과정 보기 위한 로그 생성 
@@ -208,7 +197,6 @@ class ProcessLogger:
         if not os.path.exists(self.inference_log_path):
             os.makedirs(self.inference_log_path)
         # 현재 pipeline 등 환경 정보를 알기 전에 큼직한 단위로 install 과정 등에 대한 logging을 alo master에서 진행 가능하도록 config
-        # custom formatter: https://code.djangoproject.com/ticket/15749
         self.process_logging_config = { 
             "version": 1,
             "formatters": {
@@ -259,8 +247,6 @@ class ProcessLogger:
     #--------------------------------------------------------------------------------------------------------------------------
     #    Process Logging API
     #--------------------------------------------------------------------------------------------------------------------------
-    # https://velog.io/@qlgks1/python-python-logging-%ED%95%B4%EB%B6%80
-    # https://www.daleseo.com/python-logging-config/
     # process 로깅은 alo master에서만 쓰므로, 굳이 str type check 안함 
     def process_meta(self, msg): 
         logging.config.dictConfig(self.meta_logging_config)
