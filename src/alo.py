@@ -174,7 +174,6 @@ class ALO:
                 self._external_load_data('train_pipeline')
             except Exception as e:
                 self.proc_logger.process_error("Failed to get external data. \n" + str(e)) 
-                
             try:
                 # load sagemaker_config.yaml - (account_id, role, region, ecr_repository, s3_bucket_uri, train_instance_type)
                 sm_config = self.meta.get_yaml(SAGEMAKER_CONFIG) 
@@ -182,30 +181,24 @@ class ALO:
                 sm_handler.init()
             except Exception as e:
                 self.proc_logger.process_error("Failed to init SagemakerHandler. \n" + str(e)) 
-              
             try: 
                 sm_handler.setup() 
             except Exception as e: 
                 self.proc_logger.process_error(f"Failed to setup SagemakerHandler. \n" + str(e))  
-            
             try:
                 sm_handler.build_solution()
             except Exception as e: 
                 self.proc_logger.process_error(f"Failed to build Sagemaker solution. \n" + str(e))  
-                
             try:           
                 sm_handler.fit_estimator() 
             except Exception as e: 
                 self.proc_logger.process_error(f"Failed to Sagemaker estimator fit. \n" + str(e))  
-                
             try: 
                 sm_handler.download_latest_model()
             except Exception as e: 
                 self.proc_logger.process_error(f"Failed to download sagemaker trained model. \n" + str(e)) 
-                
         except:
             self.proc_logger.process_error("Failed to sagemaker runs.") 
-            
         finally: 
             # 딱히 안해도 문제는 없는듯 하지만 혹시 모르니 설정했던 환경 변수를 제거 
             os.unsetenv("AWS_PROFILE")
