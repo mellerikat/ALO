@@ -420,6 +420,10 @@ class ALO:
         for i, v in enumerate(self.exp_yaml['external_path']):
             if 'save_train_artifacts_path' in v.keys(): 
                 self.exp_yaml['external_path'][i] = {'save_train_artifacts_path': environment.Environment().model_dir}
+        # docker 내에서 git에서 asset 다시 받으면 안되므로 무조건 once로 저장 
+        for i, v in enumerate(self.exp_yaml['control']):
+            if 'get_asset_source' in v.keys(): 
+                self.exp_yaml['control'][i] = {'get_asset_source': 'once'}
         # pipline.py에서 바뀐 save path를 읽을 수 있게 yaml을 수정하여 저장
         self.meta.save_yaml(self.exp_yaml, DEFAULT_EXP_PLAN)
         return system_envs 

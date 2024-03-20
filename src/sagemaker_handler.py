@@ -1,6 +1,7 @@
 import os
 import sys 
 import boto3
+from botocore.exceptions import ProfileNotFound
 from src.constants import *
 from urllib.parse import urlparse
 import subprocess
@@ -16,6 +17,10 @@ PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 class SagemakerHandler:
     def __init__(self, aws_key_profile, sm_config):
         self.aws_key_profile = aws_key_profile
+        try:
+            self.session = boto3.Session(profile_name=self.aws_key_profile)
+        except ProfileNotFound:
+            ValueError(f"The profile {self.aws_key_profile} not found.")
         self.sm_config = sm_config
         self.SAGEMAKER_PATH = SAGEMAKER_PATH
         self.temp_model_extract_dir = TEMP_SAGEMAKER_MODEL_PATH
@@ -26,6 +31,7 @@ class SagemakerHandler:
         """
         # aws configure의 profile을 sagemaker-profile로 변경 (sagemaker 및 본인 계정 s3, ecr 권한 있는)
         # 사외 서비스 시엔 사용자가 미리 sagemaker-profile와 meerkat-profile를 aws configure multi-profile 등록해놨어야 함
+        # 이거 안하면 fit estimator 할 때 에러남 
         os.environ["AWS_PROFILE"] = self.aws_key_profile
         # FIXME sagemaker install 은 sagemaker_runs일 때만 진행 
         self._install_sagemaker()
@@ -141,7 +147,7 @@ class SagemakerHandler:
     
     def _create_bucket(self):
         # S3 클라이언트 생성
-        s3 = boto3.client('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
+        s3 = self.session.client('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
         # 버킷 목록 가져오기
         response = s3.list_buckets()
         # 버킷 이름 출력
@@ -163,7 +169,7 @@ class SagemakerHandler:
     def _create_ecr_repository(self, ecr_repository):
         # aws ecr repo create 
         # ECR 클라이언트 생성
-        ecr = boto3.client('ecr', region_name=self.region)
+        ecr = self.session.client('ecr', region_name=self.region)
         def repository_exists(ecr_client, repository_name): #inner func.
             try:
                 response = ecr_client.describe_repositories(repositoryNames=[repository_name])
@@ -192,8 +198,8 @@ class SagemakerHandler:
     
     def download_latest_model(self):
         try: 
-            # S3 클라이언트 생성
-            s3 = boto3.resource('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
+            # S3 resource 생성
+            s3 = self.session.resource('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
             # 버킷 목록 가져오기
             bucket = s3.Bucket(self.bucket)
             model_path_list = list()
@@ -206,7 +212,8 @@ class SagemakerHandler:
             # model.tar.gz 있는 것 중 최신날짜 포함하는 것만 다운로드 
             # 예시. train-artifacts/sagemaker-test-240115-v2-2024-01-15-10-05-05-244/output/model.tar.gz
             latest_model_path = sorted(model_path_list, reverse=True)[0]
-            client = boto3.client('s3', region_name=self.region)
+            # S3 client 생성
+            client = self.session.client('s3', region_name=self.region)
             # from, to / PROJECT HOME 에 model.tar.gz 를 s3에서 로컬로 다운로드
             client.download_file(self.bucket, latest_model_path, PROJECT_HOME + COMPRESSED_MODEL_FILE)  
             PROC_LOGGER.process_info(f"Success downloading << {self.bucket}/{latest_model_path} >> into << {PROJECT_HOME} >>")
