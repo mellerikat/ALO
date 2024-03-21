@@ -207,9 +207,9 @@ class SolutionRegister:
 
         ## get async codebuild resp 
         if train_codebuild_client != None and train_build_id != None: 
-            self._batch_get_builds(train_codebuild_client, train_build_id, status_period=10)
+            self._batch_get_builds(train_codebuild_client, train_build_id, status_period=20)
         if inference_codebuild_client != None and inference_build_id != None: 
-            self._batch_get_builds(inference_codebuild_client, inference_build_id, status_period=10)
+            self._batch_get_builds(inference_codebuild_client, inference_build_id, status_period=20)
             
         if not self.debugging:
             self.register_solution()
@@ -1378,14 +1378,15 @@ class SolutionRegister:
         del buildspec['phases']['post_build']
         return buildspec
     
-    def _batch_get_builds(self, codebuild_client, build_id, status_period=10):
+    def _batch_get_builds(self, codebuild_client, build_id, status_period=20):
         # 7. async check remote build status (1check per 10seconds)
         build_status = None 
         while True: 
             resp_batch_get_builds = codebuild_client.batch_get_builds(ids = [build_id])  
             if type(resp_batch_get_builds)==dict and 'builds' in resp_batch_get_builds.keys():
-                print_color(f'Response-batch-get-builds: \n', color='blue')
+                print_color(f'Response-batch-get-builds: ', color='blue')
                 print(resp_batch_get_builds)
+                print('-------------------------------------------------------------------------------- \n')
                 # assert len(resp_batch_get_builds) == 1 # pipeline 당 build 1회만 할 것이므로 ids 목록엔 1개만 내장
                 build_status = resp_batch_get_builds['builds'][0]['buildStatus']
                 ## 'SUCCEEDED'|'FAILED'|'FAULT'|'TIMED_OUT'|'IN_PROGRESS'|'STOPPED'
