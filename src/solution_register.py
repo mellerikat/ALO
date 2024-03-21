@@ -9,7 +9,7 @@ import datetime
 import yaml 
 from yaml import Dumper
 import botocore
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import ProfileNotFound, ClientError, NoCredentialsError
 import subprocess
 # 모듈 import 
 import os
@@ -58,7 +58,7 @@ class SolutionRegister:
                     with open(path) as f:
                         result_dict = yaml.safe_load(f)
                 except Exception as e : 
-                    raise ValueError(e)
+                    raise ValueError(str(e))
             else:
                 if isinstance(path_or_dict, str):
                     print(f"{mode} 파일을 load 합니다. (path: {path_or_dict})")
@@ -66,7 +66,7 @@ class SolutionRegister:
                         with open(path_or_dict) as f:
                             result_dict = yaml.safe_load(f)
                     except Exception as e : 
-                        raise ValueError(e)
+                        raise ValueError(str(e))
                 elif isinstance(path_or_dict, dict):
                     result_dict = path_or_dict
                 else:
@@ -326,8 +326,9 @@ class SolutionRegister:
                     msg = f'[SYSTEM] 접근 요청하신 workspace ({self.infra_setup["WORKSPACE_NAME"]}) 은 해당 계정으로 접근 가능합니다.'
                     print_color(msg, color='green')
                 else:
-                    msg = f' List of workspaces accessible by the account: {self.infra_setup["WORKSPACE_NAME"]}) 은 해당 계정으로 접근 불가능 합니다.'
-                    raise ValueError()
+                    ws_name = self.infra_setup["WORKSPACE_NAME"]
+                    msg = f'List of workspaces accessible by the account: {ws_name}) 은 해당 계정으로 접근 불가능 합니다.'
+                    raise ValueError(msg)
             else: 
                 print_color(f'\n>> Failed Login: {response_login}', color='red')   
         elif response.status_code == 401:
@@ -417,7 +418,7 @@ class SolutionRegister:
                         self.solution_version_id = sol['id']
                         print_color(txt, color='green')
         else: 
-            msg = f" 'solutions' key not found in AI Solution data. API_URI={aic+api}"
+            msg = f"<< solutions >> key not found in AI Solution data. API_URI={aic+api}"
             raise ValueError(msg)
 
         ## 업데이트  에러 처리 및 신규 등록 처리 (모든 solution list 검수 후 진행 가능)
@@ -425,7 +426,7 @@ class SolutionRegister:
             if not name in solution_list:
                 txt = f"[ERROR] if solution_update is True, the same solution name cannot exist.(name: {name})"
                 print_color(txt, color='red')
-                raise ValueError("Not find solution name.")
+                raise ValueError("Not found solution name.")
         else:
             # 기존 solution 존재하면 에러 나게 하기 
             if name in solution_list:
@@ -483,7 +484,7 @@ class SolutionRegister:
             print(f"description:")
             pprint(description)
         except Exception as e: 
-            raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{e}")
+            raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{str(e)}")
 
 
     def set_wrangler(self):
@@ -545,7 +546,7 @@ class SolutionRegister:
             if isinstance(user_dict['support_labeling'], bool):
                 pass
             else: 
-                raise ValueError("[ERRPR] << support_labeling >> parameter must have boolean type.")
+                raise ValueError("[ERROR] << support_labeling >> parameter must have boolean type.")
 
             if user_dict['inference_result_datatype'] not in allowed_datatypes:
                 raise ValueError(f"[ERROR] << inference_result_datatype >> parameter must have the value among these: \n{allowed_datatypes}")
@@ -732,7 +733,7 @@ class SolutionRegister:
                 else: ## model
                     print(f'pipeline: type:{self.pipeline}, model_uri: {uri} ')
         except Exception as e: 
-            raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{e}")
+            raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{str(e)}")
         
         return prefix_uri
 
@@ -769,7 +770,7 @@ class SolutionRegister:
             response = requests.post(aic+api, params=solution_params, data=data, cookies=self.aic_cookie)
             self.response_solution = response.json()
         except Exception as e: 
-            raise NotImplementedError(f"Failed to register AI solution: \n {e}")
+            raise NotImplementedError(f"Failed to register AI solution: \n {str(e)}")
 
         if response.status_code == 200:
             print_color("[SUCCESS] AI Solution 등록을 성공하였습니다. ", color='cyan')
@@ -781,7 +782,7 @@ class SolutionRegister:
                     shutil.rmtree(REGISTER_INTERFACE_PATH)
                 os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory while registering solution instance: \n {e}")
+                raise NotImplementedError(f"Failed to generate interface directory while registering solution instance: \n {str(e)}")
 
             # JSON 데이터를 파일에 저장
             path = REGISTER_INTERFACE_PATH + self.solution_file
@@ -790,13 +791,13 @@ class SolutionRegister:
               print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
         elif response.status_code == 400:
             print_color("[ERROR] AI Solution 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            raise ValueError("Error message: ", self.response_solution["detail"])
+            raise ValueError("Error message: {}".format(self.response_solution["detail"]))
         elif response.status_code == 422:
-            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            raise ValueError("Error message: ", self.response_solution["detail"])
+            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다..", color='red')
+            raise ValueError("Error message: {}".format(self.response_solution["detail"]))
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-            raise ValueError("UIR : ", aic+api)
+            raise ValueError("URI: {}".format(aic+api))
     
     ################################
     ######    STEP2. S3 Control
@@ -835,25 +836,11 @@ class SolutionRegister:
         현재는 icon name 을 solution_metadata 에 업데이트 하는 것으로 마무리 
         """
         # self.print_step("select solution icon", sub_title=True )
-
         if not ".svg" in name:
             name = name+".svg"
         icon_s3_uri = "s3://" + self.bucket_name_icon + '/icons/' + name   # 값을 리스트로 감싸줍니다
         self.sm_yaml['description']['icon'] = icon_s3_uri
         self._save_yaml()
-
-        # if not ".svg" in name:
-        #     name = name+".svg"
-        # if name in self.icon_filenames:
-
-        #     icon_s3_uri = "s3://" + self.bucket_name_icon + '/icons/' + name   # 값을 리스트로 감싸줍니다
-        #     self.sm_yaml['description']['icon'] = icon_s3_uri
-        #     self._save_yaml()
-
-        #     print_color(f'[SUCCESS] update solution_metadata.yaml:', color='green')
-        #     print(f'description: -icon: {icon_s3_uri} ')
-        # else:
-        #     raise ValueError(f"[ERROR] Wrong icon name: {name}. \n(icon_list={self.icon_filenames}) ")
         
     def _s3_access_check(self):
         """ S3 에 접속 가능한지를 확인합니다.  s3_client instance 생성을 합니다.
@@ -865,28 +852,23 @@ class SolutionRegister:
 
         """
         self.print_step("Check to access S3")
-
-        from botocore.exceptions import NoCredentialsError
-        from botocore.exceptions import ProfileNotFound
-        # session 먼저 생성
-
         print("**********************************")
+        profile_name = self.infra_setup["AWS_KEY_PROFILE"]
         try:
-            self.session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
+            self.session = boto3.Session(profile_name=profile_name)
             self.s3_client = self.session.client('s3', region_name=self.infra_setup['REGION'])
         except ProfileNotFound:
-            print_color(f"[INFO] Start s3 access check without key file.", color="blue")
+            print_color(f"[WARNING] AWS profile {profile_name} not found. Create session and s3 client without aws profile.", color="yellow")
+            self.session = boto3.Session()
             self.s3_client = boto3.client('s3', region_name=self.infra_setup['REGION'])
         except Exception:
-            ValueError("The credentials are not available.")
-
-        print(f"[INFO] AWS region: {self.infra_setup['REGION']}")
+            raise ValueError("The aws credentials are not available.")
+        print_color(f"[INFO] AWS region: {self.infra_setup['REGION']}", color='blue')
         access_check = isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient)
         if access_check == True:       
             print_color(f"[INFO] AWS S3 access check: OK", color="green")
         else: 
             raise ValueError(f"[ERROR] AWS S3 access check: Fail")
-
         return access_check
 
     def _s3_delete_and_update(self, s3, bucket_name, data_path, local_folder, s3_path, delete=True):
@@ -903,16 +885,15 @@ class SolutionRegister:
         try:    
             response = s3.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
         except NoCredentialsError as e:
-            raise NoCredentialsError("NoCredentialsError: \n{e}")
-        except ClientError as e:
-            print(f"ClientError: ", e)
-            return False
+            raise NoCredentialsError(f"[NoCredentialsError] Failed to create s3 bucket and file upload: \n {str(e)}")
+        except Exception as e:
+            raise NotImplementedError(f"Failed to create s3 bucket and file upload: \n {str(e)}")
         # temp = s3_path + "/" + data_path[len(local_folder):]
         uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
         # print(data_path)
-        print_color(f"[SUCCESS] update train_data to S3:", color='green')
-        print(f"{uploaded_path }")
-        return True
+        print_color(f"[SUCCESS] update train_data to S3: \n", color='green')
+        print(f"{uploaded_path}")
+        return 
 
     def s3_upload_data(self):
         """input 폴더에 존재하는 데이터를 s3 에 업로드 합니다. 
@@ -938,7 +919,7 @@ class SolutionRegister:
                         else: 
                             self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
             except Exception as e: 
-                raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
+                raise NotImplementedError(f'[ERROR] Failed to upload local data into S3: \n {str(e)}') 
         elif "inference" in self.pipeline:
             local_folder = INPUT_DATA_HOME + "inference/"
             print_color(f'[INFO] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
@@ -959,7 +940,7 @@ class SolutionRegister:
                         else: 
                             self._s3_delete_and_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri, False)
             except Exception as e: 
-                raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
+                raise NotImplementedError(f'[ERROR] Failed to upload local data into S3: \n {str(e)}') 
         else:
             raise ValueError(f"[ERROR] Not allowed value for << pipeline >>: {self.pipeline}")
 
@@ -1012,15 +993,14 @@ class SolutionRegister:
         try:    
             response = self.s3_client.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
         except NoCredentialsError as e:
-            raise NoCredentialsError("NoCredentialsError: \n{e}")
-        except ClientError as e:
-            print(f"ClientError: ", e)
-            return False
+            raise NoCredentialsError(f"[NoCredentialsError] Failed to upload file onto s3: \n {str(e)}")
+        except Exception as e:
+            raise NotImplementedError(f"Failed to upload file onto s3: \n {str(e)}")
         # temp = s3_path + "/" + data_path[len(local_folder):]
         uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
         print_color(f"[SYSTEM] S3 object key (new): ", color='green')
         print(f"{uploaded_path }")
-        return True
+        return 
 
     def s3_upload_artifacts(self):
         """ 최종 실험결과물 (train & inference) 를 s3 에 업로드 한다. 
@@ -1136,28 +1116,23 @@ class SolutionRegister:
         self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
 
         ## 동일 이름의 ECR 존재 시, 삭제하고 다시 생성한다. 
-        try:
-            ecr_client = self.session.client('ecr',region_name=self.infra_setup['REGION'])
-        except NoCredentialsError:
-            print_color(f"[INFO] Start s3 access check without key file.", color="blue")
-            ecr_client = boto3.client('ecr', region_name=self.infra_setup['REGION'])
-        except Exception:
-            ValueError("The credentials are not available.")
+        try: 
+            try:
+                ecr_client = self.session.client('ecr',region_name=self.infra_setup['REGION'])
+            except:
+                print_color(f"[WARNING] ecr client creation with session failed. Start creating ecr client from boto3", color="yellow")
+                ecr_client = boto3.client('ecr', region_name=self.infra_setup['REGION'])
+        except Exception as e:
+            raise ValueError(f"Failed to create ecr client. \n {str(e)}")
 
         try:
             ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
             print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
-        except:
-            ValueError("Failed to delete pre-existing ECR Repository.")
+        except Exception as e:
+            print_color(f"[WARNING] Failed to delete pre-existing ECR Repository. \n {str(e)}", color='yellow')
 
-        print_color(f"[SYSTEM] target AWS ECR url: ", color='blue')
-        print(f"{self.ecr_url}",)
-
-        # import base64
-        # auth_data = ecr_client.get_authorization_token()
-        # auth_token = auth_data['authorizationData'][0]['authorizationToken']
-        # user, password = base64.b64decode(auth_token).decode().split(':')
-        
+        print_color(f"[SYSTEM] target AWS ECR url: \n", color='blue')
+        print(f"{self.ecr_url}")
         try:
             p1 = subprocess.Popen(
                 ['aws', 'ecr', 'get-login-password', '--region', f'{self.infra_setup["REGION"]}', '--profile', f'{self.infra_setup["AWS_KEY_PROFILE"]}'], stdout=subprocess.PIPE
@@ -1168,17 +1143,6 @@ class SolutionRegister:
             )
         
         if self.docker:
-            # import docker
-            # from docker.errors import APIError
-            # client = docker.from_env()
-            # try:
-            #     login_result = client.login(username=user, password=password, registry=self.ecr_url)
-            #     if login_result.get("Status") == "Login Succeeded":
-            #         print("Docker login succeeded")
-            #     else:
-            #         print("Docker login failed:", login_result)
-            # except APIError as error:
-            #     print("Docker login failed with error:", error)
             run = 'docker'
             p2 = subprocess.Popen(
             [f'{run}', 'login', '--username', 'AWS','--password-stdin', f'{self.ecr_url}' + "/" + self.ecr_repo], stdin=p1.stdout, stdout=subprocess.PIPE)
@@ -1217,32 +1181,26 @@ class SolutionRegister:
             "--repository-name", self.ecr_repo,
             "--image-scanning-configuration", "scanOnPush=true",
             ]
-        # subprocess.run() 함수를 사용하여 명령을 실행합니다.
+        # create ecr repo
         try:
-            if self.docker: 
-                create_resp = ecr_client.create_repository(repositoryName=self.ecr_repo)
-                repository_arn = create_resp['repository']['repositoryArn']
-                tags_new = []
-                for tag in tags:
-                        key, value = tag.split(',')
-                        tag_dict = {'Key': key.split('=')[1], 'Value': value.split('=')[1]}
-                        tags_new.append(tag_dict)
+            create_resp = ecr_client.create_repository(repositoryName=self.ecr_repo)
+            repository_arn = create_resp['repository']['repositoryArn']
+            tags_new = []
+            for tag in tags:
+                    key, value = tag.split(',')
+                    tag_dict = {'Key': key.split('=')[1], 'Value': value.split('=')[1]}
+                    tags_new.append(tag_dict)
 
-                resp = ecr_client.tag_resource(
-                    resourceArn=repository_arn,
-                    tags=tags_new
-                    )
-
-                print_color(f"[SYSTEM] AWS ECR create-repository response: ", color='cyan')
-                print(f"{resp}")
-            else:
-                resp = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-                print_color(f"[INFO] AWS ECR create-repository response: \n{resp.stdout}", color='cyan')
-        except subprocess.CalledProcessError as e:
+            resp = ecr_client.tag_resource(
+                resourceArn=repository_arn,
+                tags=tags_new
+                )
+            print_color(f"[SYSTEM] AWS ECR create-repository response: ", color='cyan')
+            print(f"{resp}")
+        except Exception as e:
             raise NotImplementedError(f"Failed to AWS ECR create-repository:\n + {e}")
 
     def _aws_codebuild(self):
-        from botocore.exceptions import ProfileNotFound
         # 0. create boto3 session and get codebuild service role arn 
         session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
         try: 
@@ -1255,7 +1213,6 @@ class SolutionRegister:
             buildspec = self._make_buildspec_commands()
         else: 
             buildspec = self._make_cross_buildspec_commands()
-
         # 2. make create-codebuild-project.json (trigger: s3)
         s3_prefix_uri = "ai-solutions/" + self.solution_name + \
               f"/v{self.solution_version_new}/" + self.pipeline  + "/codebuild/"
@@ -1303,8 +1260,8 @@ class SolutionRegister:
         except ProfileNotFound:
             print_color(f"[INFO] Start AWS codebuild access check without key file.", color="blue")
             codebuild_client = boto3.client('codebuild', region_name=self.infra_setup['REGION'])
-        except Exception:
-            ValueError("The credentials are not available.")
+        except Exception as e:
+            raise ValueError(f"The credentials are not available: \n {str(e)}")
         # print(codebuild_project_json)
         # 이미 같은 이름의 project 존재하면 삭제 
         project_name = f'codebuild-project-{self.solution_name}-{self.solution_version_new}'
@@ -1399,7 +1356,6 @@ class SolutionRegister:
                 else: 
                     print_color(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}", color='red')
                     break
-                    # raise NotImplementedError(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
         # 8. s3 delete .zip ? 
         return build_status
 
@@ -1436,7 +1392,7 @@ class SolutionRegister:
             print(f"pipeline: -container_uri: {data['container_uri']}")
             self._save_yaml()
         except Exception as e: 
-            raise NotImplementedError(f"Failed to set << container_uri >> in the solution_metadata.yaml \n{e}")
+            raise NotImplementedError(f"Failed to set << container_uri >> in the solution_metadata.yaml \n {str(e)}")
 
     ################################
     ######    STEP4. Set User Parameters
@@ -1524,7 +1480,7 @@ class SolutionRegister:
                                                         flag = True
                                                         print(f"ui_arg_detail: 에 [{candi_step_dict['step']}]({ui_arg}) 이 기록됨을 확인. ")
                                 if not flag :
-                                    raise ValueError (f"[ERROR] ui_arg_detail: 에서 [{candi_step_dict['step']}]({ui_arg}) 를 찾을 수 없습니다. ! ")
+                                    raise ValueError(f"[ERROR] ui_arg_detail: 에서 [{candi_step_dict['step']}]({ui_arg}) 를 찾을 수 없습니다!")
        
                 self.sm_yaml['pipeline'][self.sm_pipe_pointer].update({'parameters':subkeys})
                 # print(subkeys)
@@ -1638,7 +1594,7 @@ class SolutionRegister:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
 
             # JSON 데이터를 파일에 저장
             path = REGISTER_INTERFACE_PATH + self.solution_instance_file
@@ -1698,7 +1654,7 @@ class SolutionRegister:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
 
             # JSON 데이터를 파일에 저장
             path = REGISTER_INTERFACE_PATH + self.stream_file
@@ -1764,7 +1720,7 @@ class SolutionRegister:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
 
             # JSON 데이터를 파일에 저장
             path = REGISTER_INTERFACE_PATH + self.stream_run_file
@@ -1773,21 +1729,17 @@ class SolutionRegister:
               print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
         elif response.status_code == 400:
             print_color("[ERROR] Stream Run 요청을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", response_json["detail"])
-            raise ValueError("Error message: ", response_json["detail"])
+            raise ValueError("Error message: {}".format(response_json["detail"]))
         elif response.status_code == 422:
             print_color("[ERROR] Stream Run 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", response_json["detail"])
-            raise ValueError("Error message: ", response_json["detail"])
+            raise ValueError("Error message: {}".format(response_json["detail"]))
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
             raise ValueError(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})")
 
     def get_log_error(self):
-        
         import tarfile
         import io
-
         def get_log_error(log_file_name, step = ""):
             error_started = False
             log_file = tar.extractfile(log_file_name)
@@ -1804,16 +1756,12 @@ class SolutionRegister:
             log_file.close()
 
         file_name = 'train_artifacts.tar.gz'
-
         asset_error = "[ASSET]"
         setup_error = "[PROCESS]"
         error_msg = "[ERROR]"
-
         process_log = 'log/process.log'
         pipeline_log = 'log/pipeline.log'
-
         step = ""
-
         s3 = self.session.client('s3')
 
         # train만 일단 진행하기에 train은 고정
@@ -1833,7 +1781,7 @@ class SolutionRegister:
                     except KeyError:
                         print(f'log file is not exist in the tar archive')
         except Exception as e:
-            print(f'An error occurred: {e}')
+            raise NotImplementedError(str(e))
         
 
     def get_stream_status(self, status_period=10):
@@ -2235,8 +2183,8 @@ class SolutionRegister:
         elif response.status_code == 422:
             print_color("[ERROR] stream list 조회를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
             print("Error message: ", self.stream_list["detail"])
+            raise NotImplementedError(f"Failed to delete solution: \n {response.status_code}")
         else:
-
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
 
     def list_stream_history(self, id=''): 
@@ -2321,7 +2269,7 @@ class SolutionRegister:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
 
             # JSON 데이터를 파일에 저장
             path = REGISTER_INTERFACE_PATH + self.instance_list_file
@@ -2373,7 +2321,7 @@ class SolutionRegister:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
 
             # JSON 데이터를 파일에 저장
             path = REGISTER_INTERFACE_PATH + self.solution_list_file
@@ -2554,7 +2502,7 @@ class SolutionRegister:
 
             print_color(f"[SUCESS] set DOCKERFILE for ({self.pipeline}) pipeline", color='green')
         except Exception as e: 
-            raise NotImplementedError(f"Failed DOCKERFILE setting. \n - pipeline: {self.pipeline} \n {e}")
+            raise NotImplementedError(f"Failed DOCKERFILE setting. \n - pipeline: {self.pipeline} \n {str(e)}")
 
     def _check_parammeter(self, param):
         if self._check_str(param):
