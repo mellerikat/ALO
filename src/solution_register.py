@@ -2456,7 +2456,7 @@ class SolutionRegister:
 
     def _set_alo(self):
         self.print_step("Set alo source code for docker container", sub_title=True)
-        alo_src = ['main.py', 'src', 'assets', 'solution', 'alolib', '.git', 'requirements.txt', 'solution_requirements.txt']
+        alo_src = ['main.py', 'src', 'assets', 'solution', 'alolib', '.git', 'requirements.txt']
         ## 폴더 초기화
         if os.path.isdir(REGISTER_SOURCE_PATH):
             shutil.rmtree(REGISTER_SOURCE_PATH)

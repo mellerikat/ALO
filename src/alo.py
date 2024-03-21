@@ -140,10 +140,6 @@ class ALO:
                     self.sagemaker_runs()
                     self.computing = 'local' # inference를 한번 로컬에서 정상작동하기 위해 
                     self.system_envs['boot_on'] = False
-            # train, inference 다 돌고 pip freeze 돼야함 
-            # FIXME 무한루프 모드일 땐 pip freeze 할 일 없다 ?
-            with open(PROJECT_HOME + 'solution_requirements.txt', 'w') as file_:
-                subprocess.Popen(['pip', 'freeze'], stdout=file_).communicate()
         except:
             try:  # 여기에 try, finally 구조로 안쓰면 main.py 로 raise 되버리면서 backup_artifacts가 안됨 
                 #self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 

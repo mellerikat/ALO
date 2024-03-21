@@ -70,7 +70,7 @@ class Aritifacts:
             shutil.rmtree(backup_path) # copy 실패 시 임시 backup_artifacts_home 폴더 삭제 
             PROC_LOGGER.process_error(f"Failed to copy << experimental_plan (updated) >> into << {backup_path} >>")
         ## 솔루션 등록을 위한 준비물 백업
-        alo_src = ['main.py', 'src', 'assets', 'solution', 'alolib', '.git', 'requirements.txt', 'solution_requirements.txt', '.package_list']
+        alo_src = ['main.py', 'src', 'assets', 'solution', 'alolib', '.git', 'requirements.txt', '.package_list']
         backup_source_path = backup_path + "register_source/"
         os.makedirs(backup_source_path, exist_ok=True)
         for item in alo_src:

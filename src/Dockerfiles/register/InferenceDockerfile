@@ -38,8 +38,6 @@ WORKDIR /framework/
 # 동일한 패키지를 재설치할 때 인터넷에서 다시 다운로드할 필요 없음.
 site_packages_location
 RUN pip3 install --no-cache-dir -r requirements.txt
-# RUN pip3 install --no-cache-dir -r framework/requirements.txt
-# RUN pip3 install --no-cache-dir -r framework/solution_requirements.txt
 
 # CMD sh -c 'python3 main.py --loop True --mode inference --system "$(jq -r "." /framework/solution_metadata.yaml)"'
 CMD ["python", "main.py"]

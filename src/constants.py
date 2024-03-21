@@ -54,7 +54,6 @@ artifacts_structure = {
 ###################################
 SOLUTION_HOME = PROJECT_HOME + "solution/"
 SOLUTION_META = PROJECT_HOME + "solution_metadata.yaml"
-SOLUTION_REQ_FILE = PROJECT_HOME + "solution_requirements.txt"
 ###################################
 ##### Experimental Plan 
 ###################################
