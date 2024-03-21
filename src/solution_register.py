@@ -34,7 +34,7 @@ KUBEFLOW_STATUS = ("pending", "running", "succeeded", "skipped", "failed", "erro
 
 class SolutionRegister:
     #def __init__(self, workspaces, uri_scope, tag, name, pipeline):
-    def __init__(self, infra_setup=None, solution_info=None, experimental_plan=None, api_uri=None, ):
+    def __init__(self, infra_setup=None, solution_info=None, experimental_plan=None):
         """ 등록에 필요한 정보들을 입력 받습니다. 
             - infra_setup (str or dict): str 일 경우, path 로 인지하여 file load 하여 dict 화 함 
             - solution_info (str or dict): str 일 경우, path 로 인지하여 file load 하여 dict 화 함 
@@ -45,6 +45,7 @@ class SolutionRegister:
         
         self.print_step("Initiate ALO operation mode")
         print_color("[SYSTEM] Solutoin 등록에 필요한 setup file 들을 load 합니다. ", color="green")
+        
         def check_and_load_yaml(path_or_dict, mode=''):
             if not mode in ['infra_setup', 'solution_info', 'experimental_plan']:
                 raise ValueError("The mode must be infra_setup, solution_info, or experimental_plan. (type: {})".format(type))
@@ -79,13 +80,6 @@ class SolutionRegister:
 
         print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
         pprint(self.infra_setup, depth=5)
-
-        ####################################
-        ########### Setup aws key ##########
-        ####################################
-        s3_client = S3Handler(s3_uri=None, aws_key_profile=self.infra_setup["AWS_KEY_PROFILE"])
-        self.aws_access_key = s3_client.access_key
-        self.aws_secret_key = s3_client.secret_key
 
         ####################################
         ########### Setup AIC api ##########
@@ -144,44 +138,51 @@ class SolutionRegister:
         ## debugging 용 변수
         self.debugging = False 
         self.skip_generation_docker = False
-            
-    ################################################
-    ################################################
-    def run(self, username, password):
-        #############################
-        ###  Solution Name 입력
-        #############################
-        self.check_solution_name()
-        self.load_system_resource()   ## ECR, S3 정보 받아오기
-        self._init_solution_metadata()
 
+    def _pre_start_checker(self, name):
+        self.check_solution_name(name)
+        self.load_system_resource()   ## ECR, S3 정보 받아오기
+        
+    def _define_solution_metadata(self):
         #############################
         ### description & wranlger 추가 
         #############################
+        self._init_solution_metadata()
         self._set_alo()  ## contents_name 확인용
         self.set_description()
-        # html_content = self.s3_upload_icon_display()  ## pre-define 된 icon 들 보여주기
-        # display(HTML(html_content))  ##  icon 고정됨으로 spec 변경 됨으로 주석 처리 됨
         self.select_icon(name='ic_artificial_intelligence')
         self.set_wrangler()
         self.set_edge()
+    
+    ################################################
+    ################################################
+    def run(self, name = None):
+        #############################
+        ###  Solution Name 입력
+        #############################
+        self._pre_start_checker(name)
+        self._define_solution_metadata()
 
+        # html_content = self.s3_upload_icon_display()  ## pre-define 된 icon 들 보여주기
+        # display(HTML(html_content))  ##  icon 고정됨으로 spec 변경 됨으로 주석 처리 됨
+        
         #############################
         ### contents type 추가 
         #############################
         ## common
         self._s3_access_check()  ## s3 instance 생성 
         self.set_resource_list()   
+        
         # codebuild로 실행시 client와 id를 추후 받아옴
         train_codebuild_client, train_build_id = None, None
         inference_codebuild_client, inference_build_id = None, None
         ############################
         ### Train pipeline 설정
         ############################
-        if self.solution_info['inference_only']:
-            pass
-        else:
-            self._sm_append_pipeline(pipeline_name='train')
+        pipeline_list = ['inference'] if self.solution_info['inference_only'] else ['train', 'inference']
+
+        for pipeline_name in pipeline_list:
+            self._sm_append_pipeline(pipeline_name = 'train')
             self.set_resource(resource='high')  ## resource 선택은 spec-out 됨
             self.set_user_parameters()
             self.s3_upload_data()
@@ -190,20 +191,11 @@ class SolutionRegister:
                 skip_build=False
             else:
                 skip_build=True
-            train_codebuild_client, train_build_id = self.make_docker(skip_build)
-        ############################
-        ### Inference pipeline 설정
-        ############################
-        self._sm_append_pipeline(pipeline_name='inference')
-        self.set_resource(resource='high')  ## resource 선택은 spec-out 됨
-        self.set_user_parameters(display_table=False)
-        self.s3_upload_data()
-        self.s3_upload_artifacts()  ## inference 시, upload model 도 진행
-        if (not self.debugging) and (not self.skip_generation_docker):
-            skip_build=False
-        else:
-            skip_build=True
-        inference_codebuild_client, inference_build_id = self.make_docker(skip_build)
+            
+            if pipeline_name == 'train':
+                train_codebuild_client, train_build_id = self.make_docker(skip_build)
+            if pipeline_name == 'inference':
+                inference_codebuild_client, inference_build_id = self.make_docker(skip_build)
 
         ## get async codebuild resp 
         if train_codebuild_client != None and train_build_id != None: 
@@ -215,9 +207,8 @@ class SolutionRegister:
             self.register_solution()
             self.register_solution_instance()   ## AIC, Solution Storage 모두에서 instance 까지 항상 생성한다. 
 
-
-
     def run_train(self, status_period=5, delete_solution=False):
+        
         if self.solution_info['inference_only']:
             raise ValueError("inference_only=False 여야 합니다.")
         else:
@@ -232,7 +223,6 @@ class SolutionRegister:
             self.delete_solution_instance()
             self.delete_solution()
 
-
     def print_step(self, step_name, sub_title=False):
         if not sub_title:
             print_color("\n######################################################", color='blue')
@@ -241,13 +231,10 @@ class SolutionRegister:
         else:
             print_color(f'\n#######  {step_name}', color='blue')
 
-
-
     def check_version(self):
         """ AI Conductor 의 버전을 확인하여 API 를 변경함
         """
         self.print_step("Check Version", sub_title=True)
-
 
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["VERSION"]
@@ -268,15 +255,11 @@ class SolutionRegister:
 
                 print_color(f"[INFO] API 의 uri 가 변경되었습니다.", color='yellow')
                 pprint(f"changed_uri:{self.api_uri_legacy}")
-
-
         elif response.status_code == 400:
             raise ValueError("[ERROR] version 을 확인할 수 없습니다.  ")
 
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-
-
     def login(self, id, pw): 
         # 로그인 (관련 self 변수들은 set_user_input 에서 setting 됨)
 
@@ -360,8 +343,7 @@ class SolutionRegister:
             print("Error message: ", self.response_solution["detail"])
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-
-
+    
     def check_solution_name(self, name=None): 
         """사용자가 등록할 솔루션 이름이 사용가능한지를 체크 한다. 
 
@@ -449,8 +431,7 @@ class SolutionRegister:
         print_color('< Pre-existing AI Solutions >', color='cyan')
         for idx, sol in enumerate(solution_list): 
             print_color(f'{idx}. {sol}', color='cyan')
-        return self.solution_name
-
+        
     def set_description(self, description={}):
         """솔루션 설명을 solution_metadata 에 삽입합니다. 
 
@@ -485,8 +466,7 @@ class SolutionRegister:
             pprint(description)
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{str(e)}")
-
-
+        
     def set_wrangler(self):
         """wrangler.py 를 solution_metadata 의 code-to-string 으로 반영합니다. 
         ./wrangler/wrangler.py 만 지원 합니다. 
@@ -494,8 +474,6 @@ class SolutionRegister:
         """
 
         self.print_step("Set Wrangler", sub_title=True)
-
-
         try: 
             with open(REGISTER_WRANGLER_PATH, 'r') as file:
                 python_content = file.read()
@@ -609,8 +587,6 @@ class SolutionRegister:
           - resource (str): 
         """
         self.print_step(f"Set {self.pipeline} Resource")
-
-
         if len(self.resource_list) == 0: # Empty List
             msg = f"[ERROR] set_resource_list 함수를 먼저 실행 해야 합니다."
             raise ValueError(msg)
@@ -678,9 +654,7 @@ class SolutionRegister:
         print(f"{self.ecr_name}") 
         print_color(f"[SYSTEM] AWS S3 bucket:  ", color='green') 
         print(f"{self.bucket_name}") 
-
-
-    #s3://s3-an2-cism-dev-aic/artifacts/bolt_fastening_table_classification/train/artifacts/2023/11/06/162000/
+    
     def set_pipeline_uri(self, mode, data_paths = [], skip_update=False):
         """ dataset, artifacts, model 중에 하나를 선택하면 이에 맞느 s3 uri 를 생성하고, 이를 solution_metadata 에 반영한다.
 
@@ -736,8 +710,7 @@ class SolutionRegister:
             raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{str(e)}")
         
         return prefix_uri
-
-
+    
     def register_solution(self): 
         ''' 일반 등록과 솔루션 업데이트 으로 구분 됨 
         solution_info["solution_update]=True 이면, 업데이트 과정을 진행함
@@ -802,8 +775,6 @@ class SolutionRegister:
     ################################
     ######    STEP2. S3 Control
     ################################
-
-    
             
     # def s3_upload_icon_display(self):
     #     """ 가지고 있는 icon 들을 디스플레이하고 파일명을 선택하게 한다. 
@@ -854,6 +825,7 @@ class SolutionRegister:
         self.print_step("Check to access S3")
         print("**********************************")
         profile_name = self.infra_setup["AWS_KEY_PROFILE"]
+        
         try:
             self.session = boto3.Session(profile_name=profile_name)
             self.s3_client = self.session.client('s3', region_name=self.infra_setup['REGION'])
@@ -863,8 +835,10 @@ class SolutionRegister:
             self.s3_client = boto3.client('s3', region_name=self.infra_setup['REGION'])
         except Exception:
             raise ValueError("The aws credentials are not available.")
+        
         print_color(f"[INFO] AWS region: {self.infra_setup['REGION']}", color='blue')
         access_check = isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient)
+        
         if access_check == True:       
             print_color(f"[INFO] AWS S3 access check: OK", color="green")
         else: 
@@ -1042,8 +1016,6 @@ class SolutionRegister:
                 shutil.rmtree(REGISTER_MODEL_PATH, ignore_errors=True)
         else:
             raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
-
-
     ################################
     ######    STEP3. Dcoker Container Control
     ################################
@@ -1103,8 +1075,7 @@ class SolutionRegister:
 
         print_color(f"[SYSTEM] Target AWS ECR repository:", color='cyan')
         print(f"{self.ecr_repo}")
-
-
+    
     def _set_aws_ecr(self, docker = True, tags = []):
         self.docker = docker
         self.ecr_url = self.ecr_name.split("/")[0]
@@ -1371,8 +1342,6 @@ class SolutionRegister:
                 )
         else:
             subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:v{self.solution_version_new}'])
-
-
     def _docker_push(self):
         if self.infra_setup['BUILD_METHOD'] == 'docker':
             subprocess.run(['docker', 'push', f'{self.ecr_full_url}:v{self.solution_version_new}'])
@@ -1559,8 +1528,6 @@ class SolutionRegister:
         name = load_response['name'] + \
             "-" + f'v{load_response["versions"][0]["version"]}'
         ########################
-
-
         self.solution_instance_params = {
             "workspace_name": load_response['scope_ws']
         }
@@ -1669,13 +1636,10 @@ class SolutionRegister:
             print("Error message: ", self.response_stream["detail"])
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-
-
+    
     def request_run_stream(self): 
 
         self.print_step("Request AI solution stream run")
-
-
         ## stream file load 한다. 
         path = REGISTER_INTERFACE_PATH + self.stream_file
         msg = f"[SYSTEM] Stream 등록 정보를 {path} 에서 확인합니다."
@@ -1704,8 +1668,6 @@ class SolutionRegister:
             "config_path": "" # FIXME config_path는 일단 뭐넣을지 몰라서 비워둠 
         }
         data =json.dumps(data) # json 화
-
-
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["STREAM_RUN"] + f"/{load_response['id']}"
         response = requests.post(aic+api, params=stream_params, data=data, cookies=self.aic_cookie)
@@ -1887,15 +1849,6 @@ class SolutionRegister:
             rest_of_the_path = path_parts[1]
             return bucket, rest_of_the_path
 
-        ## s3_client 생성
-        # if not self.aws_access_key:
-        #     s3_client = boto3.client('s3',
-        #                         aws_access_key_id=self.aws_access_key,
-        #                         aws_secret_access_key=self.aws_secret_key,
-        #                         region_name=self.infra_setup['REGION'])
-        # else:
-        #     print_color(f"[INFO] Start s3 access check without key file.", color="blue")
-        #     s3_client = boto3.client('s3', region_name=self.infra_setup['REGION'])
         try: 
             s3_bucket = split_s3_path(self.stream_history['train_artifact_uri'])[0]
             s3_prefix = split_s3_path(self.stream_history['train_artifact_uri'])[1]
@@ -1957,8 +1910,6 @@ class SolutionRegister:
         else:
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
             raise NotImplementedError(f"Failed to delete stream: \n {response_delete_stream_history}")
-
-
 
     def delete_stream(self,solution_id=None): 
 
@@ -2067,8 +2018,6 @@ class SolutionRegister:
     def delete_solution(self, delete_all=False, solution_id=None): 
 
         self.print_step("Delete AI solution")
-
-
         if self.solution_info["solution_update"]:
             ## file load 한다. 
             path = REGISTER_INTERFACE_PATH + self.solution_file
@@ -2116,8 +2065,6 @@ class SolutionRegister:
                     print(f'File removed successfully! (file: {path})')
                 else:
                     print(f'File does not exist! (file: {path})')
-
-
         elif response.status_code == 400:
             response_delete_solution = response.json()
             print_color("[ERROR] AI solution 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
@@ -2337,8 +2284,6 @@ class SolutionRegister:
         else:
 
             print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-
-
     #####################################
     ######    Internal Functions
     #####################################
@@ -2350,8 +2295,7 @@ class SolutionRegister:
             return data
         except:
             raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
-
-
+    
     def _init_solution_metadata(self):
         """ Solution Metadata 를 생성합니다. 
 
@@ -2365,8 +2309,6 @@ class SolutionRegister:
                 print(f"Directory {dir_path} has been removed successfully.")
             else:
                 print(f"Directory {dir_path} does not exist, no action taken.")
-
-
 
         if not type(self.infra_setup['VERSION']) == float:
             raise ValueError("solution_metadata 의 VERSION 은 float 타입이어야 합니다.")
@@ -2401,9 +2343,9 @@ class SolutionRegister:
                 return True
         with open('solution_metadata.yaml', 'w', encoding='utf-8') as yaml_file:
             yaml.dump(self.sm_yaml, yaml_file, allow_unicode=True, default_flow_style=False, Dumper=NoAliasDumper)
-
-
+    
     def _set_alo(self):
+        
         self.print_step("Set alo source code for docker container", sub_title=True)
         alo_src = ['main.py', 'src', 'assets', 'solution', 'alolib', '.git', 'requirements.txt']
         ## 폴더 초기화
@@ -2437,8 +2379,6 @@ class SolutionRegister:
             if list(map(str, _dict.keys()))[0] == 'backup_artifacts':
                 if list(map(bool, _dict.values()))[0] ==True:
                     exp_plan_dict['control'][idx]['backup_artifacts'] = False
-
-
         ## 선택한 사항 삭제
         if self.pipeline == 'train':
             delete_pipeline = 'inference'
@@ -2509,14 +2449,8 @@ class SolutionRegister:
             return param
         else:
             raise ValueError("You should enter only string value for parameter.")
-
-
     def _check_str(self, data):
         return isinstance(data, str)
-
-
-
-
 #----------------------------------------#
 #              Common Function           #
 #----------------------------------------#
@@ -2621,7 +2555,6 @@ def convert_string(string_list: list):
         else: # 무조건 string 
             output_list.append(string)
     return output_list 
-
 
 def convert_args_type(values: dict):
     '''
