@@ -80,7 +80,7 @@ class Pipeline:
 
     def setup(self):
         self._empty_artifacts(self.pipeline_type)
-        print(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
+        # print(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         _, packs = self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         if packs is not None: 
             self._create_package(packs)

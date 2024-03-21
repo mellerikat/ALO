@@ -138,6 +138,8 @@ class ALO:
                         continue
                 if self.computing == "sagemaker":
                     self.sagemaker_runs()
+                    self.computing = 'local' # inference를 한번 로컬에서 정상작동하기 위해 
+                    self.system_envs['boot_on'] = False
             # train, inference 다 돌고 pip freeze 돼야함 
             # FIXME 무한루프 모드일 땐 pip freeze 할 일 없다 ?
             with open(PROJECT_HOME + 'solution_requirements.txt', 'w') as file_:
@@ -367,15 +369,16 @@ class ALO:
         system_envs['boot_on'] = boot_on
         system_envs['loop'] = self.loop
         system_envs['start_time'] = datetime.now().strftime("%y%m%d_%H%M%S")
-        if self.computing != 'local':
-            system_envs['pipeline_list'] = ['train_pipeline']
+        if self.computing != 'local': # sagemaker in local 
+            # FIXME sagemaker resource로 학습 후 로컬에서 inference 한 번 돌도록 설정 
+            system_envs['pipeline_list'] = ['train_pipeline', 'inference_pipeline']
         elif boot_on:
             system_envs['pipeline_list'] = ['inference_pipeline']
         else:
             if pipeline_type == 'all':
-                if os.getenv('COMPUTING') == 'sagemaker':
+                if os.getenv('COMPUTING') == 'sagemaker': # sagemaker in docker 
                     system_envs = self._set_sagemaker(system_envs)    
-                else:
+                else: 
                     system_envs['pipeline_list'] = [*self.user_parameters]
             else:
                 system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
@@ -413,7 +416,7 @@ class ALO:
     ####    Part2. Internal fuctions    ####
     ########################################
     def _set_sagemaker(self, system_envs):
-        # TODO 2.2.1 added (sagemaker 일 땐 학습만 진행)
+        # # TODO 2.2.1 added (sagemaker 일 땐 학습만 진행)
         system_envs['pipeline_list'] = ["train_pipeline"]
         from sagemaker_training import environment      
         # save_train_artifacts_path를 sagemaker model 저장 경로로 변경 
