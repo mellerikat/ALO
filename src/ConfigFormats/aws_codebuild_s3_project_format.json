@@ -14,10 +14,10 @@
           "LOCAL_DOCKER_LAYER_CACHE"
       ]
     },
-    "tags": {
+    "tags": [{
           "key": "",
           "value": ""
-      },
+      }],
     "environment": {
       "type": "",
       "image": "aws/codebuild/standard:5.0",

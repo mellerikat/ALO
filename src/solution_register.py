@@ -1272,9 +1272,12 @@ class SolutionRegister:
             resp_delete_proj = codebuild_client.delete_project(name=project_name) 
             print_color(f"[INFO] Deleted pre-existing codebuild project: {project_name} \n {resp_delete_proj}", color='yellow')
         resp_create_proj = codebuild_client.create_project(name = project_name, \
-                                               source = codebuild_project_json['source'], \
+                                                source = codebuild_project_json['source'], \
                                                 artifacts = codebuild_project_json['artifacts'], \
+                                                cache = codebuild_project_json['cache'], \
+                                                tags = codebuild_project_json['tags'], \
                                                 environment = codebuild_project_json['environment'], \
+                                                logsConfig = codebuild_project_json['logsConfig'], \
                                                 serviceRole = codebuild_project_json['serviceRole'])
         # 6. run aws codebuild start-build 
         if type(resp_create_proj)==dict and 'project' in resp_create_proj.keys():
@@ -1296,8 +1299,6 @@ class SolutionRegister:
     def _make_codebuild_s3_project(self, bucket_uri, codebuild_role):
         with open(AWS_CODEBUILD_S3_PROJECT_FORMAT_FILE) as file:
             codebuild_project_json = json.load(file)
-        #common_uri = bucket_uri + 'ai-solutions/' + self.solution_name + \
-        # f"/v{self.solution_version_new}/" + self.pipeline + '/codebuild/'
         codebuild_project_json['source']['location'] = bucket_uri + AWS_CODEBUILD_S3_SOLUTION_FILE + '.zip'
         #codebuild_project_json['artifacts']['location'] = self.bucket_name # artifacts location에는 / 비허용
         codebuild_project_json['serviceRole'] = codebuild_role
@@ -1305,11 +1306,11 @@ class SolutionRegister:
         codebuild_project_json['environment']['computeType'] = self.infra_setup["CODEBUILD_ENV_COMPUTE_TYPE"]
         codebuild_project_json['environment']['privilegedMode'] = True 
         # FIXME tags test 임시
-        codebuild_project_json['tags']['key'] = 'ver'
-        codebuild_project_json['tags']['value'] = f'v{self.solution_version_new}'
-        codebuild_project_json['cache']['location'] = bucket_uri + '/cache/'
-        codebuild_project_json['logsConfig']['location'] = bucket_uri + '/logs/'
-        codebuild_project_json['logsConfig']['encryptionDisabled'] = True 
+        codebuild_project_json['tags'] = [{'key':'temp-key', 'value':'temp-value'}]
+        codebuild_project_json['cache']['location'] = bucket_uri + 'cache'
+        codebuild_project_json['logsConfig']['s3Logs']['location'] = bucket_uri + 'logs'
+        codebuild_project_json['logsConfig']['s3Logs']['encryptionDisabled'] = True 
+        print('codebuild project json: \n', codebuild_project_json)
         return codebuild_project_json
         
     def _make_buildspec_commands(self):
@@ -1337,7 +1338,7 @@ class SolutionRegister:
                 'mv buildx-v0.4.2.linux-amd64 ~/.docker/cli-plugins/docker-buildx', \
                 'chmod a+rx ~/.docker/cli-plugins/docker-buildx', \
                 'docker run --rm tonistiigi/binfmt --install all']
-                # 'docker run --privileged --rm tonistiigi/binfmt --install all']
+                #'docker run --privileged --rm tonistiigi/binfmt --install all']
         pre_command = [f'aws ecr get-login-password --region {self.infra_setup["REGION"]} | docker login --username AWS --password-stdin {self.ecr_url}/{self.ecr_repo}']
         build_command = ['docker buildx create --use --name crossx', \
                 f'docker buildx build --push --platform=linux/amd64,linux/arm64 -t {self.ecr_full_url}:v{self.solution_version_new} .']
