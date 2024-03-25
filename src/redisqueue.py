@@ -18,7 +18,7 @@ class RedisQueue(object):
     def isEmpty(self): # 비어있는 큐인지 확인
         return self.size() == 0
 
-    # l: Edge APP / r: ALO
+    # rput lget으로 통일 
     def lput(self, element): # 데이터 넣기
         self.rq.lpush(self.key, element) # left push
 

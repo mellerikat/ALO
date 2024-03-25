@@ -438,6 +438,7 @@ class Pipeline:
             success_str = json.dumps({'status':'success', 'message': summary_dict})
             self.system_envs['q_inference_summary'].rput(success_str)
             PROC_LOGGER.process_info("Successfully completes putting inference summary into redis queue.")
+            # change redis runs_state
             self.system_envs['runs_status'] = 'summary'
         else:
             PROC_LOGGER.process_error("Failed to redis-put. << inference_summary.yaml >> not found.")

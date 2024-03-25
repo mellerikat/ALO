@@ -1085,8 +1085,7 @@ class SolutionRegister:
         ecr_scope = self.infra_setup["WORKSPACE_NAME"].split('-')[0] # magna-ws --> magna
         self.ecr_repo = self.ecr_name.split("/")[1] + '/' + ecr_scope + "/ai-solutions/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
         self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
-
-        ## 동일 이름의 ECR 존재 시, 삭제하고 다시 생성한다. 
+        # get ecr client 
         try: 
             try:
                 ecr_client = self.session.client('ecr',region_name=self.infra_setup['REGION'])
@@ -1095,13 +1094,29 @@ class SolutionRegister:
                 ecr_client = boto3.client('ecr', region_name=self.infra_setup['REGION'])
         except Exception as e:
             raise ValueError(f"Failed to create ecr client. \n {str(e)}")
-
-        try:
-            ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
-            print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
-        except Exception as e:
-            print_color(f"[WARNING] Failed to delete pre-existing ECR Repository. \n {str(e)}", color='yellow')
-
+        ## 동일 이름의 ECR 존재 시, 삭제하고 다시 생성한다. 
+        ## 240324 solution update 시에는 본인 버전만 삭제해야지 통째로 repo 삭제하면 cache 기능 사용불가 
+        if self.solution_info['solution_update'] == False:
+            try:
+                ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
+                print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
+            except Exception as e:
+                print_color(f"[WARNING] Failed to delete pre-existing ECR Repository. \n {str(e)}", color='yellow')
+        else: 
+            try:
+                print_color(f"Now in solution update mode. Only delete current version docker image.", color='yellow')
+                resp_ecr_image_list = ecr_client.list_images(repositoryName=self.ecr_repo)
+                print(resp_ecr_image_list)
+                cur_ver_image = []
+                for image in resp_ecr_image_list['imageIds']:
+                    if 'imageTag' in image.keys():
+                        if image['imageTag'] == f'v{self.solution_version_new}':
+                            cur_ver_image.append(image)
+                # 사실 솔루션 업데이트 시엔 이미 만들어진 현재 버전 이미지가 거의 없을 것임
+                if len(cur_ver_image) != 0: 
+                    resp_delete_cur_ver = ecr_client.batch_delete_image(repositoryName=self.ecr_repo, imageIds=cur_ver_image)
+            except Exception as e:
+                raise NotImplementedError(f'Failed to delete current versioned image \n {str(e)}') 
         print_color(f"[SYSTEM] target AWS ECR url: \n", color='blue')
         print(f"{self.ecr_url}")
         try:
@@ -1152,24 +1167,26 @@ class SolutionRegister:
             "--repository-name", self.ecr_repo,
             "--image-scanning-configuration", "scanOnPush=true",
             ]
-        # create ecr repo
-        try:
-            create_resp = ecr_client.create_repository(repositoryName=self.ecr_repo)
-            repository_arn = create_resp['repository']['repositoryArn']
-            tags_new = []
-            for tag in tags:
-                    key, value = tag.split(',')
-                    tag_dict = {'Key': key.split('=')[1], 'Value': value.split('=')[1]}
-                    tags_new.append(tag_dict)
+        # create ecr repo 
+        # 240324 solution update True일 땐 이미지만 삭제했으므로 repo를 재생성하진 않는다. 
+        if self.solution_info['solution_update'] == False:
+            try:
+                create_resp = ecr_client.create_repository(repositoryName=self.ecr_repo)
+                repository_arn = create_resp['repository']['repositoryArn']
+                tags_new = []
+                for tag in tags:
+                        key, value = tag.split(',')
+                        tag_dict = {'Key': key.split('=')[1], 'Value': value.split('=')[1]}
+                        tags_new.append(tag_dict)
 
-            resp = ecr_client.tag_resource(
-                resourceArn=repository_arn,
-                tags=tags_new
-                )
-            print_color(f"[SYSTEM] AWS ECR create-repository response: ", color='cyan')
-            print(f"{resp}")
-        except Exception as e:
-            raise NotImplementedError(f"Failed to AWS ECR create-repository:\n + {e}")
+                resp = ecr_client.tag_resource(
+                    resourceArn=repository_arn,
+                    tags=tags_new
+                    )
+                print_color(f"[SYSTEM] AWS ECR create-repository response: ", color='cyan')
+                print(f"{resp}")
+            except Exception as e:
+                raise NotImplementedError(f"Failed to AWS ECR create-repository:\n + {e}")
 
     def _aws_codebuild(self):
         # 0. create boto3 session and get codebuild service role arn 
@@ -1235,14 +1252,20 @@ class SolutionRegister:
             raise ValueError(f"The credentials are not available: \n {str(e)}")
         # print(codebuild_project_json)
         # 이미 같은 이름의 project 존재하면 삭제 
-        project_name = f'codebuild-project-{self.solution_name}-{self.solution_version_new}'
+        #project_name = f'codebuild-project-{self.solution_name}-{self.solution_version_new}'
+        ws_name = self.infra_setup["WORKSPACE_NAME"].split('-')[0]
+        # project_name에 / 비허용 
+        project_name = f'{ws_name}_ai-solutions_{self.solution_name}_v{self.solution_version_new}'
         if project_name in codebuild_client.list_projects()['projects']: 
             resp_delete_proj = codebuild_client.delete_project(name=project_name) 
             print_color(f"[INFO] Deleted pre-existing codebuild project: {project_name} \n {resp_delete_proj}", color='yellow')
         resp_create_proj = codebuild_client.create_project(name = project_name, \
-                                               source = codebuild_project_json['source'], \
+                                                source = codebuild_project_json['source'], \
                                                 artifacts = codebuild_project_json['artifacts'], \
+                                                cache = codebuild_project_json['cache'], \
+                                                tags = codebuild_project_json['tags'], \
                                                 environment = codebuild_project_json['environment'], \
+                                                logsConfig = codebuild_project_json['logsConfig'], \
                                                 serviceRole = codebuild_project_json['serviceRole'])
         # 6. run aws codebuild start-build 
         if type(resp_create_proj)==dict and 'project' in resp_create_proj.keys():
@@ -1265,10 +1288,17 @@ class SolutionRegister:
         with open(AWS_CODEBUILD_S3_PROJECT_FORMAT_FILE) as file:
             codebuild_project_json = json.load(file)
         codebuild_project_json['source']['location'] = bucket_uri + AWS_CODEBUILD_S3_SOLUTION_FILE + '.zip'
-        codebuild_project_json['artifacts']['location'] = self.bucket_name # artifacts location에는 / 비허용
+        #codebuild_project_json['artifacts']['location'] = self.bucket_name # artifacts location에는 / 비허용
         codebuild_project_json['serviceRole'] = codebuild_role
         codebuild_project_json['environment']['type'] = self.infra_setup["CODEBUILD_ENV_TYPE"]
         codebuild_project_json['environment']['computeType'] = self.infra_setup["CODEBUILD_ENV_COMPUTE_TYPE"]
+        codebuild_project_json['environment']['privilegedMode'] = True 
+        # FIXME tags test 임시
+        codebuild_project_json['tags'] = [{'key':'temp-key', 'value':'temp-value'}]
+        codebuild_project_json['cache']['location'] = bucket_uri + 'cache'
+        codebuild_project_json['logsConfig']['s3Logs']['location'] = bucket_uri + 'logs'
+        codebuild_project_json['logsConfig']['s3Logs']['encryptionDisabled'] = True 
+        print('codebuild project json: \n', codebuild_project_json)
         return codebuild_project_json
         
     def _make_buildspec_commands(self):
@@ -1276,7 +1306,13 @@ class SolutionRegister:
             ## {'version': 0.2, 'phases': {'pre_build': {'commands': None}, 'build': {'commands': None}, 'post_build': {'commands': None}}}
             buildspec = yaml.safe_load(file)
         pre_command = [f'aws ecr get-login-password --region {self.infra_setup["REGION"]} | docker login --username AWS --password-stdin {self.ecr_url}/{self.ecr_repo}']
-        build_command = [f'docker build . -t {self.ecr_full_url}:v{self.solution_version_new}']
+        build_command = ['export DOCKER_BUILDKIT=1']
+        if self.solution_info['solution_update'] == True: 
+            # 이전 version docker 다운로드 후 이번 version build 시 cache 활용
+            pre_command.append(f'docker pull {self.ecr_full_url}:v{self.solution_version_new - 1}')
+            build_command.append(f'docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from {self.ecr_full_url}:v{self.solution_version_new - 1} -t {self.ecr_full_url}:v{self.solution_version_new} .')
+        else:
+            build_command.append(f'docker build --build-arg BUILDKIT_INLINE_CACHE=1 -t {self.ecr_full_url}:v{self.solution_version_new} .')
         post_command = [f'docker push {self.ecr_full_url}:v{self.solution_version_new}']
         buildspec['phases']['pre_build']['commands'] = pre_command
         buildspec['phases']['build']['commands'] = build_command
@@ -1295,10 +1331,17 @@ class SolutionRegister:
                 'mkdir -p ~/.docker/cli-plugins', \
                 'mv buildx-v0.4.2.linux-amd64 ~/.docker/cli-plugins/docker-buildx', \
                 'chmod a+rx ~/.docker/cli-plugins/docker-buildx', \
+                #'docker run --rm tonistiigi/binfmt --install all']
                 'docker run --privileged --rm tonistiigi/binfmt --install all']
         pre_command = [f'aws ecr get-login-password --region {self.infra_setup["REGION"]} | docker login --username AWS --password-stdin {self.ecr_url}/{self.ecr_repo}']
-        build_command = ['docker buildx create --use --name crossx', \
-                f'docker buildx build --push --platform=linux/amd64,linux/arm64 -t {self.ecr_full_url}:v{self.solution_version_new} .']
+        build_command = ['export DOCKER_BUILDKIT=1', \
+                    'docker buildx create --use --name crossx']
+        if self.solution_info['solution_update'] == True: 
+            # 이전 version docker 다운로드 후 이번 version build 시 cache 활용 
+            pre_command.append(f'docker pull {self.ecr_full_url}:v{self.solution_version_new - 1}')
+            build_command.append(f'docker buildx build --push --platform=linux/amd64,linux/arm64 --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from {self.ecr_full_url}:v{self.solution_version_new - 1} -t {self.ecr_full_url}:v{self.solution_version_new} .')
+        else: 
+            build_command.append(f'docker buildx build --push --platform=linux/amd64,linux/arm64 --build-arg BUILDKIT_INLINE_CACHE=1 -t {self.ecr_full_url}:v{self.solution_version_new} .')
         # buildspec['phases']['install']['runtime-versions'] = runtime_docker_version
         buildspec['phases']['install']['commands'] = install_command
         buildspec['phases']['pre_build']['commands'] = pre_command
@@ -1358,7 +1401,7 @@ class SolutionRegister:
             data = {'container_uri': f'{self.ecr_full_url}:v{self.solution_version_new}'} # full url 는 tag 정보까지 포함 
             self.sm_yaml['pipeline'][self.sm_pipe_pointer].update(data)
             print_color(f"[SYSTEM] Completes setting << container_uri >> in solution_metadata.yaml:", color='green')
-            print(f"pipeline: -container_uri: {data['container_uri']}")
+            print(f"container_uri: {data['container_uri']}")
             self._save_yaml()
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << container_uri >> in the solution_metadata.yaml \n {str(e)}")
@@ -1522,7 +1565,8 @@ class SolutionRegister:
             path = REGISTER_INTERFACE_PATH + self.solution_file
             msg = f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다."
             load_response = self._load_response_yaml(path, msg)
-
+        print_color('load_response: \n', color='blue')
+        print(load_response)
         ########################
         ### instance name      -- spec 변경 시, 수정 필요 (fix date: 24.02.23)
         name = load_response['name'] + \

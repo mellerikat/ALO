@@ -204,7 +204,10 @@ class ExternalHandler:
             if len(external_data_path) == 0: 
                 # 이미 input 폴더는 무조건 만들어져 있는 상태임 
                 PROC_LOGGER.process_warning(f'External path - << load_train_data_path >> in experimental_plan.yaml are not written. You must fill the path.') 
-                return
+                checksums = {}
+                checksums['data_id_description'] = {}
+                checksums['data_id'] = '000000000000'  ## 12자리 빈값
+                return checksums
             else: 
                 # load_train_data_path와 load_train_data_path 내 중복  base dir (마지막 서브폴더 명) 존재 시 에러 
                 external_base_dirs = self._check_duplicated_basedir(external_data_path)
@@ -220,7 +223,10 @@ class ExternalHandler:
             # eexternal path 미기입 시 에러
             if len(external_data_path) == 0: 
                 PROC_LOGGER.process_warning(f'External path - << load_inference_data_path >> in experimental_plan.yaml is not written. You must fill the path.') 
-                return
+                checksums = {}
+                checksums['data_id_description'] = {}
+                checksums['data_id'] = '000000000000'  ## 12자리 빈값
+                return checksums
             else: 
                 external_base_dirs = self._check_duplicated_basedir(external_data_path)
             # input 폴더 내에 inference sub폴더 만들기 
@@ -238,7 +244,7 @@ class ExternalHandler:
             PROC_LOGGER.process_info(f"Successfuly removed << {input_data_dir} >> before loading external data.")
         except: 
             PROC_LOGGER.process_error(f"Failed to remove << {input_data_dir} >> before loading external data.")
-        # external 데이터 가져오기 
+        # external 데이터 가져오기   (path 가 empty 경우는 위에서 이미 return 됨)
         for ext_path in external_data_path:
             ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
             data_checksums = self._load_data(pipe_mode, ext_type, ext_path, aws_key_profile)
