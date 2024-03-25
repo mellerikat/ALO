@@ -168,11 +168,11 @@ class ALO:
     
     def _execute_pipeline(self, pipe): 
         try: 
-            pipeline.save()
             pipeline = self.pipeline(pipeline_type=pipe)
             pipeline.setup()
             pipeline.load()
             pipeline.run()
+            pipeline.save()
             # redis runs state update 
             self.system_envs['runs_status'] = pipeline.system_envs['runs_status']
         except: # error 나든 안나든 runs_status는 update 해줘야 redis 정상작동 
@@ -520,12 +520,10 @@ class ALO:
         self.control = self.meta.control
 
     def _get_redis_msg(self):
+        # wait redis msg 
         start_msg = self.q.lget(isBlocking=True)
         if start_msg is not None:
             msg_dict = json.loads(start_msg.decode('utf-8')) ## 수정
-        else:
-            msg = "Empty message recevied for EdgeApp inference request."
-            print("\033[91m" + "Error: " + str(msg) + "\033[0m") # print red
         return msg_dict
 
     def _print_step(self, step_name, sub_title=False):
