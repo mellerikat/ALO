@@ -108,63 +108,106 @@ class ALO:
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
-        try:
-            for pipe in self.system_envs['pipeline_list']:
-                ## 갑자기 죽는 경우, 기록에 남기기 위해 현 진행상황을 적어둔다.
+        # [loop] only 운영 - pipeline은 inference_pipeline 1개로 고정된 상태 / 최초에 boot_on=True 상태 
+        if self.loop: 
+            try:
+                pipe = self.system_envs['pipeline_list'][0] # inference_pipeline
+                # set current pipeline into system envs
                 self.system_envs['current_pipeline'] = pipe
                 self.proc_logger.process_info("#########################################################################################################")
-                self.proc_logger.process_info(f"                                                 {pipe}                                                   ") 
+                self.proc_logger.process_info(f"                                            {pipe} in loop                                              ") 
                 self.proc_logger.process_info("#########################################################################################################")
-                # pipline instance 선언 
-                pipeline = self.pipeline(pipeline_type=pipe)
-                # TODO 한번에 하려고 하니 이쁘지 않음 논의
-                pipeline.setup()
-                pipeline.load()
-                pipeline.run()
-                pipeline.save()
-                # pipeline.history()
-                # FIXME loop 모드로 동작 / solution_metadata를 어떻게 넘길지 고민 / update yaml 위치를 새로 선정할 필요가 있음 ***
-                if self.loop: 
-                    try:
-                        # boot 모드 동작 후 boot 모드 취소
+                # execute pipline 
+                pipeline = self._execute_pipeline(pipe)
+                # 최초 boot_on 모드 동작 후 boot 모드 취소
+                self.system_envs['boot_on'] = False
+                # wait redis msg from edgeapp
+                msg_dict = self._get_redis_msg() 
+                self.system = msg_dict['solution_metadata'] 
+                self.set_metadata(pipeline_type=pipe.split('_')[0]) # inference 
+                # recursive call
+                self.main()
+            except:
+                self.error_loop(pipe) 
+        # [sagemaker] sagemaker run 시에 최초 boot_on 
+        elif self.computing == 'sagemaker':
+            try: 
+                for pipe in self.system_envs['pipeline_list']:
+                    self.system_envs['current_pipeline'] = pipe
+                    self.proc_logger.process_info("#########################################################################################################")
+                    self.proc_logger.process_info(f"                                            {pipe} in sagemaker                                         ") 
+                    self.proc_logger.process_info("#########################################################################################################")
+                    # execute pipline  
+                    pipeline = self._execute_pipeline(pipe)
+                    if 'train_pipeline' in pipe: 
+                        self.sagemaker_runs() # sagemaker 클라우드 리소스 활용은 train 시에만 
+                        # local 환경에서 inference를 한번 진행 하기전 boot_on은 False로 변경  
                         self.system_envs['boot_on'] = False
-                        msg_dict = self._get_redis_msg() ## 수정
-                        self.system = msg_dict['solution_metadata'] ## 수정
-                        self.set_metadata(pipeline_type='inference') ## 수정
-                        self.main()
-                    except Exception as e: 
-                        ## always-on 모드에서는 Error 가 발생해도 종료되지 않도록 한다. 
-                        print("\033[91m" + "Error: " + str(e) + "\033[0m") # print red 
-                        continue
-                if self.computing == "sagemaker":
-                    self.sagemaker_runs()
-                    self.computing = 'local' # inference를 한번 로컬에서 정상작동하기 위해 
-                    self.system_envs['boot_on'] = False
-        except:
-            try:  # 여기에 try, finally 구조로 안쓰면 main.py 로 raise 되버리면서 backup_artifacts가 안됨 
-                #self.proc_logger.process_error("Failed to ALO runs():\n" + traceback.format_exc()) #+ str(e)) 
-                self.proc_logger.process_error(traceback.format_exc())
-            finally:
-                ## id 생성 
-                sttime = self.system_envs['experimental_start_time']
-                exp_name = self.system_envs['experimental_name']
-                curr = self.system_envs['current_pipeline'].split('_')[0]
-                random_number = '{:08}'.format(random.randint(0, 99999999))
-                self.system_envs[f"{curr}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
-
-                # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
-                # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
-                self.artifact.backup_history(pipe, self.system_envs, backup_exp_plan=self.exp_yaml, error=True, size=self.control['backup_size'])
-                # error 발생해도 external save artifacts 하도록        
-                empty = self.ext_data.external_save_artifacts(pipe, self.external_path, self.external_path_permission)
-                if self.loop == True:
-                    fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
-                    if self.system_envs['runs_status'] == 'init':
-                        self.system_envs['q_inference_summary'].rput(fail_str)
-                        self.system_envs['q_inference_artifacts'].rput(fail_str)
-                    elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
-                        self.system_envs['q_inference_artifacts'].rput(fail_str)
-            
+            except: 
+                self.error_batch(pipe) 
+        # [normal] batch execution
+        else:  
+            try:
+                for pipe in self.system_envs['pipeline_list']:
+                    self.system_envs['current_pipeline'] = pipe
+                    self.proc_logger.process_info("#########################################################################################################")
+                    self.proc_logger.process_info(f"                                                 {pipe}                                                 ") 
+                    self.proc_logger.process_info("#########################################################################################################")
+                    # execute pipline  
+                    pipeline = self._execute_pipeline(pipe)
+                    # pipeline.history()
+            except:
+                self.error_batch(pipe) 
+    
+    def _execute_pipeline(self, pipe): 
+        pipeline = self.pipeline(pipeline_type=pipe)
+        pipeline.setup()
+        pipeline.load()
+        pipeline.run()
+        pipeline.save()
+        return pipeline 
+    
+    def error_loop(self, pipe):
+        # loop 일땐 error 발생시켜서 program을 죽이는 것이 아니라 warning만 하고 다시 loop 모드로 진입하여 대기 
+        self.proc_logger.process_warning("#########################################################################################################")
+        self.proc_logger.process_warning(f"                                       Error occurs in loop                                             ") 
+        self.proc_logger.process_warning("#########################################################################################################")
+        self.proc_logger.process_warning(traceback.format_exc())
+        # backup error history & save error artifacts 
+        self._error_backup(pipe)
+        # [redis] send error status to edgeapp 
+        fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
+        if self.system_envs['runs_status'] == 'init':
+            self.system_envs['q_inference_summary'].rput(fail_str)
+            self.system_envs['q_inference_artifacts'].rput(fail_str)
+        elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
+            self.system_envs['q_inference_artifacts'].rput(fail_str) 
+        # recursive call - 다시 loop 모드로 진입하여 대기
+        self.main()
+        
+    def error_batch(self, pipe): 
+        # backup error history & save error artifact
+        self._error_backup(pipe)   
+        # raise error and kill the program     
+        self.proc_logger.process_error(traceback.format_exc())
+    
+    def _error_backup(self, pipe):
+        ''' 
+        1. backup error history
+        2. save error artifacts 
+        '''
+        ## id 생성 
+        sttime = self.system_envs['experimental_start_time']
+        exp_name = self.system_envs['experimental_name']
+        curr = self.system_envs['current_pipeline'].split('_')[0]
+        random_number = '{:08}'.format(random.randint(0, 99999999))
+        self.system_envs[f"{curr}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
+        # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
+        # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
+        self.artifact.backup_history(pipe, self.system_envs, backup_exp_plan=self.exp_yaml, error=True, size=self.control['backup_size'])
+        # error 발생해도 external save artifacts 하도록        
+        _ = self.ext_data.external_save_artifacts(pipe, self.external_path, self.external_path_permission)
+        
     def sagemaker_runs(self): 
         try:
             try: 
