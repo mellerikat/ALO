@@ -110,6 +110,7 @@ class ALO:
         """
         # [loop] only 운영 - pipeline은 inference_pipeline 1개로 고정된 상태 / 최초에 boot_on=True 상태 
         if self.loop: 
+            # boot-on 
             try:
                 pipe = self.system_envs['pipeline_list'][0] # inference_pipeline only 
                 # set current pipeline into system envs
