@@ -108,7 +108,6 @@ class ALO:
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
-        # global x
         # [loop] only 운영 - pipeline은 inference_pipeline 1개로 고정된 상태 / 최초에 boot_on=True 상태 
         if self.loop: 
             try:
@@ -119,23 +118,31 @@ class ALO:
                 self.proc_logger.process_info(f"                                            {pipe} in loop                                              ") 
                 self.proc_logger.process_info("#########################################################################################################")
                 # execute pipline 
-                self._execute_pipeline(pipe) 
+                pipeline = self._execute_pipeline(pipe) 
+                self.proc_logger.process_info("#########################################################################################################")
+                self.proc_logger.process_info(f"                                            Finish boot-on                                              ") 
+                self.proc_logger.process_info("#########################################################################################################")
                 # 최초 boot_on 모드 동작 후 boot 모드 취소
                 self.system_envs['boot_on'] = False
-                # wait redis msg from edgeapp
-                msg_dict = self._get_redis_msg() 
-                self.system = msg_dict['solution_metadata'] 
-                self.set_metadata(pipeline_type=pipe.split('_')[0]) # inference 
-                # recursive call
-                self.main()
-            except:
-                # boot_on=True일때 죽으면 그냥 에러발생 시키고 죽기 
-                if self.system_envs['boot_on'] == True:
-                    self.proc_logger.process_error("Failed to boot on")
-                else: 
-                    _ = self.error_loop(pipe) # return 
-                    # recursive call
-                    self.main()
+            except: 
+                self.proc_logger.process_error("Failed to boot-on.")
+            # infinite loop 
+            while True: 
+                try:
+                    # wait redis msg from edgeapp
+                    msg_dict = self._get_redis_msg() 
+                    self.system = msg_dict['solution_metadata'] 
+                    pipeline.setup()
+                    pipeline.load()
+                    pipeline.run()
+                    pipeline.save()
+                    # redis runs state update 
+                    self.system_envs['runs_status'] = pipeline.system_envs['runs_status']
+                except:
+                    # error 발생 시에도 redis runs state update 필요 (runs_status를 pipeline.py --> alo.py로 update해주기 위해)
+                    self.system_envs['runs_status'] = pipeline.system_envs['runs_status']
+                    _ = self.error_loop(pipe) # return & continue 
+                    self.set_metadata(pipeline_type=pipe.split('_')[0]) # inference pipeline의 metadata 초기화 
         # [sagemaker] sagemaker run 시에 최초 boot_on 
         elif self.computing == 'sagemaker':
             try: 
@@ -145,7 +152,11 @@ class ALO:
                     self.proc_logger.process_info(f"                                            {pipe} in sagemaker                                         ") 
                     self.proc_logger.process_info("#########################################################################################################")
                     # execute pipline  
-                    self._execute_pipeline(pipe)
+                    pipeline = self._execute_pipeline(pipe)
+                    if self.system_envs['boot_on'] == True: 
+                        self.proc_logger.process_info("#########################################################################################################")
+                        self.proc_logger.process_info(f"                                            Finish boot-on                                              ") 
+                        self.proc_logger.process_info("#########################################################################################################")
                     if 'train_pipeline' in pipe: 
                         self.sagemaker_runs() # sagemaker 클라우드 리소스 활용은 train 시에만 
                         # local 환경에서 inference를 한번 진행 하기전 boot_on은 False로 변경  
@@ -161,7 +172,7 @@ class ALO:
                     self.proc_logger.process_info(f"                                                 {pipe}                                                 ") 
                     self.proc_logger.process_info("#########################################################################################################")
                     # execute pipline  
-                    self._execute_pipeline(pipe)
+                    pipeline = self._execute_pipeline(pipe)
                     # pipeline.history()
             except:
                 self.error_batch(pipe) 
@@ -173,10 +184,8 @@ class ALO:
             pipeline.load()
             pipeline.run()
             pipeline.save()
-            # redis runs state update 
-            self.system_envs['runs_status'] = pipeline.system_envs['runs_status']
-        except: # error 나든 안나든 runs_status는 update 해줘야 redis 정상작동 
-            self.system_envs['runs_status'] = pipeline.system_envs['runs_status']
+            return pipeline 
+        except: 
             self.proc_logger.process_error("Failed to execute pipeline.")
     
     def error_loop(self, pipe):
