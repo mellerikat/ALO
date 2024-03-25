@@ -132,11 +132,9 @@ class ALO:
                 try:
                     # wait redis msg from edgeapp
                     msg_dict = self._get_redis_msg() 
-                    self.system = msg_dict['solution_metadata'] 
-                    pipeline.setup()
-                    pipeline.load()
-                    pipeline.run()
-                    pipeline.save()
+                    self.system = msg_dict['solution_metadata']
+                    self.set_metadata(pipeline_type=pipe.split('_')[0])
+                    pipeline = self._execute_pipeline(pipe)
                     # redis runs state update 
                     self.system_envs['runs_status'] = pipeline.system_envs['runs_status']
                 except:
