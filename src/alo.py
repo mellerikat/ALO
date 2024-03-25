@@ -35,7 +35,7 @@ class AssetStructure:
         self.args = {}
         self.data = {} 
         self.config = {}
-        
+
 class ALO:
     # def __init__(self, exp_plan_file = None, solution_metadata = None, pipeline_type = 'all', boot_on = False, computing = 'local'):
     # 'config': None, 'system': None, 'mode': 'all', 'loop': False, 'computing': 'local'
@@ -102,12 +102,13 @@ class ALO:
         pipeline = Pipeline(experimental_plan, pipeline_type, self.system_envs)
         return pipeline
 
-    # redis q init 하는 위치
+    # redis q init 하는 위치 
     def main(self):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
+        # global x
         # [loop] only 운영 - pipeline은 inference_pipeline 1개로 고정된 상태 / 최초에 boot_on=True 상태 
         if self.loop: 
             try:
@@ -118,7 +119,7 @@ class ALO:
                 self.proc_logger.process_info(f"                                            {pipe} in loop                                              ") 
                 self.proc_logger.process_info("#########################################################################################################")
                 # execute pipline 
-                pipeline = self._execute_pipeline(pipe)
+                self._execute_pipeline(pipe) 
                 # 최초 boot_on 모드 동작 후 boot 모드 취소
                 self.system_envs['boot_on'] = False
                 # wait redis msg from edgeapp
@@ -128,7 +129,13 @@ class ALO:
                 # recursive call
                 self.main()
             except:
-                self.error_loop(pipe) 
+                # boot_on=True일때 죽으면 그냥 에러발생 시키고 죽기 
+                if self.system_envs['boot_on'] == True:
+                    self.proc_logger.process_error("Failed to boot on")
+                else: 
+                    _ = self.error_loop(pipe) # return 
+                    # recursive call
+                    self.main()
         # [sagemaker] sagemaker run 시에 최초 boot_on 
         elif self.computing == 'sagemaker':
             try: 
@@ -138,7 +145,7 @@ class ALO:
                     self.proc_logger.process_info(f"                                            {pipe} in sagemaker                                         ") 
                     self.proc_logger.process_info("#########################################################################################################")
                     # execute pipline  
-                    pipeline = self._execute_pipeline(pipe)
+                    self._execute_pipeline(pipe)
                     if 'train_pipeline' in pipe: 
                         self.sagemaker_runs() # sagemaker 클라우드 리소스 활용은 train 시에만 
                         # local 환경에서 inference를 한번 진행 하기전 boot_on은 False로 변경  
@@ -154,18 +161,23 @@ class ALO:
                     self.proc_logger.process_info(f"                                                 {pipe}                                                 ") 
                     self.proc_logger.process_info("#########################################################################################################")
                     # execute pipline  
-                    pipeline = self._execute_pipeline(pipe)
+                    self._execute_pipeline(pipe)
                     # pipeline.history()
             except:
                 self.error_batch(pipe) 
     
     def _execute_pipeline(self, pipe): 
-        pipeline = self.pipeline(pipeline_type=pipe)
-        pipeline.setup()
-        pipeline.load()
-        pipeline.run()
-        pipeline.save()
-        return pipeline 
+        try: 
+            pipeline.save()
+            pipeline = self.pipeline(pipeline_type=pipe)
+            pipeline.setup()
+            pipeline.load()
+            pipeline.run()
+            # redis runs state update 
+            self.system_envs['runs_status'] = pipeline.system_envs['runs_status']
+        except: # error 나든 안나든 runs_status는 update 해줘야 redis 정상작동 
+            self.system_envs['runs_status'] = pipeline.system_envs['runs_status']
+            self.proc_logger.process_error("Failed to execute pipeline.")
     
     def error_loop(self, pipe):
         # loop 일땐 error 발생시켜서 program을 죽이는 것이 아니라 warning만 하고 다시 loop 모드로 진입하여 대기 
@@ -182,8 +194,7 @@ class ALO:
             self.system_envs['q_inference_artifacts'].rput(fail_str)
         elif self.system_envs['runs_status'] == 'summary': # 이미 summary는 success로 보낸 상태 
             self.system_envs['q_inference_artifacts'].rput(fail_str) 
-        # recursive call - 다시 loop 모드로 진입하여 대기
-        self.main()
+        return 
         
     def error_batch(self, pipe): 
         # backup error history & save error artifact
@@ -262,7 +273,7 @@ class ALO:
                 merged_exp_plan = meta.merged_exp_plan(exp_plan, pipeline_type=pipeline_type)
                 return merged_exp_plan
         def _pipe_run(exp_plan, pipeline_type): #inner func.
-            pipeline = self.pipeline(exp_plan, pipeline_type )
+            pipeline = self.pipeline(exp_plan, pipeline_type)
             pipeline.setup()
             pipeline.load()
             pipeline.run()
