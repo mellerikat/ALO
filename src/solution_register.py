@@ -182,7 +182,7 @@ class SolutionRegister:
         pipeline_list = ['inference'] if self.solution_info['inference_only'] else ['train', 'inference']
 
         for pipeline_name in pipeline_list:
-            self._sm_append_pipeline(pipeline_name = 'train')
+            self._sm_append_pipeline(pipeline_name = pipeline_name)
             self.set_resource(resource='high')  ## resource 선택은 spec-out 됨
             self.set_user_parameters()
             self.s3_upload_data()
@@ -1292,9 +1292,9 @@ class SolutionRegister:
         codebuild_project_json['serviceRole'] = codebuild_role
         codebuild_project_json['environment']['type'] = self.infra_setup["CODEBUILD_ENV_TYPE"]
         codebuild_project_json['environment']['computeType'] = self.infra_setup["CODEBUILD_ENV_COMPUTE_TYPE"]
-        codebuild_project_json['environment']['privilegedMode'] = True 
-        # FIXME tags test 임시
-        codebuild_project_json['tags'] = [{'key':'temp-key', 'value':'temp-value'}]
+        codebuild_project_json['environment']['privilegedMode'] = False # True 
+        # FIXME tags는 ECR tags와 일단 동일하게 사용 
+        codebuild_project_json['tags'] = self.infra_setup["REPOSITORY_TAGS"]
         codebuild_project_json['cache']['location'] = bucket_uri + 'cache'
         codebuild_project_json['logsConfig']['s3Logs']['location'] = bucket_uri + 'logs'
         codebuild_project_json['logsConfig']['s3Logs']['encryptionDisabled'] = True 
@@ -1331,8 +1331,8 @@ class SolutionRegister:
                 'mkdir -p ~/.docker/cli-plugins', \
                 'mv buildx-v0.4.2.linux-amd64 ~/.docker/cli-plugins/docker-buildx', \
                 'chmod a+rx ~/.docker/cli-plugins/docker-buildx', \
-                #'docker run --rm tonistiigi/binfmt --install all']
-                'docker run --privileged --rm tonistiigi/binfmt --install all']
+                'docker run --rm tonistiigi/binfmt --install all']
+                #'docker run --privileged --rm tonistiigi/binfmt --install all']
         pre_command = [f'aws ecr get-login-password --region {self.infra_setup["REGION"]} | docker login --username AWS --password-stdin {self.ecr_url}/{self.ecr_repo}']
         build_command = ['export DOCKER_BUILDKIT=1', \
                     'docker buildx create --use --name crossx']
