@@ -37,6 +37,8 @@ def log_decorator(func):
         # 원본 함수 호출
         logger_method, msg = func(*args, **kwargs)
         logger_method(f'{caller_file}({caller_line})|{caller_func}()] {msg}')
+        if logger_method.__name__ == "error":
+            raise
     return wrapper
 
 class ProcessLogger: 
