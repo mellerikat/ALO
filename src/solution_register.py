@@ -23,6 +23,7 @@ import docker
 from copy import deepcopy 
 from pprint import pprint
 import configparser
+import pyfiglet
 
 ### internal package 
 from src.constants import *
@@ -149,6 +150,18 @@ class SolutionRegister:
         self.debugging = False 
         self.skip_generation_docker = False
 
+        def make_art(str):
+            terminal_width = shutil.get_terminal_size().columns
+            ascii_art = pyfiglet.figlet_format(str, font="slant")
+            centered_art = '\n'.join(line.center(terminal_width) for line in ascii_art.splitlines())
+            print("*" * 80)
+            print(ascii_art)
+            print("*" * 80)
+        
+        make_art("ALO Register!!!")
+
+        self._s3_access_check()
+
     ################################################
     ################################################
     def set_solution_settings(self):
@@ -164,6 +177,21 @@ class SolutionRegister:
         self.set_wrangler()
         self.set_edge()
     
+    def run_pipelines(self, pipes):
+        codebuild_client = None
+        build_id = None
+        self._sm_append_pipeline(pipeline_name=pipes) # sm
+        self.set_resource(resource='high')  ## resource 선택은 spec-out 됨
+        self.set_user_parameters() # sm
+        self.s3_upload_data() # s3
+        self.s3_upload_artifacts() #s3
+        if (not self.debugging) and (not self.skip_generation_docker):
+            skip_build=False
+        else:
+            skip_build=True
+        codebuild_client, build_id = self.make_docker(skip_build)
+        self.docker_push()
+
     ################################################
     ################################################
 
@@ -1481,30 +1509,25 @@ class SolutionRegister:
                 print(f"An error occurred: {e}")
 
         else:
-            subprocess.run(['sudo', 'buildah', 'build', '--isolation', 'chroot', '-t', f'{self.ecr_full_url}:v{self.solution_version_new}'])
-    def _docker_push(self):
-            try:
-                with open(log_file_path, "wb") as log_file:
-                    command = ['sudo', 'buildah', 'bud', '--isolation', 'chroot', '-t', image_tag, '.']
-                    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                    for line in iter(process.stdout.readline, b''):
-                        log_file.write(line)
-                        if time.time() - last_update_time > update_interval:
-                            sys.stdout.write('.')
-                            sys.stdout.flush()
-                            last_update_time = time.time()
-                    process.stdout.close()
-                    return_code = process.wait()
-                    if return_code == 0:
-                        sys.stdout.write(' Done!\n')
-                    else:
-                        print(f"\nAn error occurred during build. Return code: {return_code}")
-            except Exception as e:
-                print(f"An error occurred: {e}")
+            with open(log_file_path, "wb") as log_file:
+                command = ['sudo', 'buildah', 'bud', '--isolation', 'chroot', '-t', image_tag, '.']
+                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                for line in iter(process.stdout.readline, b''):
+                    log_file.write(line)
+                    if time.time() - last_update_time > update_interval:
+                        sys.stdout.write('.')
+                        sys.stdout.flush()
+                        last_update_time = time.time()
+                process.stdout.close()
+                return_code = process.wait()
+                if return_code == 0:
+                    sys.stdout.write(' Done!\n')
+                else:
+                    print(f"\nAn error occurred during build. Return code: {return_code}")
 
     def docker_push(self):
         image_tag = f"{self.ecr_full_url}:v{self.solution_version_new}"
->>>>>>> Stashed changes
+
         if self.infra_setup['BUILD_METHOD'] == 'docker':
             self.docker_client.images.push(image_tag)
         else:
@@ -1698,9 +1721,11 @@ class SolutionRegister:
         
         self.register_solution_instance_api["name"] = name
         self.register_solution_instance_api["solution_version_id"] = load_response['versions'][0]['id']
-        self.register_solution_instance_api["train_resource"] = yaml_data['pipeline'][0]["resource"]['default']
         self.register_solution_instance_api["metadata_json"] = yaml_data
         
+        if 'train_resource' in self.register_solution_instance_api:
+            yaml_data['pipeline'][0]["resource"]['default'] = self.register_solution_instance_api['train_resource']
+
         data =json.dumps(self.register_solution_instance_api) # json 화
 
         # solution instance 등록
