@@ -19,6 +19,7 @@ from src.external import ExternalHandler
 from src.logger import ProcessLogger
 from src.artifacts import Aritifacts
 from src.yaml import Metadata
+from src.utils import _print_step, _print_step_finish
 
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
@@ -75,19 +76,25 @@ class Pipeline:
         # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
         for key, value in experimental_plan.items():
             setattr(self, key, _get_yaml_data(key, pipeline_type))
+        
         ## pipeline.run() 만 실행 시, init 에 존재해야 함
         self._set_asset_structure()
 
     def setup(self):
+        _print_step(f"{self.pipeline_type} -- setup()")
         self._empty_artifacts(self.pipeline_type)
         # print(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         _, packs = self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         if packs is not None: 
             self._create_package(packs)
+
+        _print_step_finish(f"Finish to setup {self.pipeline_type}")
+
         # TODO return 구성
         # return
 
     def load(self, data_path=[]):
+        _print_step(f"{self.pipeline_type} -- load()")
         ############  Load Model  ##################
         if self.pipeline_type == 'inference_pipeline':
             if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""):
@@ -109,10 +116,15 @@ class Pipeline:
             # v2.3.0 NEW: 실험 history 를 위한 data_id 생성
             ptype = self.pipeline_type.split('_')[0]
             self.system_envs[f'{ptype}_history'].update(data_checksums)
+
+        _print_step_finish(f"Finish to load {self.pipeline_type}")
         # TODO return 구성
         # return
 
     def run(self, steps = 'All'):
+
+        _print_step(f"{self.pipeline_type} -- run()")
+
         if steps == 'All':
             for step, asset_config in enumerate(self.asset_source[self.pipeline_type]):
                 PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {asset_config['step']}")
@@ -171,7 +183,11 @@ class Pipeline:
         # 수정된 부분: total_checksum을 문자열의 형태로 저장하며, 길이가 12가 되도록 조정
         self.system_envs[f'{ptype}_history']['code_id'] = total_checksum_str 
 
+        _print_step_finish(f"Finish to run {self.pipeline_type}")
+
     def save(self):
+
+        _print_step(f"{self.pipeline_type} -- save()")
         ###################################
         ## Step7: summary yaml, output 정상 생성 체크
         ###################################
@@ -220,6 +236,8 @@ class Pipeline:
                 except:
                     PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
 
+        _print_step_finish(f"Finish to save {self.pipeline_type}")
+
     def history(self, data_id="", param_id="", code_id="", parameter_steps=[]):
         """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
         Attributes:
@@ -229,6 +247,8 @@ class Pipeline:
 
             - parameter_steps (list): table 생성 시, 어떤 step 의 parameter 를 같이 보여줄 지 결정
         """
+        _print_step(f"{self.pipeline_type} -- backup_history()")
+
         ## step1: history 폴더에서 폴더 명을 dict key 화 하기 
         ptype = self.pipeline_type.split('_')[0]
         base_path = HISTORY_PATH + f'{ptype}/'

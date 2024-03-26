@@ -34,3 +34,13 @@ def init_redis(system):
     q = RedisQueue('request_inference', host=redis_host, port=int(redis_port), db=0)
     return q        
         
+def _print_step(step_name, sub_title=False):
+    if not sub_title:
+        PROC_LOGGER.process_info("################################################################")
+        PROC_LOGGER.process_info(f'######     {step_name}')
+        PROC_LOGGER.process_info("################################################################")
+    else:
+        PROC_LOGGER.process_info(f"######     {step_name}")
+
+def _print_step_finish(step_name):
+    PROC_LOGGER.process_info(f'######     {step_name}     ######\n')

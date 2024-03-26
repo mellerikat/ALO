@@ -158,7 +158,7 @@ class SolutionRegister:
             print(ascii_art)
             print("*" * 80)
         
-        make_art("ALO Register!!!")
+        make_art("Register AI Solution!!!")
 
         self._s3_access_check()
 

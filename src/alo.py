@@ -8,8 +8,10 @@ import subprocess
 from datetime import datetime, timezone
 from git import Repo, GitCommandError
 import yaml
+import pyfiglet
+
 # local import
-from src.utils import init_redis
+from src.utils import init_redis, _print_step, _print_step_finish
 from src.constants import *
 from src.artifacts import Aritifacts
 from src.install import Packages
@@ -37,6 +39,30 @@ class AssetStructure:
         self.config = {}
 
 class ALO:
+    # 저작권 및 라이선스 고지문
+    copyright_notice = """
+    Copyright (c) 2024, ALO Software
+    
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of ALO Software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+    
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+    
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+    """
+
+
     # def __init__(self, exp_plan_file = None, solution_metadata = None, pipeline_type = 'all', boot_on = False, computing = 'local'):
     # 'config': None, 'system': None, 'mode': 'all', 'loop': False, 'computing': 'local'
     def __init__(self, config = None, system = None, mode = 'all', loop = False, computing = 'local'):
@@ -51,22 +77,33 @@ class ALO:
             computing: 학습하는 컴퓨팅 자원 (local, sagemaker)
         Returns:
         """
+        self._make_art("Enjoy ALO ~ !!")
+        print(self.copyright_notice)
+
         # logger 초기화
         self._init_logger()
+
         # 필요 class init
         self._init_class()
+
         # alolib을 설치
         self._set_alolib()
+
+
         exp_plan_path = config
         self.system = system
         self.loop = loop
         self.computing = computing
         pipeline_type = mode
         self.system_envs = {}
+
+
         # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
         if exp_plan_path == "" or exp_plan_path == None:
             exp_plan_path = DEFAULT_EXP_PLAN
+
         self._get_alo_version()
+
         self.set_metadata(exp_plan_path, pipeline_type)
         # artifacts home 초기화 (from src.utils)
         self.system_envs['artifacts'] = self.artifact.set_artifacts()
@@ -179,6 +216,7 @@ class ALO:
     def _execute_pipeline(self, pipe): 
         try: 
             pipeline = self.pipeline(pipeline_type=pipe)
+
             pipeline.setup()
             pipeline.load()
             pipeline.run()
@@ -319,6 +357,14 @@ class ALO:
     #####################################
     ####    Part1. Initialization    ####
     #####################################
+    def _make_art(self, str):
+        terminal_width = shutil.get_terminal_size().columns
+        ascii_art = pyfiglet.figlet_format(str, font="slant")
+        centered_art = '\n'.join(line.center(terminal_width) for line in ascii_art.splitlines())
+        print("*" * 80)
+        print(ascii_art)
+        print("*" * 80)
+    
     def _init_logger(self):
         """ALO Master 의 logger 를 초기화 합니다. 
         ALO Slave (Asset) 의 logger 를 별도 설정 되며, configuration 을 공유 합니다. 
@@ -337,20 +383,22 @@ class ALO:
         self.proc_logger = ProcessLogger(PROJECT_HOME)  
 
     def _init_class(self):
-        self._print_step("Uploading the ALO source code to memory.")
+        _print_step("Uploading the ALO source code to memory.")
         # TODO 지우기 -> Pipeline 클래스에서 사용 예정
         self.ext_data = ExternalHandler()
         self.install = Packages()
         self.asset = Assets(ASSET_HOME)
         self.artifact = Aritifacts()
         self.meta = Metadata()
-        self.proc_logger.process_info("ALO source code initialization success.")
+        self.proc_logger.process_info("ALO source code initialization success.\n")
+
+        _print_step_finish("Finish to setup ALO code")
 
     def _set_alolib(self):
         """ALO 는 Master (파이프라인 실행) 와 slave (Asset 실행) 로 구분되어 ALO API 로 통신합니다. 
         기능 업데이트에 따라 API 의 버전 일치를 위해 Master 가 slave 의 버전을 확인하여 최신 버전으로 설치 되도록 강제한다.
         """
-        self._print_step("Install ALO Library")
+        _print_step("Install ALO Library")
         # TODO 버전 mis-match 시, git 재설치하기. (미존재시, 에러 발생 시키기)
         try:
             if not os.path.exists(PROJECT_HOME + 'alolib'): 
@@ -360,9 +408,9 @@ class ALO:
                 # repository_url = ALO_LIB_URI
                 # destination_directory = ALO_LIB
                 cloned_repo = Repo.clone_from(ALO_LIB_URI, ALO_LIB, branch=ALOVER)
-                self.proc_logger.process_info(f"alolib {ALOVER} git pull success.")
+                self.proc_logger.process_info(f"alolib {ALOVER} git pull success.\n")
             else: 
-                self.proc_logger.process_info("alolib already exists in local path.")
+                self.proc_logger.process_info("alolib already exists in local path.\n")
             alolib_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/alolib/"
             sys.path.append(alolib_path)
         except GitCommandError as e:
@@ -376,8 +424,12 @@ class ALO:
             self.proc_logger.process_info(result.stdout)
         else:
             self.proc_logger.process_error(f"Failed installing alolib requirements.txt : \n {result.stderr}")
+
+        _print_step_finish("Finish to install ALO Library")
         
     def _get_alo_version(self):
+        _print_step("Check ALO version")
+
         with open(PROJECT_HOME + '.git/HEAD', 'r') as f:
             ref = f.readline().strip()
         # ref는 형식이 'ref: refs/heads/브랜치명' 으로 되어 있으므로, 마지막 부분만 가져옵니다.
@@ -386,17 +438,23 @@ class ALO:
         else:
             __version__ = ref  # Detached HEAD 상태 (브랜치명이 아니라 커밋 해시)
         self.system_envs['alo_version'] = __version__
+        self.proc_logger.process_meta(f"ALO version = {self.system_envs['alo_version']}")
+        _print_step_finish("Finish to check ALO version")
 
     def set_metadata(self, exp_plan_path = DEFAULT_EXP_PLAN, pipeline_type = 'train_pipeline'):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.  
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
-        # init solution metadata
-        self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
+        ## load solution_metadata
         sol_meta = self.load_solution_metadata()
+
+        ## update system_envs
+        self.system_envs['experimental_start_time'] = datetime.now(timezone.utc).strftime(TIME_FORMAT)
         self.system_envs['solution_metadata'] = sol_meta
         self.system_envs['experimental_plan_path'] = exp_plan_path
+
+        ## load experimental_plan.yaml
         self.exp_yaml, sys_envs = self.load_exp_plan(sol_meta, exp_plan_path, self.system_envs)
         self._set_attr()
         # loop 모드면 항상 처음에 boot 모드
@@ -408,10 +466,12 @@ class ALO:
             else: # loop mode - 최초 boot on 시 / 일반 flow  
                 self.system_envs = self._set_system_envs(pipeline_type, self.loop, self.system_envs)
         # metadata까지 완성되면 출력
-        self._alo_info()
+        if self.system_envs['boot_on'] == True: 
+            self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
         # ALO 설정 완료 info 와 로깅
 
     def _set_system_envs(self, pipeline_type, boot_on, _system_envs):
+        _print_step("Setup system environments")
         system_envs = _system_envs
         # 아래 solution metadata 관련 key들은 이미 yaml.py의 _update_yaml에서 setting 돼서 넘어왔으므로, key가 없을때만 None으로 셋팅
         solution_metadata_keys = ['solution_metadata_version', 'q_inference_summary', \
@@ -440,20 +500,23 @@ class ALO:
                     system_envs['pipeline_list'] = [*self.user_parameters]
             else:
                 system_envs['pipeline_list'] = [f"{pipeline_type}_pipeline"]
-        return system_envs
 
-    def _alo_info(self):
-        if self.system_envs['boot_on'] == True: 
-            self.proc_logger.process_info(f"==================== Start booting sequence... ====================")
-        else: 
-            self.proc_logger.process_meta(f"Loaded solution_metadata: \n{self.system_envs['solution_metadata']}\n")
-        self.proc_logger.process_info(f"Process start-time: {self.system_envs['start_time']}")
-        self.proc_logger.process_meta(f"ALO version = {self.system_envs['alo_version']}")
-        self.proc_logger.process_info("==================== Start ALO preset ==================== ")
+        self.proc_logger.process_info(f"system_envs['start_time']: {system_envs['experimental_start_time']}")
+        self.proc_logger.process_info(f"system_envs['run_status']: {system_envs['runs_status']}")
+        self.proc_logger.process_info(f"system_envs['pipeline_list']: {system_envs['pipeline_list']}")
+
+        self.proc_logger.process_info(f"system_envs['pipeline_mode (main config.)']: {system_envs['pipeline_mode']}")
+        self.proc_logger.process_info(f"system_envs['loop (main config.)']: {system_envs['loop']}")
+        self.proc_logger.process_info(f"system_envs['boot_on (main config.)']: {system_envs['boot_on']}")
+
+        _print_step_finish("Finish to install ALO Library")
+        return system_envs
 
     def load_solution_metadata(self):
         # TODO solution meta version 관리 필요??
         # system 은 입력받은 solution metadata / args.system 이 *.yaml 이면 파일 로드하여 string 화 하여 입력 함
+        _print_step("Load Solution Metadata")
+
         filename = self.system
         if (filename is not None) and filename.endswith('.yaml'):
             try:
@@ -461,13 +524,22 @@ class ALO:
                     content = yaml.load(file, Loader=yaml.FullLoader)  # 파일 내용을 읽고 자료구조로 변환
                 # 로드한 YAML 내용을 JSON 문자열로 변환
                 self.system = json.dumps(content)
+                self.proc_logger.process_meta(f"Loaded solution_metadata: \n{self.system}")
             except FileNotFoundError:
                 self.proc_logger.process_error(f"The file {filename} does not exist.")
+        else:
+            self.proc_logger.process_info("Solution metadata was not entered. Skipping the solution metadata to experimental_plan process.")
+
+        _print_step_finish("Finish to load solution metadata")
+
         return json.loads(self.system) if self.system != None else None # None or dict from json 
     
     def load_exp_plan(self, sol_meta, experimental_plan, system_envs):
+        _print_step("Load Experimental_plan.yaml")
         exp_plan = self.meta.read_yaml(sol_me_file = sol_meta, exp_plan_file = experimental_plan, system_envs = system_envs)
         ## system_envs 를 linked 되어 있으므로, read_yaml 에서 update 된 사항이 자동 반영되어 있음
+
+        _print_step_finish("Finish to load experimental_plan.yaml")
         return exp_plan, system_envs 
 
     ########################################
@@ -533,11 +605,3 @@ class ALO:
         if start_msg is not None:
             msg_dict = json.loads(start_msg.decode('utf-8')) ## 수정
         return msg_dict
-
-    def _print_step(self, step_name, sub_title=False):
-        if not sub_title:
-            self.proc_logger.process_info("################################################################")
-            self.proc_logger.process_info(f'######     {step_name}')
-            self.proc_logger.process_info("################################################################\n")
-        else:
-            self.proc_logger.process_info(f"\n######     {step_name}")
