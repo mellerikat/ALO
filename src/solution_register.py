@@ -1294,7 +1294,18 @@ class SolutionRegister:
         codebuild_project_json['environment']['computeType'] = self.infra_setup["CODEBUILD_ENV_COMPUTE_TYPE"]
         codebuild_project_json['environment']['privilegedMode'] = False # True 
         # FIXME tags는 ECR tags와 일단 동일하게 사용 
-        codebuild_project_json['tags'] = self.infra_setup["REPOSITORY_TAGS"]
+        def _convert_tags(tags): # inner func.
+            if len(tags) > 0:  
+                tags_new = []
+                for tag in tags:
+                        key, value = tag.split(',')
+                        tag_dict = {'key': key.split('=')[1], 'value': value.split('=')[1]}
+                        tags_new.append(tag_dict)
+                return tags_new 
+            else: 
+                return tags
+        # codebuild tags format은 [{'key':'temp-key', 'value':'temp-value'}]
+        codebuild_project_json['tags'] = _convert_tags(self.infra_setup["REPOSITORY_TAGS"])
         codebuild_project_json['cache']['location'] = bucket_uri + 'cache'
         codebuild_project_json['logsConfig']['s3Logs']['location'] = bucket_uri + 'logs'
         codebuild_project_json['logsConfig']['s3Logs']['encryptionDisabled'] = True 
