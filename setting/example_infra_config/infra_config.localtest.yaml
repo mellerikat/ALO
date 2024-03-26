@@ -2,7 +2,7 @@
 'AIC_URI': "https://web.aic-dev.lgebigdata.com/"  ## 실 서버 
 "REGION": "ap-northeast-2"
 "WORKSPACE_NAME": "cism-ws"  ## magna-ws, cism-ws
-"BUILD_METHOD": "docker"  ## docker, buildah 
+"BUILD_METHOD": "buildah"  ## docker, buildah 
 
 'VERSION': 1.1
 "LOGIN_MODE": "static" ## ldap, static
