@@ -429,7 +429,6 @@ class ALO:
         
     def _get_alo_version(self):
         _print_step("Check ALO version")
-
         with open(PROJECT_HOME + '.git/HEAD', 'r') as f:
             ref = f.readline().strip()
         # ref는 형식이 'ref: refs/heads/브랜치명' 으로 되어 있으므로, 마지막 부분만 가져옵니다.
@@ -438,8 +437,8 @@ class ALO:
         else:
             __version__ = ref  # Detached HEAD 상태 (브랜치명이 아니라 커밋 해시)
         self.system_envs['alo_version'] = __version__
-        self.proc_logger.process_meta(f"ALO version = {self.system_envs['alo_version']}")
-        _print_step_finish("Finish to check ALO version")
+        self.proc_logger.process_info(f"ALO version = {self.system_envs['alo_version']}")
+        _print_step_finish("Finish checking ALO version")
 
     def set_metadata(self, exp_plan_path = DEFAULT_EXP_PLAN, pipeline_type = 'train_pipeline'):
         """ 실험 계획 (experimental_plan.yaml) 과 운영 계획(solution_metadata) 을 읽어옵니다.
@@ -524,7 +523,7 @@ class ALO:
                     content = yaml.load(file, Loader=yaml.FullLoader)  # 파일 내용을 읽고 자료구조로 변환
                 # 로드한 YAML 내용을 JSON 문자열로 변환
                 self.system = json.dumps(content)
-                self.proc_logger.process_meta(f"Loaded solution_metadata: \n{self.system}")
+                self.proc_logger.process_info(f"#####   Loaded solution_metadata: \n{self.system}")
             except FileNotFoundError:
                 self.proc_logger.process_error(f"The file {filename} does not exist.")
         else:
