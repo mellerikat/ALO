@@ -1,3 +1,4 @@
+# docker 제작시 모든 step 패키지를 설치하게 수정
 import docker
 from docker.errors import APIError, BuildError
 import sys
@@ -178,8 +179,6 @@ class SolutionRegister:
         self.set_edge()
     
     def run_pipelines(self, pipes):
-        codebuild_client = None
-        build_id = None
         self._sm_append_pipeline(pipeline_name=pipes) # sm
         self.set_resource(resource='high')  ## resource 선택은 spec-out 됨
         self.set_user_parameters() # sm
@@ -191,6 +190,8 @@ class SolutionRegister:
             skip_build=True
         codebuild_client, build_id = self.make_docker(skip_build)
         self.docker_push()
+        self._set_container_uri()
+        return codebuild_client, build_id
 
     ################################################
     ################################################
@@ -213,37 +214,25 @@ class SolutionRegister:
           ## s3 instance 생성 
         self.set_resource_list()
         # codebuild로 실행시 client와 id를 추후 받아옴
-        train_codebuild_client, train_build_id = None, None
-        inference_codebuild_client, inference_build_id = None, None
+        # train_codebuild_client, train_build_id = None, None
+        # inference_codebuild_client, inference_build_id = None, None
         ############################
         ### Train pipeline 설정
         ############################
-        if self.solution_info['inference_only']:
-            pass
-        else:
-            self._sm_append_pipeline(pipeline_name='train') # sm
-            self.set_resource(resource='high')  ## resource 선택은 spec-out 됨
-            self.set_user_parameters() # sm
-            self.s3_upload_data() # s3
-            self.s3_upload_artifacts() #s3 
-            if (not self.debugging) and (not self.skip_generation_docker):
-                skip_build=False
-            else:
-                skip_build=True
-            
-            if pipeline_name == 'train':
-                train_codebuild_client, train_build_id = self.make_docker(skip_build)
-            if pipeline_name == 'inference':
-                inference_codebuild_client, inference_build_id = self.make_docker(skip_build)
+        pipelines = ["train", "inference"]
 
-        ## get async codebuild resp 
-        if train_codebuild_client != None and train_build_id != None: 
-            self._batch_get_builds(train_codebuild_client, train_build_id, status_period=20)
-        if inference_codebuild_client != None and inference_build_id != None: 
-            self._batch_get_builds(inference_codebuild_client, inference_build_id, status_period=20)
-            
+        for pipes in pipelines:
+            if self.solution_info['inference_only'] and pipes == 'train':
+                continue
+            codebuild_client, build_id= self.run_pipelines(pipes)
+            if codebuild_client != None and build_id != None: 
+                self._batch_get_builds(codebuild_client, build_id, status_period=20)
+        
         if not self.debugging:
+            # solution 등록 전이라 solution 삭제 코드가 들어갈 수 없음
             self.register_solution()
+            # solution instance 등록 전이라 solution instance 삭제 코드가 들어갈 수 없음
+            # solution instance 등록이 실패 하면 solution 삭제
             self.register_solution_instance()   ## AIC, Solution Storage 모두에서 instance 까지 항상 생성한다. 
 
     def run_train(self, status_period=5, delete_solution=False):
@@ -1197,13 +1186,34 @@ class SolutionRegister:
         except RuntimeError as e:
             print(e)
 
-    def _ecr_login(self, is_docker):
-        
-        builder = "Docker" if is_docker else "Buildah"
-        
-        ecr = self.session.client('ecr')
+    def login_to_docker_registry(self, docker_client, username, password, registry):
         try:
-            response = ecr.get_authorization_token()
+            login_response = docker_client.login(
+                username=username, 
+                password=password, 
+                registry=registry
+            )
+
+            # 로그인 응답 분석
+            if login_response.get('Status') == 'Login Succeeded':
+                print('Login succeeded.')
+                return True
+            else:
+                print(f"Login failed: {login_response}")
+                # 여기서 로그인 실패에 대한 추가적인 로직을 처리할 수 있습니다.
+                return False
+
+        except docker.errors.APIError as e:
+            # Docker API 에러 처리
+            print(f'An API error occurred: {e}')
+            return False
+    
+    def get_user_password(self):
+        
+        try:
+            session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
+            ecr_client = session.client('ecr', region_name=self.infra_setup['REGION'])
+            response = ecr_client.get_authorization_token()
             auth_data = response['authorizationData'][0]
             token = auth_data['authorizationToken']
             import base64
@@ -1211,11 +1221,24 @@ class SolutionRegister:
         except ClientError as e:
             print(f"An error occurred: {e}")
             return None
+        
+        return user, password
+
+    
+    def _ecr_login(self, is_docker):
+        
+        builder = "Docker" if is_docker else "Buildah"
+        
+        user, password = self.get_user_password()
+
         if is_docker:
-            self.docker_client = docker.from_env()
+            self.docker_client = docker.from_env(version='1.24')
+            if not self.docker_client.ping():
+                raise ValueError("Docker 연결을 실패 했습니다")
             try:
                 # ECR에 로그인을 시도합니다. username 대신 'AWS'를 사용합니다.
-                self.docker_client.login(username='AWS', password=password, registry=self.ecr_url)
+                login_results = self.docker_client.login(username=user, password=password, registry=self.ecr_url, reauth=True)
+                print('login_results {}'.format(login_results))
                 print(f"Successfully logged in to {self.ecr_url}")
             except APIError as e:
                 print(f"An error occurred during {builder} login: {e}")
@@ -1527,9 +1550,17 @@ class SolutionRegister:
 
     def docker_push(self):
         image_tag = f"{self.ecr_full_url}:v{self.solution_version_new}"
-
+        self.print_step(f"push {image_tag} Container", sub_title=True)
         if self.infra_setup['BUILD_METHOD'] == 'docker':
-            self.docker_client.images.push(image_tag)
+            try:
+                response = self.docker_client.images.push(image_tag, stream=True, decode=True)
+                for line in response:
+                    # 진행 중인 작업을 나타내기 위해 '...' 출력
+                    sys.stdout.write('.')
+                    sys.stdout.flush()
+                print("\nDone")
+            except Exception as e:
+                print(f"Exception occurred: {e}")
         else:
             subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:v{self.solution_version_new}'])
             subprocess.run(['sudo', 'buildah', 'logout', '-a'])
