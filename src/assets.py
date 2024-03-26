@@ -5,7 +5,6 @@ import re
 import shutil
 import git
 from datetime import datetime
-
 from src.logger import ProcessLogger 
 from src.constants import *
 #--------------------------------------------------------------------------------------------------------------------------
@@ -16,7 +15,6 @@ PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 #--------------------------------------------------------------------------------------------------------------------------
 
 class Assets:
-    
     def __init__(self, ASSET_HOME):
         if not os.path.exists(ASSET_HOME):
             try:
@@ -26,7 +24,6 @@ class Assets:
 
     def import_asset(self, _path, _file):
         _user_asset = 'none'
-
         try:
             # Asset import
             # asset_path = 상대경로로 지정 : PROJECT_HOME/scripts/data_input
@@ -34,10 +31,8 @@ class Assets:
             mod = importlib.import_module(_file)
         except ModuleNotFoundError:
             PROC_LOGGER.process_error(f'Failed to import asset. Not Found : {_path}{_file}.py')
-
         # UserAsset 클래스 획득
         _user_asset = getattr(mod, "UserAsset")
-
         return _user_asset
 
     def memory_release(self, _path):
@@ -67,9 +62,8 @@ class Assets:
             -----------
                 - setup_asset(asset_config, check_asset_source='once')
         """
-
         # FIXME 추후 단순 폴더 존재 유무 뿐 아니라 이전 실행 yaml과 비교하여 git주소, branch 등도 체크해야함
-        def renew_asset(step_path): 
+        def _renew_asset(step_path): 
             """ Description
                 -----------
                     - asset을 git으로 부터 새로 당겨올지 말지 결정 
@@ -81,7 +75,7 @@ class Assets:
                     - whether_renew_asset: Boolean
                 Example
                 -----------
-                    - whether_to_renew_asset =_renew_asset(step_path) 
+                    - whether_to_renew_asset =__renew_asset(step_path) 
             """
             whether_renew_asset = False  
             if os.path.exists(step_path):
@@ -89,12 +83,10 @@ class Assets:
             else: 
                 whether_renew_asset = True
             return whether_renew_asset
-        
         # git url 확인 -> lib
-        def is_git_url(url):
+        def _is_git_url(url):
             git_url_pattern = r'^(https?|git)://[^\s/$.?#].[^\s]*$'
             return re.match(git_url_pattern, url) is not None
-        
         asset_source_code = asset_config['source']['code'] # local, git url
         step_name = asset_config['step']
         git_branch = asset_config['source']['branch']
@@ -112,9 +104,9 @@ class Assets:
                 PROC_LOGGER.process_error(f'Now << local >> asset_source_code mode: \n <{step_name}> asset folder does not exist in <assets> folder.')
         else: # git url & branch 
             # git url 확인
-            if is_git_url(asset_source_code):
-                # _renew_asset(): 다시 asset 당길지 말지 여부 (bool)
-                if (check_asset_source == "every") or (check_asset_source == "once" and renew_asset(step_path)): 
+            if _is_git_url(asset_source_code):
+                # __renew_asset(): 다시 asset 당길지 말지 여부 (bool)
+                if (check_asset_source == "every") or (check_asset_source == "once" and _renew_asset(step_path)): 
                     PROC_LOGGER.process_info(f"Start renewing asset : {step_path}") 
                     # git으로 또 새로 받는다면 현재 존재 하는 폴더를 제거 한다
                     if os.path.exists(step_path):
@@ -128,7 +120,7 @@ class Assets:
                     except: 
                         PROC_LOGGER.process_error(f"Your have written incorrect git branch: {git_branch}")
                 # 이미 scripts내에 asset 폴더들 존재하고, requirements.txt도 설치된 상태 
-                elif (check_asset_source == "once" and not renew_asset(step_path)):
+                elif (check_asset_source == "once" and not _renew_asset(step_path)):
                     modification_time = os.path.getmtime(step_path)
                     modification_time = datetime.fromtimestamp(modification_time) # 마지막 수정시간 
                     PROC_LOGGER.process_info(f"<< {step_name} >> asset had already been created at {modification_time}")
@@ -137,5 +129,4 @@ class Assets:
                     PROC_LOGGER.process_error(f'You have written wrong check_asset_source: {check_asset_source}')
             else: 
                 PROC_LOGGER.process_error(f'You have written wrong git url: {asset_source_code}')
-        
         return 

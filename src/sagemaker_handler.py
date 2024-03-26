@@ -1,5 +1,7 @@
 import os
+import sys 
 import boto3
+from botocore.exceptions import ProfileNotFound
 from src.constants import *
 from urllib.parse import urlparse
 import subprocess
@@ -12,10 +14,13 @@ from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 #--------------------------------------------------------------------------------------------------------------------------
-
 class SagemakerHandler:
     def __init__(self, aws_key_profile, sm_config):
         self.aws_key_profile = aws_key_profile
+        try:
+            self.session = boto3.Session(profile_name=self.aws_key_profile)
+        except ProfileNotFound:
+            ValueError(f"The profile {self.aws_key_profile} not found.")
         self.sm_config = sm_config
         self.SAGEMAKER_PATH = SAGEMAKER_PATH
         self.temp_model_extract_dir = TEMP_SAGEMAKER_MODEL_PATH
@@ -26,6 +31,7 @@ class SagemakerHandler:
         """
         # aws configure의 profile을 sagemaker-profile로 변경 (sagemaker 및 본인 계정 s3, ecr 권한 있는)
         # 사외 서비스 시엔 사용자가 미리 sagemaker-profile와 meerkat-profile를 aws configure multi-profile 등록해놨어야 함
+        # 이거 안하면 fit estimator 할 때 에러남 
         os.environ["AWS_PROFILE"] = self.aws_key_profile
         # FIXME sagemaker install 은 sagemaker_runs일 때만 진행 
         self._install_sagemaker()
@@ -35,7 +41,8 @@ class SagemakerHandler:
             import sagemaker
             sagemaker_session = sagemaker.Session()
             self.role = sagemaker.get_execution_role()
-        except: 
+        except:
+            PROC_LOGGER.process_warning("sagemaker get-execution-role not allowed.") 
             self.role = self.sm_config['role'] 
         self.region = self.sm_config['region'] 
         self.account_id = str(self.sm_config['account_id'])
@@ -54,7 +61,6 @@ class SagemakerHandler:
         # FIXME 일단 이건 sagemaker_config 로는 안뺌 
         self.train_instance_count = 1 
         self.train_instance_type = self.sm_config['train_instance_type']
-            
     
     def setup(self):
         """
@@ -75,8 +81,7 @@ class SagemakerHandler:
             elif os.path.isdir(src_path):
                 dst_path =  self.SAGEMAKER_PATH + os.path.basename(src_path)
                 shutil.copytree(src_path, dst_path)
-                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.SAGEMAKER_PATH} >> ')
-                
+                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.SAGEMAKER_PATH} >> ') 
 
     def build_solution(self): 
         """
@@ -109,7 +114,6 @@ class SagemakerHandler:
         # 사용자가 작성한 s3 bucket이 존재하지 않으면 생성하기 
         self._create_bucket()
 
-
     def fit_estimator(self):
         """
         fit sagemaker estimator (cloud resource train)
@@ -121,8 +125,7 @@ class SagemakerHandler:
                                 train_instance_type=self.train_instance_type,
                                 output_path=self.s3_uri)
         training_estimator.fit() 
-        
-        
+          
     def _install_sagemaker(self):
         # FIXME 버전 hard coded: 어디다 명시할지?
         package = SAGEMAKER_PACKAGE
@@ -135,18 +138,16 @@ class SagemakerHandler:
                 subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
             except Exception as e:
                 PROC_LOGGER.process_error(f"Failed to install {package}: \n {str(e)}")
-                
-                
+                   
     def _parse_s3_url(self, uri):
         parts = urlparse(uri)
         bucket = parts.netloc
         key = parts.path.lstrip('/')
         return bucket, key
     
-    
     def _create_bucket(self):
         # S3 클라이언트 생성
-        s3 = boto3.client('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
+        s3 = self.session.client('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
         # 버킷 목록 가져오기
         response = s3.list_buckets()
         # 버킷 이름 출력
@@ -156,7 +157,6 @@ class SagemakerHandler:
             bucket_list_log += f"{existing_bucket['Name']} \n"
             bucket_list.append(existing_bucket['Name'])
         PROC_LOGGER.process_info(bucket_list_log)
-        
         if not self.bucket in bucket_list: 
             # 버킷 생성
             s3.create_bucket(Bucket=self.bucket,
@@ -169,19 +169,15 @@ class SagemakerHandler:
     def _create_ecr_repository(self, ecr_repository):
         # aws ecr repo create 
         # ECR 클라이언트 생성
-        # 참고: http://mod.lge.com/hub/ai_contents_marketplace/aia-ml-marketplace/-/blob/main/aia-pad-notebook/aia-pad-algo-for-market/UPAD-Test-SamgeMaker-Make-Algorithm-ARN.ipynb
-        ecr = boto3.client('ecr', region_name=self.region)
-
+        ecr = self.session.client('ecr', region_name=self.region)
         def repository_exists(ecr_client, repository_name): #inner func.
             try:
                 response = ecr_client.describe_repositories(repositoryNames=[repository_name])
                 return True
             except ecr_client.exceptions.RepositoryNotFoundException:
                 return False
-            
         # 리포지토리 존재 여부 확인
         if repository_exists(ecr, ecr_repository):
-
             response = ecr.describe_repositories()
             uri_list = response['repositories']
             for uri in uri_list:
@@ -193,7 +189,6 @@ class SagemakerHandler:
         else:
             PROC_LOGGER.process_info(f"ECR repository << {ecr_repository} >> does not exist.")
             # 리포지토리 생성
-            # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ecr/client/create_repository.html
             response = ecr.create_repository(repositoryName=ecr_repository, imageScanningConfiguration={'scanOnPush': True})
             #FIXME sagemaker 학습 시 일단 ecr tag 미지원 
             #repository_uri = response['repository']['repositoryUri']  + ":" + ecr_tag
@@ -201,11 +196,10 @@ class SagemakerHandler:
 
             PROC_LOGGER.process_info(f"Created repository URI: {repository_uri_without_tag}")
     
-    
     def download_latest_model(self):
         try: 
-            # S3 클라이언트 생성
-            s3 = boto3.resource('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
+            # S3 resource 생성
+            s3 = self.session.resource('s3', region_name=self.region) #, aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
             # 버킷 목록 가져오기
             bucket = s3.Bucket(self.bucket)
             model_path_list = list()
@@ -218,7 +212,8 @@ class SagemakerHandler:
             # model.tar.gz 있는 것 중 최신날짜 포함하는 것만 다운로드 
             # 예시. train-artifacts/sagemaker-test-240115-v2-2024-01-15-10-05-05-244/output/model.tar.gz
             latest_model_path = sorted(model_path_list, reverse=True)[0]
-            client = boto3.client('s3', region_name=self.region)
+            # S3 client 생성
+            client = self.session.client('s3', region_name=self.region)
             # from, to / PROJECT HOME 에 model.tar.gz 를 s3에서 로컬로 다운로드
             client.download_file(self.bucket, latest_model_path, PROJECT_HOME + COMPRESSED_MODEL_FILE)  
             PROC_LOGGER.process_info(f"Success downloading << {self.bucket}/{latest_model_path} >> into << {PROJECT_HOME} >>")
@@ -255,18 +250,3 @@ class SagemakerHandler:
                 os.remove(PROJECT_HOME + COMPRESSED_MODEL_FILE)
             shutil.rmtree(self.temp_model_extract_dir, ignore_errors=True)
 
-
-## FIXME sagemaker notebook 이외의 로컬 환경에서 sagemaker role 어떻게 얻을지? 
-## https://github.com/aws/sagemaker-python-sdk/issues/300
-# def resolve_sm_role():
-#     client = boto3.client('iam', region_name=region)
-#     response_roles = client.list_roles(
-#         PathPrefix='/',
-#         # Marker='string',
-#         MaxItems=999
-#     )
-#     for role in response_roles['Roles']:
-#         if role['RoleName'].startswith('AmazonSageMaker-ExecutionRole-'):
-#             print('Resolved SageMaker IAM Role to: ' + str(role))
-#             return role['Arn']
-#     raise Exception('Could not resolve what should be the SageMaker role to be used')

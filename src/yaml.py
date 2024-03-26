@@ -1,5 +1,4 @@
 import os
-import shutil
 import yaml
 from src.constants import *
 from src.logger import ProcessLogger
@@ -12,26 +11,17 @@ from copy import deepcopy
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 #--------------------------------------------------------------------------------------------------------------------------
 class Metadata:
-    # def __init__(self, exp_plan_file, sol_meta):
-    # def __init__():
-    #     pass
-
     def _get_yaml_data(self, exp_plan, prefix='', pipeline_type='all'):
         """ exp_plan 의 key 를 내부 변수화 하기 """
-        
         def get_yaml_data(key, pipeline_type = 'all'): # inner func.
             data_dict = {}
             if key == "name" or key == "version":
                 return exp_plan[key]
-
             if exp_plan[key] == None:
                 return []
-
             for data in exp_plan[key]:
                 data_dict.update(data)
-
             return data_dict
-
         # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
         values = {}
         for key, value in exp_plan.items():
@@ -43,28 +33,21 @@ class Metadata:
     def merged_exp_plan(self, exp_plan, pipeline_type='all'):
         if not pipeline_type in ['train', 'inference', 'all']:
             raise ValueError("pipeline_type must be 'all', 'train' or 'inference'")
-
         self._get_yaml_data(exp_plan, prefix = 'update_' )
         PROC_LOGGER.process_info(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan})") 
-
-
         if self.name != self.update_name:
             PROC_LOGGER.process_info(f"Update name : {self.update_name}")
             self.name = self.update_name
-
         if self.version != self.update_version: 
             PROC_LOGGER.process_info(f"Update version : {self.update_version}")
             self.version = self.update_version
-
         ##### external path 
         if self.external_path != self.update_external_path:
             PROC_LOGGER.process_info(f"Update external_path : {self.update_external_path}")
             self.external_path = self.update_external_path
-
         if self.external_path_permission != self.update_external_path_permission:
             PROC_LOGGER.process_info(f"Update external_path_permission : {self.update_external_path_permission}")
             self.external_path_permission = self.update_external_path_permission
-
         ##### asset source 와 user parameters 
         if self.user_parameters != self.update_user_parameters:
             if pipeline_type == 'train':
@@ -74,7 +57,6 @@ class Metadata:
             else:
                 self.user_parameters = self.update_user_parameters
             PROC_LOGGER.process_info(f"Update user_parameters : {self.update_user_parameters}")
-
         if self.asset_source != self.update_asset_source:
             if pipeline_type == 'train':
                 self.asset_source['train_pipeline'] = self.update_asset_source['train_pipeline']
@@ -83,7 +65,6 @@ class Metadata:
             else:
                 self.asset_source = self.update_asset_source
             PROC_LOGGER.process_info(f"Update asset_source : {self.update_asset_source}")
-
         if self.ui_args_detail != self.update_ui_args_detail:
             if pipeline_type == 'train':
                 self.ui_args_detail['train_pipeline'] = self.update_ui_args_detail['train_pipeline']
@@ -92,14 +73,11 @@ class Metadata:
             else:
                 self.ui_args_detail = self.update_ui_args_detail
             PROC_LOGGER.process_info(f"Update ui_args_detail : {self.update_ui_args_detail}")
-
         ##### asset source 와 user parameters 
-        
         ##### control        
         if self.control != self.update_control:
             PROC_LOGGER.process_info(f"Update control : {self.update_control}")
             self.control = self.update_control
-        
         ## exp_plan 만들기. 실험 중에 중간 값들이 변경되어 있으므로, 꼭 ~ 재구성하여 저장한다.
         backup_exp_plan = {}
         backup_exp_plan['name'] = self.name
@@ -115,20 +93,29 @@ class Metadata:
             pass   ## 존재하지 않는 경우 대응
         return backup_exp_plan
 
-
-
-    def get_yaml(self, _yaml_file):
+    def get_yaml(self, yaml_file):
+        """yaml file을 읽어서 dict화 합니다.
+        """
         yaml_dict = dict()
         try:
-            with open(_yaml_file, encoding='UTF-8') as f:
+            with open(yaml_file, encoding='UTF-8') as f:
                 yaml_dict  = yaml.load(f, Loader=yaml.FullLoader)
         except FileNotFoundError:
-            PROC_LOGGER.process_error(f"Not Found : {_yaml_file}")
+            PROC_LOGGER.process_error(f"Not Found : {yaml_file}")
         except:
-            PROC_LOGGER.process_error(f"Check yaml format : {_yaml_file}")
-
+            PROC_LOGGER.process_error(f"Check yaml format : {yaml_file}")
         return yaml_dict 
 
+    def save_yaml(self, yaml_dict, save_path):
+        """dict를 yaml file화 시킵니다. 
+        - yaml_dict: dict화 된 yaml 
+        - save_path: yaml file 경로 
+        """
+        try: 
+            with open(save_path, 'w') as file:
+                yaml.safe_dump(yaml_dict, file)
+        except:
+            PROC_LOGGER.process_error(f"Failed to save yaml into << {save_path} >>")
 
     def read_yaml(self, exp_plan_file,  sol_me_file=None, system_envs={}, update_envs=True):
         # exp_plan_file은 config 폴더로 복사해서 가져옴. 단, 외부 exp plan 파일 경로는 로컬 절대 경로만 지원 
@@ -136,19 +123,15 @@ class Metadata:
             exp_plan_file = self.check_and_copy_expplan(exp_plan_file) 
             if update_envs:  
                 PROC_LOGGER.process_info(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan_file})") 
-            
             self.exp_plan = self.get_yaml(exp_plan_file)  ## from compare_yamls.py
             # self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드  ## from compare_yamls.py
             self.check_exp_plan_keys(self.exp_plan) 
-            
             # 각 key 별 value 클래스 self 변수화 --> ALO init() 함수에서 ALO 내부변수로 넘김
             self._get_yaml_data(self.exp_plan)
-            
             ## v2.3.0 NEW : name, version 을 system_envs 에 저장한다. 
             if update_envs:
                 system_envs["experimental_name"] = self.name
                 system_envs["experimental_version"] = self.version
-            
             # solution metadata yaml --> exp plan yaml overwrite
             if sol_me_file is not None:
                 self.sol_meta = sol_me_file
@@ -158,11 +141,9 @@ class Metadata:
                 PROC_LOGGER.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
         except:
             PROC_LOGGER.process_error("Failed to read experimental plan yaml.")
-
         # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭 (from src.utils)
         self._match_steps()
         return self.exp_plan
-
 
     # TODO rel 2.2 --> 2.2.1 added 
     def check_exp_plan_keys(self, exp_plan: dict): 
@@ -193,12 +174,10 @@ class Metadata:
         for k in exp_plan_format_keys: 
             if k not in exp_plan_keys: 
                 missed_keys.append(k)
-
         ## optional key 는 template 에는 없지만, 사용 허용 하도록 함. (missed 에는 영향 없음) 
         for opt in EXPERIMENTAL_OPTIONAL_KEY_LIST:
             exp_plan_format_keys.append(opt)  ## 둘다 존재 하도록해서 skip 되도록 함. set() 으로 중복도 허용
             exp_plan_keys.append(opt)
-
         not_allowed_keys = set(exp_plan_keys)-set(exp_plan_format_keys)
         if (len(missed_keys) > 0) or (len(not_allowed_keys) > 0): 
             PROC_LOGGER.process_error(common_error_msg + f"\n - missed keys: {missed_keys} \n" + f"\n - not allowed keys: {not_allowed_keys}\n ")
@@ -218,7 +197,6 @@ class Metadata:
                 else: 
                     exp_plan_file_path = _path + "/" + _file  
                     _path, _file = os.path.split(exp_plan_file_path) 
-
                 # 경로가 config랑 동일하면 (samefile은 dir, file 다 비교가능) 그냥 바로 return 
                 if os.path.samefile(_path, SOLUTION_HOME): 
                     return  SOLUTION_HOME + _file 
@@ -227,23 +205,8 @@ class Metadata:
                         PROC_LOGGER.process_error(f"<< {exp_plan_file_path} >> not found.")
                     else:
                         return  exp_plan_file_path 
-
-                    ## v2.3 SPEC-OUT: solution 으로 복사하는 기능 삭제. 사용자 반복 실험에서 문제 발생 여지 많음. pipeline.history 에도 문제 
-                    '''
-                    # 경로가 config랑 동일하지 않으면 외부 exp plan yaml을 config/ 밑으로 복사 
-                    if _file in os.listdir(SOLUTION_HOME):
-                        PROC_LOGGER.process_warning(f"<< {_file} >> already exists in config directory. The file is overwritten.")
-                    try: 
-                        shutil.copy(exp_plan_file_path, SOLUTION_HOME)
-                    except: 
-                        PROC_LOGGER.process_error(f"Failed to copy << {exp_plan_file_path} >> into << {SOLUTION_HOME} >>")
-                    # self.exp_plan_file 변수에 config/ 경로로 대입하여 return 
-                    PROC_LOGGER.process_info(f"Successfully loaded experimental plan yaml: \n {SOLUTION_HOME + _file}")
-                    return  SOLUTION_HOME + _file 
-                    '''
             except: 
                 PROC_LOGGER.process_error(f"Failed to load experimental plan. \n You entered for << --config >> : {exp_plan_file_path}")
-
 
     # FIXME pipeline name 추가 시 추가 고려 필요 
     def _match_steps(self):
@@ -266,33 +229,24 @@ class Metadata:
             source_steps = sorted([i['step'] for i in self.asset_source[pipe]])
             if param_steps != source_steps:
                 PROC_LOGGER.process_error(f"@ << {pipe} >> - You have entered unmatching steps between << user_parameters >> and << asset_source >> in your experimental_plan.yaml. \n - steps in user_parameters: {param_steps} \n - steps in asset_source: {source_steps}")
-        
         return True
     
     def _update_yaml(self, system_envs):  
         '''
         sol_meta's << dataset_uri, artifact_uri, selected_user_parameters ... >> into exp_plan 
         '''
-        # [중요] SOLUTION_PIPELINE_MODE라는 환경 변수는 ecr build 시 생성하게 되며 (ex. train, inference, all) 이를 ALO mode에 덮어쓰기 한다. 
-        # sol_pipe_mode = os.getenv('SOLUTION_PIPELINE_MODE')
-        # if sol_pipe_mode is not None: 
-        #     system_envs['pipeline_mode'] = sol_pipe_mode
-        # else:   
-        #     raise OSError("Environmental variable << SOLUTION_PIPELINE_MODE >> is not set.")
         # solution metadata version 가져오기 --> inference summary yaml의 version도 이걸로 통일 
         # key 명 바뀜 version -> metadata_version (24.02.02)
         system_envs['solution_metadata_version'] = self.sol_meta['metadata_version']
         # solution metadata yaml에 pipeline key 있는지 체크 
         if 'pipeline' not in self.sol_meta.keys(): # key check 
             PROC_LOGGER.process_error("Not found key << pipeline >> in the solution metadata yaml file.") 
-        
         # EdgeConductor Interface
         system_envs['inference_result_datatype'] = self.sol_meta['edgeconductor_interface']['inference_result_datatype']
         system_envs['train_datatype'] =  self.sol_meta['edgeconductor_interface']['train_datatype']
         if (system_envs['inference_result_datatype'] not in ['image', 'table']) or (system_envs['train_datatype'] not in ['image', 'table']):
             PROC_LOGGER.process_error(f"Only << image >> or << table >> is supported for \n \
                 train_datatype & inference_result_datatype of edge-conductor interface.")
-        
         # EdgeAPP Interface : redis server uri 있으면 가져오기 (없으면 pass >> AIC 대응) 
         def _check_edgeapp_interface(): # inner func.
             if 'edgeapp_interface' not in self.sol_meta.keys():
@@ -304,7 +258,6 @@ class Metadata:
             if self.sol_meta['edgeapp_interface']['redis_server_uri'] == "":
                 return False 
             return True 
-        
         if _check_edgeapp_interface() == True: 
             try: 
                 # get redis server host, port 
@@ -317,7 +270,6 @@ class Metadata:
                 system_envs['q_inference_artifacts'] = RedisQueue('inference_artifacts', host=system_envs['redis_host'], port=system_envs['redis_port'], db=0)
             except: 
                 PROC_LOGGER.process_error(f"Failed to parse << redis_server_uri >>") 
-
         def _convert_sol_args(_args): # inner func.
             # TODO user parameters 의 type check 해서 selected_user_paramters type 다 체크할 것인가? 
             '''
@@ -350,12 +302,10 @@ class Metadata:
                     if v == None: 
                         del _args[k]
             return _args
-                         
         # TODO: solution_metadata 에 존재하는 pipeline 이 experimental 에는 존재 하지 않을 수 있음을 대응
         exp_pipe_list = []
         for params in self.exp_plan['user_parameters']:
             exp_pipe_list.append(list(params.keys())[0].replace('_pipeline',''))
-
         for sol_pipe in self.sol_meta['pipeline']: 
             pipe_type = sol_pipe['type'] # train, inference 
             if pipe_type in exp_pipe_list:
@@ -386,7 +336,6 @@ class Metadata:
                             # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. (그냥 s3에서 다운받으면 그 밑에있는거 다사용하도록) 
                             if sol_step == 'input':
                                 self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
-              
                 # external path 덮어 쓰기 
                 if pipe_type == 'train': 
                     check_train_keys = []
@@ -418,8 +367,4 @@ class Metadata:
                         PROC_LOGGER.process_error(f"<< {diff_keys} >> key does not exist in experimental plan yaml.")
                 else: 
                     PROC_LOGGER.process_error(f"Unsupported pipeline type for solution metadata yaml: {pipe_type}")
-
-                # if self.external_path[f"save_inference_artifacts_path"] is None:  
-                #     PROC_LOGGER.process_error(f"You did not enter the << save_inference_artifacts_path >> in the experimental_plan.yaml") 
-
         return system_envs
