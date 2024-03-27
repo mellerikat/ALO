@@ -145,6 +145,11 @@ class ALO:
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
+
+        if os.path.exists(ASSET_PACKAGE_PATH):
+            shutil.rmtree(ASSET_PACKAGE_PATH)
+            print(f"Folder '{ASSET_PACKAGE_PATH}' has been removed.")
+        os.makedirs(ASSET_PACKAGE_PATH)
         # [loop] only 운영 - pipeline은 inference_pipeline 1개로 고정된 상태 / 최초에 boot_on=True 상태 
         if self.loop: 
             # boot-on 
