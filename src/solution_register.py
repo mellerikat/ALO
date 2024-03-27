@@ -1211,8 +1211,7 @@ class SolutionRegister:
     def get_user_password(self):
         
         try:
-            session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
-            ecr_client = session.client('ecr', region_name=self.infra_setup['REGION'])
+            ecr_client = self.session.client('ecr', region_name=self.infra_setup['REGION'])
             response = ecr_client.get_authorization_token()
             auth_data = response['authorizationData'][0]
             token = auth_data['authorizationToken']
