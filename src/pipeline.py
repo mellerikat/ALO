@@ -715,17 +715,12 @@ class Pipeline:
 
     def _create_package(self, packs):
         # 폴더가 있는지 확인하고 있으면 제거합니다.
-        pipes_dir = ASSET_PACKAGE_PATH + self.pipeline_type + '/'
-        if os.path.exists(pipes_dir):
-            shutil.rmtree(pipes_dir)
-            print(f"Folder '{pipes_dir}' has been removed.")
+        pipes_dir = ASSET_PACKAGE_PATH
         # 새로운 폴더를 생성합니다.
-        os.makedirs(pipes_dir)
-        print(f"Folder '{pipes_dir}' has been created.")
         step_number = 0
         for key, values in packs.items():
             if values:
-                file_name = pipes_dir + f"step_{step_number}.txt"
+                file_name = pipes_dir + f"{self.pipeline_type}_step_{step_number}.txt"
                 step_number += 1
                 with open(file_name, 'w') as file:
                     for value in values:

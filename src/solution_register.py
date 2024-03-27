@@ -58,6 +58,8 @@ class SolutionRegister:
             - experimental_plan (str or dict):  str 일 경우, path 로 인지하여 file load 하여 dict 화 함
 
         """
+
+        self.sol_reg_index = 0
         
         self.print_step("Initiate ALO operation mode")
         print_color("[SYSTEM] Solutoin 등록에 필요한 setup file 들을 load 합니다. ", color="green")
@@ -117,6 +119,7 @@ class SolutionRegister:
         ## legacy 버전 보다 낮을 경우, API 변경
         self.api_uri_legacy_version = 1.5
         version = self.check_version()
+        version = 1.6
         
         self.register_solution_api = data[f'{version}']['REGISTER_SOLUTION']
         self.register_solution_instance_api = data[f'{version}']['REGISTER_SOLUTION_INSTANCE']
@@ -190,6 +193,8 @@ class SolutionRegister:
             skip_build=True
         codebuild_client, build_id = self.make_docker(skip_build)
         self.docker_push()
+        print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+        self.sol_reg_index = self.sol_reg_index + 1
         self._set_container_uri()
         return codebuild_client, build_id
 
@@ -462,6 +467,9 @@ class SolutionRegister:
         print_color('< Pre-existing AI Solutions >', color='cyan')
         for idx, sol in enumerate(solution_list): 
             print_color(f'{idx}. {sol}', color='cyan')
+
+        print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+        self.sol_reg_index = self.sol_reg_index + 1
         
     def set_description(self, description={}):
         """솔루션 설명을 solution_metadata 에 삽입합니다. 
@@ -498,6 +506,9 @@ class SolutionRegister:
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{str(e)}")
         
+        print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+        self.sol_reg_index = self.sol_reg_index + 1
+
     def set_wrangler(self):
         """wrangler.py 를 solution_metadata 의 code-to-string 으로 반영합니다. 
         ./wrangler/wrangler.py 만 지원 합니다. 
@@ -646,8 +657,8 @@ class SolutionRegister:
     def load_system_resource(self): 
         """ 사용가능한 ECR, S3 주소를 반환한다. 
         """
-        self.print_step("Check ECR & S3 Resource")
 
+        self.print_step("Check ECR & S3 Resource")
         params = {
             "workspace_name": self.infra_setup["WORKSPACE_NAME"],
             "page_size": 100
@@ -685,6 +696,9 @@ class SolutionRegister:
         print(f"{self.ecr_name}") 
         print_color(f"[SYSTEM] AWS S3 bucket:  ", color='green') 
         print(f"{self.bucket_name}") 
+
+        print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+        self.sol_reg_index = self.sol_reg_index + 1
     
     def set_pipeline_uri(self, mode, data_paths = [], skip_update=False):
         """ dataset, artifacts, model 중에 하나를 선택하면 이에 맞느 s3 uri 를 생성하고, 이를 solution_metadata 에 반영한다.
@@ -896,6 +910,7 @@ class SolutionRegister:
         # print(data_path)
         print_color(f"[SUCCESS] update train_data to S3: \n", color='green')
         print(f"{uploaded_path}")
+
         return 
 
     def s3_upload_data(self):
@@ -1045,6 +1060,9 @@ class SolutionRegister:
                 shutil.rmtree(REGISTER_MODEL_PATH, ignore_errors=True)
         else:
             raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
+
+        print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+        self.sol_reg_index = self.sol_reg_index + 1
     ################################
     ######    STEP3. Dcoker Container Control
     ################################
@@ -1082,6 +1100,9 @@ class SolutionRegister:
 
             self._create_ecr_repository(self.infra_setup["REPOSITORY_TAGS"])
 
+            print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+            self.sol_reg_index = self.sol_reg_index + 1
+
             self.print_step(f"Create {builder} Container", sub_title=True)
 
             if self.infra_setup['REMOTE_BUILD'] == True: 
@@ -1094,6 +1115,8 @@ class SolutionRegister:
                 self._build_docker(is_docker=is_docker)
                 end = time.time()
                 print(f"{builder} build time : {end - start:.5f} sec")
+                print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+                self.sol_reg_index = self.sol_reg_index + 1
                 
         else:
             if self.infra_setup["BUILD_METHOD"] == 'docker':
@@ -1211,8 +1234,7 @@ class SolutionRegister:
     def get_user_password(self):
         
         try:
-            session = boto3.Session(profile_name=self.infra_setup["AWS_KEY_PROFILE"])
-            ecr_client = session.client('ecr', region_name=self.infra_setup['REGION'])
+            ecr_client = self.session.client('ecr', region_name=self.infra_setup['REGION'])
             response = ecr_client.get_authorization_token()
             auth_data = response['authorizationData'][0]
             token = auth_data['authorizationToken']
@@ -1717,6 +1739,9 @@ class SolutionRegister:
             print_color(columns, color='cyan')
             for i in item_list: 
                 print_color(i, color='cyan')
+
+        print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+        self.sol_reg_index = self.sol_reg_index + 1
         return self.candidate_format
     
     #####################################
@@ -1755,6 +1780,7 @@ class SolutionRegister:
         self.register_solution_instance_api["metadata_json"] = yaml_data
         
         if 'train_resource' in self.register_solution_instance_api:
+            self.register_solution_instance_api['train_resource'] = "standard"
             yaml_data['pipeline'][0]["resource"]['default'] = self.register_solution_instance_api['train_resource']
 
         data =json.dumps(self.register_solution_instance_api) # json 화
@@ -1771,6 +1797,8 @@ class SolutionRegister:
         if response.status_code == 200:
             print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
             print(f"[INFO] response: \n {self.response_solution_instance}")
+            print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+            self.sol_reg_index = self.sol_reg_index + 1
 
             # interface 용 폴더 생성.
             try:
@@ -1894,6 +1922,8 @@ class SolutionRegister:
         if response.status_code == 200:
             print_color("[SUCCESS] Stream Run 요청을 성공하였습니다. ", color='cyan')
             print(f"[INFO] response: \n {response_json}")
+            print_color(f"alo register step {self.sol_reg_index}/13 complete.", color='PURPLE')
+            self.sol_reg_index = self.sol_reg_index + 1
 
             # interface 용 폴더 생성.
             try:
