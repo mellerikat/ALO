@@ -2664,21 +2664,21 @@ class SolutionRegister:
 
             docker_location = '/framework/'
             subfolders = []
-            for dirpath, dirnames, filenames in os.walk(ASSET_PACKAGE_PATH):
-                # dirpath는 현재의 폴더 경로, dirnames는 현재 폴더 아래의 하위 폴더 리스트
-                for dirname in dirnames:
-                    subfolder_path = os.path.join(dirpath, dirname)  # 하위 폴더의 전체 경로
-                    if self.pipeline not in subfolder_path:
-                        continue
-                    subfolders.append(subfolder_path)
+            # for dirpath, dirnames, filenames in os.walk(ASSET_PACKAGE_PATH):
+            #     # dirpath는 현재의 폴더 경로, dirnames는 현재 폴더 아래의 하위 폴더 리스트
+            #     for dirname in dirnames:
+            #         subfolder_path = os.path.join(dirpath, dirname)  # 하위 폴더의 전체 경로
+            #         if self.pipeline not in subfolder_path:
+            #             continue
+            #         subfolders.append(subfolder_path)
             # step_ 뒤에 붙는 숫자의 크기 기준으로 sort 
-            file_list = sorted(next(os.walk(subfolders[0]))[2], key=lambda x:int(os.path.splitext(x)[0].split('_')[-1]))
+            file_list = sorted(next(os.walk(ASSET_PACKAGE_PATH))[2], key=lambda x:int(os.path.splitext(x)[0].split('_')[-1]))
 
             search_string = 'site_packages_location'
             with open(PROJECT_HOME + 'Dockerfile', 'r', encoding='utf-8') as file:
                 content = file.read()
-            path = subfolders[0].replace(PROJECT_HOME, "")
-            replace_string = '\n'.join([f"COPY {path}/{file} {docker_location}" for file in file_list])
+            # path = subfolders[0].replace(PROJECT_HOME, "")
+            replace_string = '\n'.join([f"COPY {ASSET_PACKAGE_PATH}/{file} {docker_location}" for file in file_list])
 
             requirement_files = [file for file in file_list if file.endswith('.txt')]
             pip_install_commands = '\n'.join([f"RUN pip3 install --no-cache-dir -r {docker_location}{file}" for file in requirement_files])
