@@ -165,7 +165,10 @@ class ALO:
                 # 최초 boot_on 모드 동작 후 boot 모드 취소
                 self.system_envs['boot_on'] = False
             except: 
-                self.proc_logger.process_error("Failed to boot-on.")
+                try: 
+                    self.proc_logger.process_error("Failed to boot-on.")
+                finally:
+                    self._error_backup(self, pipe)
             # infinite loop 
             while True: 
                 try:
@@ -206,13 +209,13 @@ class ALO:
                     # execute pipline  
                     pipeline = self._execute_pipeline(pipe)
                     # pipeline.history()
+                    a=b
             except:
                 self.error_batch(pipe) 
     
     def _execute_pipeline(self, pipe): 
         try: 
             pipeline = self.pipeline(pipeline_type=pipe)
-
             pipeline.setup()
             pipeline.load()
             pipeline.run()
@@ -238,9 +241,12 @@ class ALO:
         
     def error_batch(self, pipe): 
         # backup error history & save error artifact
-        self._error_backup(pipe)   
-        # raise error and kill the program     
-        self.proc_logger.process_error(traceback.format_exc())
+        # raise error and kill the program    
+        try:  
+            self.proc_logger.process_error(traceback.format_exc())
+        finally:
+            self._error_backup(pipe)   
+
     
     def _error_backup(self, pipe):
         ''' 
