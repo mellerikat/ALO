@@ -19,7 +19,7 @@ from src.external import ExternalHandler
 from src.logger import ProcessLogger
 from src.artifacts import Aritifacts
 from src.yaml import Metadata
-from src.utils import _print_step, _print_step_finish
+from src.utils import  _log_process
 
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
@@ -81,20 +81,18 @@ class Pipeline:
         self._set_asset_structure()
 
     def setup(self):
-        _print_step(f"{self.pipeline_type} -- setup()")
+        _log_process(f"{self.pipeline_type} setup start")
         self._empty_artifacts(self.pipeline_type)
         # print(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         _, packs = self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         if packs is not None: 
             self._create_package(packs)
-
-        _print_step_finish(f"Finish to setup {self.pipeline_type}")
-
+        _log_process(f"{self.pipeline_type} setup finish")
         # TODO return 구성
         # return
 
     def load(self, data_path=[]):
-        _print_step(f"{self.pipeline_type} -- load()")
+        _log_process(f"{self.pipeline_type} load start")
         ############  Load Model  ##################
         if self.pipeline_type == 'inference_pipeline':
             if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""):
@@ -116,18 +114,15 @@ class Pipeline:
             # v2.3.0 NEW: 실험 history 를 위한 data_id 생성
             ptype = self.pipeline_type.split('_')[0]
             self.system_envs[f'{ptype}_history'].update(data_checksums)
-
-        _print_step_finish(f"Finish to load {self.pipeline_type}")
+        _log_process(f"{self.pipeline_type} load finish")
         # TODO return 구성
         # return
 
     def run(self, steps = 'All'):
-
-        _print_step(f"{self.pipeline_type} -- run()")
-
+        _log_process(f"{self.pipeline_type} run start")
         if steps == 'All':
             for step, asset_config in enumerate(self.asset_source[self.pipeline_type]):
-                PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {asset_config['step']}")
+                _log_process(f"current step: {asset_config['step']}")
                 self.asset_structure.args[asset_config['step']] = self.get_parameter(asset_config['step'])
                 try:
                     self.process_asset_step(asset_config, step)
@@ -136,7 +131,7 @@ class Pipeline:
         else:
             if type(steps) == list:
                 for step in steps:
-                    PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {step}")
+                    _log_process(f"current step: {step}")
                     self.asset_structure.args[step] = self.get_parameter(step)
                     for i, asset_configs in enumerate(self.asset_source[self.pipeline_type]):
                         if asset_configs['step'] == step:
@@ -150,7 +145,7 @@ class Pipeline:
                         PROC_LOGGER.process_error(f"Failed to process step: << {step} >>")
                         continue
             else:
-                PROC_LOGGER.process_info(f"==================== Start pipeline: {self.pipeline_type} / step: {steps}")
+                _log_process(f"steps: {steps}")
                 self.asset_structure.args[steps] = self.get_parameter(steps)
                 step = 0
                 for i, asset_configs in enumerate(self.asset_source[self.pipeline_type]):
@@ -182,12 +177,10 @@ class Pipeline:
         self.system_envs[f'{ptype}_history']['code_id_description'] = checksum_dict
         # 수정된 부분: total_checksum을 문자열의 형태로 저장하며, 길이가 12가 되도록 조정
         self.system_envs[f'{ptype}_history']['code_id'] = total_checksum_str 
-
-        _print_step_finish(f"Finish to run {self.pipeline_type}")
+        _log_process(f"{self.pipeline_type} run finish")
 
     def save(self):
-
-        _print_step(f"{self.pipeline_type} -- save()")
+        _log_process(f"{self.pipeline_type} save start")
         ###################################
         ## Step7: summary yaml, output 정상 생성 체크
         ###################################
@@ -204,7 +197,7 @@ class Pipeline:
             self._save_artifacts()
             ## backup 까지는 최종 실행 시간으로 정의
             self.system_envs['experimental_end_time'] = datetime.now().strftime(TIME_FORMAT)
-            PROC_LOGGER.process_info(f"Process finish-time: {datetime.now().strftime(TIME_FORMAT_DISPLAY)}")
+            PROC_LOGGER.process_message(f"Process finish-time: {datetime.now().strftime(TIME_FORMAT_DISPLAY)}")
             ptype = self.pipeline_type.split('_')[0]
             sttime = self.system_envs['experimental_start_time']
             exp_name = self.system_envs['experimental_name']
@@ -235,8 +228,7 @@ class Pipeline:
                     self.artifact.backup_history(self.pipeline_type, self.system_envs, backup_exp_plan, size=self.control['backup_size'])
                 except:
                     PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
-
-        _print_step_finish(f"Finish to save {self.pipeline_type}")
+        _log_process(f"{self.pipeline_type} save finish")
 
     def history(self, data_id="", param_id="", code_id="", parameter_steps=[]):
         """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
@@ -247,7 +239,7 @@ class Pipeline:
 
             - parameter_steps (list): table 생성 시, 어떤 step 의 parameter 를 같이 보여줄 지 결정
         """
-        _print_step(f"{self.pipeline_type} -- backup_history()")
+        _log_process(f"{self.pipeline_type} history backup start")
 
         ## step1: history 폴더에서 폴더 명을 dict key 화 하기 
         ptype = self.pipeline_type.split('_')[0]
@@ -420,7 +412,7 @@ class Pipeline:
         """
         # check inference summary
         if "inference_summary.yaml" in os.listdir(INFERENCE_SCORE_PATH):
-            PROC_LOGGER.process_info(f"[Success] << inference_summary.yaml >> exists in the inference score path: << {INFERENCE_SCORE_PATH} >>")
+            PROC_LOGGER.process_message(f"[Success] << inference_summary.yaml >> exists in the inference score path: << {INFERENCE_SCORE_PATH} >>")
         else:
             PROC_LOGGER.process_error(f"[Failed] << inference_summary.yaml >> does not exist in the inference score path: << {INFERENCE_SCORE_PATH} >>")
         # check output files
@@ -457,7 +449,7 @@ class Pipeline:
             summary_dict = meta.get_yaml(summary_dir + 'inference_summary.yaml')
             success_str = json.dumps({'status':'success', 'message': summary_dict})
             self.system_envs['q_inference_summary'].rput(success_str)
-            PROC_LOGGER.process_info("Successfully completes putting inference summary into redis queue.")
+            PROC_LOGGER.process_message("Successfully completes putting inference summary into redis queue.")
             # change redis runs_state
             self.system_envs['runs_status'] = 'summary'
         else:
@@ -480,7 +472,7 @@ class Pipeline:
             if 'inference_artifacts.tar.gz' in os.listdir(ext_saved_path): # 외부 경로 (= edgeapp 단이므로 무조건 로컬경로)
                 # send_summary에서 생성된 summary yaml을 다시 한번 전송
                 self.system_envs['q_inference_artifacts'].rput(self.system_envs['success_str'])
-                PROC_LOGGER.process_info("Completes putting artifacts creation << success >> signal into redis queue.")
+                PROC_LOGGER.process_message("Completes putting artifacts creation << success >> signal into redis queue.")
                 self.system_envs['runs_status'] = 'artifacts'
             else:
                 PROC_LOGGER.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
@@ -514,7 +506,7 @@ class Pipeline:
         _file = ''.join(filter(lambda x: x.isalpha() or x == '_', _file))
         user_asset = self.import_asset(_path, _file)
         if self.system_envs['boot_on'] == True:
-            PROC_LOGGER.process_info(f"==================== Booting... completes importing << {_file} >>")
+            PROC_LOGGER.process_message(f"==================== Booting... completes importing << {_file} >>")
             return
         meta_dict = {'artifacts': self.system_envs['artifacts'], 'pipeline': self.pipeline_type, 'step': step, 'step_number': step, 'step_name': self.user_parameters[self.pipeline_type][step]['step']}
         self.asset_structure.config['meta'] = meta_dict #nested dict
@@ -533,7 +525,7 @@ class Pipeline:
         # FIXME memory release : on/off 필요? > 우선 spec-out 
         self.memory_release(_path)
         sys.path = [item for item in sys.path if self.asset_structure.envs['step'] not in item]
-        PROC_LOGGER.process_info(f"==================== Finish pipeline: {self.pipeline_type} / step: {asset_config['step']}")
+        PROC_LOGGER.process_message(f"==================== Finish pipeline: {self.pipeline_type} / step: {asset_config['step']}")
 
     # 한번만 실행, 특정 에셋만 설치 할 수도 있음
     def _setup_asset(self, asset_source, get_asset_source):
@@ -601,7 +593,7 @@ class Pipeline:
                 else:
                     shutil.rmtree(dir_artifacts + subdir, ignore_errors=True)
                     os.makedirs(dir_artifacts + subdir)
-                    PROC_LOGGER.process_info(f"Successfully emptied << {dir_artifacts + subdir} >> ")
+                    PROC_LOGGER.process_message(f"Successfully emptied << {dir_artifacts + subdir} >> ")
         except:
             PROC_LOGGER.process_error(f"Failed to empty & re-make << {pipe_prefix}_artifacts >>")
 
@@ -673,14 +665,14 @@ class Pipeline:
         step_name = asset_config['step']
         git_branch = asset_config['source']['branch']
         step_path = os.path.join(ASSET_HOME, asset_config['step'])
-        PROC_LOGGER.process_info(f"Start setting-up << {step_name} >> asset @ << assets >> directory.")
+        PROC_LOGGER.process_message(f"Start setting-up << {step_name} >> asset @ << assets >> directory.")
         # 현재 yaml의 source_code가 git일 땐 control의 check_asset_source가 once이면 한번만 requirements 설치, every면 매번 설치하게 끔 돼 있음
         ## FIXME ALOv2에서 기본으로 필요한 requirements.txt는 사용자가 알아서 설치 (git clone alov2 후 pip install로 직접)
         ## asset 배치 (@ scripts 폴더)
         # local 일때는 check_asset_source 가 local인지 git url인지 상관 없음
         if asset_source_code == "local":
             if step_name in os.listdir(ASSET_HOME):
-                PROC_LOGGER.process_info(f"Now << local >> asset_source_code mode: <{step_name}> asset exists.")
+                PROC_LOGGER.process_message(f"Now << local >> asset_source_code mode: <{step_name}> asset exists.")
                 pass
             else:
                 PROC_LOGGER.process_error(f'Now << local >> asset_source_code mode: \n <{step_name}> asset folder does not exist in <assets> folder.')
@@ -689,7 +681,7 @@ class Pipeline:
             if _is_git_url(asset_source_code):
                 # __renew_asset(): 다시 asset 당길지 말지 여부 (bool)
                 if (check_asset_source == "every") or (check_asset_source == "once" and _renew_asset(step_path)):
-                    PROC_LOGGER.process_info(f"Start renewing asset : {step_path}")
+                    PROC_LOGGER.process_message(f"Start renewing asset : {step_path}")
                     # git으로 또 새로 받는다면 현재 존재 하는 폴더를 제거 한다
                     if os.path.exists(step_path):
                         shutil.rmtree(step_path)  # 폴더 제거
@@ -698,14 +690,14 @@ class Pipeline:
                     repo = git.Repo.clone_from(asset_source_code, step_path)
                     try:
                         repo.git.checkout(git_branch)
-                        PROC_LOGGER.process_info(f"{step_path} successfully pulled.")
+                        PROC_LOGGER.process_message(f"{step_path} successfully pulled.")
                     except:
                         PROC_LOGGER.process_error(f"Your have written incorrect git branch: {git_branch}")
                 # 이미 scripts내에 asset 폴더들 존재하고, requirements.txt도 설치된 상태
                 elif (check_asset_source == "once" and not _renew_asset(step_path)):
                     modification_time = os.path.getmtime(step_path)
                     modification_time = datetime.fromtimestamp(modification_time) # 마지막 수정시간
-                    PROC_LOGGER.process_info(f"<< {step_name} >> asset had already been created at {modification_time}")
+                    PROC_LOGGER.process_message(f"<< {step_name} >> asset had already been created at {modification_time}")
                     pass
                 else:
                     PROC_LOGGER.process_error(f'You have written wrong check_asset_source: {check_asset_source}')

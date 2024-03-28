@@ -77,11 +77,11 @@ class Aritifacts:
             src_path = PROJECT_HOME + item
             if os.path.isfile(src_path):
                 shutil.copy2(src_path, backup_source_path)
-                # PROC_LOGGER.process_info(f'[INFO] copy from " {src_path} "  -->  " {backup_source_path} " ')
+                # PROC_LOGGER.process_message(f'[INFO] copy from " {src_path} "  -->  " {backup_source_path} " ')
             elif os.path.isdir(src_path):
                 dst_path = backup_source_path  + os.path.basename(src_path)
                 shutil.copytree(src_path, dst_path)
-                # PROC_LOGGER.process_info(f'[INFO] copy from " {src_path} "  -->  " {backup_source_path} " ')
+                # PROC_LOGGER.process_message(f'[INFO] copy from " {src_path} "  -->  " {backup_source_path} " ')
         # artifacts 들을 백업
         for key, value in artifacts_structure[f'{ptype}_artifacts'].items():
             dst_path = backup_path + key + "/"
@@ -126,7 +126,7 @@ class Aritifacts:
         total_size = train_size + inference_size
         # 폴더 사이즈가 제한을 초과하지 않으면 아무 것도 하지 않음
         if total_size <= folder_size_limit:
-            PROC_LOGGER.process_info("[backup_history] Current total size is within the limit. No deletion required.")
+            PROC_LOGGER.process_message("[backup_history] Current total size is within the limit. No deletion required.")
             return
         # 삭제해야 할 전체 양 계산
         total_to_delete = total_size - folder_size_limit
@@ -150,7 +150,7 @@ class Aritifacts:
                 if current_size <= target_size:
                     break
                 folder_size = _get_folder_size(folder)
-                PROC_LOGGER.process_info(f"Delete history folder: {folder}")  # 삭제 로그 출력
+                PROC_LOGGER.process_message(f"Delete history folder: {folder}")  # 삭제 로그 출력
                 shutil.rmtree(folder)
                 current_size -= folder_size  # 폴더 삭제 후 크기 업데이트
         # 각 폴더에서 유지해야 할 크기로 삭제

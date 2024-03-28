@@ -77,11 +77,11 @@ class SagemakerHandler:
             src_path = PROJECT_HOME + item
             if os.path.isfile(src_path):
                 shutil.copy2(src_path, self.SAGEMAKER_PATH)
-                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.SAGEMAKER_PATH} >> ')
+                PROC_LOGGER.process_message(f'copy from << {src_path} >>  -->  << {self.SAGEMAKER_PATH} >> ')
             elif os.path.isdir(src_path):
                 dst_path =  self.SAGEMAKER_PATH + os.path.basename(src_path)
                 shutil.copytree(src_path, dst_path)
-                PROC_LOGGER.process_info(f'copy from << {src_path} >>  -->  << {self.SAGEMAKER_PATH} >> ') 
+                PROC_LOGGER.process_message(f'copy from << {src_path} >>  -->  << {self.SAGEMAKER_PATH} >> ') 
 
     def build_solution(self): 
         """
@@ -103,7 +103,7 @@ class SagemakerHandler:
         )
         p1.stdout.close()
         output = p2.communicate()[0]
-        PROC_LOGGER.process_info(f"AWS ECR | docker login result: \n {output.decode()}")
+        PROC_LOGGER.process_message(f"AWS ECR | docker login result: \n {output.decode()}")
         # aws ecr repo create 
         # ECR 클라이언트 생성
         self._create_ecr_repository(ecr_repository=self.ecr_repository)
@@ -131,10 +131,10 @@ class SagemakerHandler:
         package = SAGEMAKER_PACKAGE
         try: # 이미 같은 버전 설치 돼 있는지 
             pkg_resources.get_distribution(package) # get_distribution tact-time 테스트: 약 0.001s
-            PROC_LOGGER.process_info(f'[OK] << {package} >> already exists')
+            PROC_LOGGER.process_message(f'[OK] << {package} >> already exists')
         except: # 사용자 가상환경에 해당 package 설치가 아예 안 돼있는 경우 
             try: # nested try/except 
-                PROC_LOGGER.process_info(f'>> Start installing package - {package}')
+                PROC_LOGGER.process_message(f'>> Start installing package - {package}')
                 subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
             except Exception as e:
                 PROC_LOGGER.process_error(f"Failed to install {package}: \n {str(e)}")
@@ -156,14 +156,14 @@ class SagemakerHandler:
         for existing_bucket in response['Buckets']:
             bucket_list_log += f"{existing_bucket['Name']} \n"
             bucket_list.append(existing_bucket['Name'])
-        PROC_LOGGER.process_info(bucket_list_log)
+        PROC_LOGGER.process_message(bucket_list_log)
         if not self.bucket in bucket_list: 
             # 버킷 생성
             s3.create_bucket(Bucket=self.bucket,
                         CreateBucketConfiguration={'LocationConstraint': self.region})
-            PROC_LOGGER.process_info(f"Complete creating S3 bucket (bucket name:{self.bucket})")
+            PROC_LOGGER.process_message(f"Complete creating S3 bucket (bucket name:{self.bucket})")
         else:
-            PROC_LOGGER.process_info(f"S3 Bucket already exists. (bucket name:{self.bucket})")
+            PROC_LOGGER.process_message(f"S3 Bucket already exists. (bucket name:{self.bucket})")
         
 
     def _create_ecr_repository(self, ecr_repository):
@@ -185,16 +185,16 @@ class SagemakerHandler:
                     #FIXME sagemaker 학습 시 일단 ecr tag 미지원 
                     # repository_uri = uri['repositoryUri'] + ":" + ecr_tag
                     repository_uri_without_tag = uri['repositoryUri']
-                    PROC_LOGGER.process_info(f"ECR repository << {ecr_repository} >> already exists - repository_uri: {repository_uri_without_tag}")
+                    PROC_LOGGER.process_message(f"ECR repository << {ecr_repository} >> already exists - repository_uri: {repository_uri_without_tag}")
         else:
-            PROC_LOGGER.process_info(f"ECR repository << {ecr_repository} >> does not exist.")
+            PROC_LOGGER.process_message(f"ECR repository << {ecr_repository} >> does not exist.")
             # 리포지토리 생성
             response = ecr.create_repository(repositoryName=ecr_repository, imageScanningConfiguration={'scanOnPush': True})
             #FIXME sagemaker 학습 시 일단 ecr tag 미지원 
             #repository_uri = response['repository']['repositoryUri']  + ":" + ecr_tag
             repository_uri_without_tag = response['repository']['repositoryUri']
 
-            PROC_LOGGER.process_info(f"Created repository URI: {repository_uri_without_tag}")
+            PROC_LOGGER.process_message(f"Created repository URI: {repository_uri_without_tag}")
     
     def download_latest_model(self):
         try: 
@@ -216,7 +216,7 @@ class SagemakerHandler:
             client = self.session.client('s3', region_name=self.region)
             # from, to / PROJECT HOME 에 model.tar.gz 를 s3에서 로컬로 다운로드
             client.download_file(self.bucket, latest_model_path, PROJECT_HOME + COMPRESSED_MODEL_FILE)  
-            PROC_LOGGER.process_info(f"Success downloading << {self.bucket}/{latest_model_path} >> into << {PROJECT_HOME} >>")
+            PROC_LOGGER.process_message(f"Success downloading << {self.bucket}/{latest_model_path} >> into << {PROJECT_HOME} >>")
             # model.tar.gz을 PROJECT HOME 에 바로 압축해제 후 삭제 
             def _create_dir(_dir):
                 # temp model dir 생성 

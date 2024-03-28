@@ -29,6 +29,7 @@ import pyfiglet
 ### internal package 
 from src.constants import *
 from src.external import S3Handler
+from src.utils import print_color
 
 #----------------------------------------#
 #              REST API                  #
@@ -2704,41 +2705,6 @@ class SolutionRegister:
 #----------------------------------------#
 #              Common Function           #
 #----------------------------------------#
-COLOR_RED = '\033[91m'
-COLOR_END = '\033[0m'
-ARG_NAME_MAX_LENGTH = 30
-COLOR_DICT = {
-   'PURPLE':'\033[95m',
-   'CYAN':'\033[96m',
-   'DARKCYAN':'\033[36m',
-   'BLUE':'\033[94m',
-   'GREEN':'\033[92m',
-   'YELLOW':'\033[93m',
-   'RED':'\033[91m',
-   'BOLD':'\033[1m',
-   'UNDERLINE':'\033[4m',
-}
-COLOR_END = '\033[0m'
-
-def print_color(msg, color):
-    """ Description
-        -----------
-            Display text with color 
-
-        Parameters
-        -----------
-            msg (str) : text
-            _color (str) : PURPLE, CYAN, DARKCYAN, BLUE, GREEN, YELLOW, RED, BOLD, UNDERLINE
-
-        example
-        -----------
-            print_color('Display color text', 'BLUE')
-    """
-    if color.upper() in COLOR_DICT.keys():
-        print(COLOR_DICT[color.upper()] + msg + COLOR_END)
-    else:
-        raise ValueError('[ERROR] print_color() function call error. - selected color : {}'.format(COLOR_DICT.keys()))
-    
 def _tar_dir(_path): 
     ## _path: train_artifacts / inference_artifacts     
     os.makedirs(REGISTER_ARTIFACT_PATH , exist_ok=True)

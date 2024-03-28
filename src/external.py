@@ -44,7 +44,7 @@ class S3Handler:
         else: # yaml에 s3 key path 입력 안한 경우는 한 번 시스템 환경변수에 사용자가 key export 해둔게 있는지 확인 후 있으면 반환 없으면 경고   
             access_key, secret_key = os.getenv("AWS_ACCESS_KEY_ID"), os.getenv("AWS_SECRET_ACCESS_KEY")
             if (access_key != None) and (secret_key != None):
-                PROC_LOGGER.process_info('Successfully got << AWS_ACCESS_KEY_ID >> or << AWS_SECRET_ACCESS_KEY >> from os environmental variables.') 
+                PROC_LOGGER.process_message('Successfully got << AWS_ACCESS_KEY_ID >> or << AWS_SECRET_ACCESS_KEY >> from os environmental variables.') 
                 return access_key, secret_key 
             else: # 둘 중 하나라도 None 이거나 둘 다 None 이면 warning (key 필요 없는 SA 방식일 수 있으므로?)
                 PROC_LOGGER.process_warning('<< AWS_ACCESS_KEY_ID >> or << AWS_SECRET_ACCESS_KEY >> is not defined on your system environment.')  
@@ -84,7 +84,7 @@ class S3Handler:
             PROC_LOGGER.process_error("S3 CONNECTION ERROR %s" % e)
     
     def download_file_from_s3(self, _from, _to):
-        PROC_LOGGER.process_info(f">>>>>> Start downloading file from s3 << {_from} >> into \n local << {_to} >>")
+        PROC_LOGGER.process_message(f">>>>>> Start downloading file from s3 << {_from} >> into \n local << {_to} >>")
         if not os.path.exists(_to):
             self.s3.download_file(self.bucket, _from, _to)
             
@@ -100,14 +100,14 @@ class S3Handler:
             for dir_list in paginator.paginate(Bucket=self.bucket, Delimiter='/', Prefix=s3_dir_path):
                 if 'CommonPrefixes' in dir_list:  # 폴더가 있으면
                     for i, each_dir in enumerate(dir_list['CommonPrefixes']):  # 폴더를 iteration한다.
-                        PROC_LOGGER.process_info('>> Start downloading s3 directory << {} >> | Progress: ( {} / {} total directories )'.format(each_dir['Prefix'], i+1, len(dir_list['CommonPrefixes'])))
+                        PROC_LOGGER.process_message('>> Start downloading s3 directory << {} >> | Progress: ( {} / {} total directories )'.format(each_dir['Prefix'], i+1, len(dir_list['CommonPrefixes'])))
                         # 폴더들의 Prefix를 이용하여 다시 recursive하게 함수를 호출한다.
                         _download_folder_from_s3_recursively(each_dir['Prefix'])  
                 if 'Contents' in dir_list:  # 폴더가 아니라 파일이 있으면
                     for i, each_file in enumerate(dir_list['Contents']):  # 파일을 iteration한다.
                         sub_folder, filename = each_file['Key'].split('/')[-2:]  # 내 로컬에 저장할 폴더 이름은 s3의 폴더 이름과 같게 한다. 파일 이름도 그대로.
                         if i % 10 == 0: # 파일 10개마다 progress logging
-                            PROC_LOGGER.process_info('>>>> S3 downloading file << {} >> | Progress: ( {} / {} total file )'.format(filename, i+1, len(dir_list['Contents'])))
+                            PROC_LOGGER.process_message('>>>> S3 downloading file << {} >> | Progress: ( {} / {} total file )'.format(filename, i+1, len(dir_list['Contents'])))
                         if sub_folder == s3_basename: # 가령 s3_basename이 data인데 sub_folder이름도 data이면 굳이 data/data 만들지 않고 data/ 밑에 .csv들 가져온다. 
                             target = os.path.join(input_path, s3_basename) + '/'
                         else: 
@@ -241,14 +241,14 @@ class ExternalHandler:
         # copy (로컬 절대경로, 상대경로) or download (s3) data (input 폴더로)
         try: 
             shutil.rmtree(input_data_dir, ignore_errors=True) # 새로 데이터 가져오기 전 폴더 없애기 (ex. input/train) >> 어짜피 아래서 _load_data 시 새로 폴더 만들것임 
-            PROC_LOGGER.process_info(f"Successfuly removed << {input_data_dir} >> before loading external data.")
+            PROC_LOGGER.process_message(f"Successfuly removed << {input_data_dir} >> before loading external data.")
         except: 
             PROC_LOGGER.process_error(f"Failed to remove << {input_data_dir} >> before loading external data.")
         # external 데이터 가져오기   (path 가 empty 경우는 위에서 이미 return 됨)
         for ext_path in external_data_path:
             ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
             data_checksums = self._load_data(pipe_mode, ext_type, ext_path, aws_key_profile)
-            PROC_LOGGER.process_info(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
+            PROC_LOGGER.process_message(f"Successfuly finish loading << {ext_path} >> into << {INPUT_DATA_HOME} >>")
         return data_checksums
             
     def external_load_model(self, external_path, external_path_permission): 
@@ -267,7 +267,7 @@ class ExternalHandler:
             else:    
                 shutil.rmtree(models_path, ignore_errors=True)
                 os.makedirs(models_path)
-                PROC_LOGGER.process_info(f"Successfully emptied << {models_path} >> ")
+                PROC_LOGGER.process_message(f"Successfully emptied << {models_path} >> ")
         except: 
             PROC_LOGGER.process_error(f"Failed to empty & re-make << {models_path} >>")
         ####################################################################################################  
@@ -275,11 +275,11 @@ class ExternalHandler:
         # get s3 key 
         try:
             aws_key_profile = external_path_permission['aws_key_profile'] # 무조건 1개 (str)
-            PROC_LOGGER.process_info(f's3 private key file << aws_key_profile >> loaded successfully. \n')
+            PROC_LOGGER.process_message(f's3 private key file << aws_key_profile >> loaded successfully. \n')
         except:
-            PROC_LOGGER.process_info('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the aws_key_profile path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
+            PROC_LOGGER.process_message('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the aws_key_profile path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
             aws_key_profile = None
-        PROC_LOGGER.process_info(f"Start load model from external path: << {ext_path} >>. \n")
+        PROC_LOGGER.process_message(f"Start load model from external path: << {ext_path} >>. \n")
         ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
         # temp model dir 생성 
         if os.path.exists(TEMP_MODEL_PATH):
@@ -306,7 +306,7 @@ class ExternalHandler:
                     shutil.copytree(ext_path, TEMP_MODEL_PATH + base_norm_path, dirs_exist_ok=True)
                     for i in os.listdir(TEMP_MODEL_PATH + base_norm_path):
                         shutil.move(TEMP_MODEL_PATH + base_norm_path + i, models_path + i) 
-                PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>')
+                PROC_LOGGER.process_message(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>')
             except:
                 PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
             finally:
@@ -324,7 +324,7 @@ class ExternalHandler:
                 else:
                     PROC_LOGGER.process_warning(f"No << model.tar.gz >> exists in the path << {ext_path} >>. \n Instead, try to download the all of << {ext_path} >> ")
                     s3_downloader.download_folder(models_path)  
-                PROC_LOGGER.process_info(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>') 
+                PROC_LOGGER.process_message(f'Success << external load model >> from << {ext_path} >> \n into << {models_path} >>') 
             except:
                 PROC_LOGGER.process_error(f'Failed to external load model from {ext_path} into {models_path}')
             finally:
@@ -350,7 +350,7 @@ class ExternalHandler:
         """
         # external path가 train, inference 둘다 존재 안하는 경우 
         if (external_path['save_train_artifacts_path'] is None) and (external_path['save_inference_artifacts_path'] is None): 
-            PROC_LOGGER.process_info('None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n')
+            PROC_LOGGER.process_message('None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n')
             return
         save_artifacts_path = None 
         if pipe_mode == "train_pipeline": 
@@ -360,19 +360,19 @@ class ExternalHandler:
         else: 
             PROC_LOGGER.process_error(f"You entered wrong pipeline in your expermimental_plan.yaml: << {pipe_mode} >>")
         if save_artifacts_path == None: 
-            PROC_LOGGER.process_info(f'[@{pipe_mode}] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n')
+            PROC_LOGGER.process_message(f'[@{pipe_mode}] None of external path is written in your experimental_plan.yaml. Skip saving artifacts into external path. \n')
             return  
         # get s3 key 
         try:
             aws_key_profile = external_path_permission['aws_key_profile'] # 무조건 1개 (str)
-            PROC_LOGGER.process_info(f's3 private key file << aws_key_profile >> loaded successfully. \n')
+            PROC_LOGGER.process_message(f's3 private key file << aws_key_profile >> loaded successfully. \n')
         except:
-            PROC_LOGGER.process_info('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the aws_key_profile path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' )
+            PROC_LOGGER.process_message('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the aws_key_profile path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' )
             aws_key_profile = None
         # external path가 존재하는 경우 
         # save artifacts 
         ######## 일단 내부 경로에 저장
-        PROC_LOGGER.process_info(f" Start saving generated artifacts into external path << {save_artifacts_path} >>. \n")
+        PROC_LOGGER.process_message(f" Start saving generated artifacts into external path << {save_artifacts_path} >>. \n")
         ext_path = save_artifacts_path
         ext_type = self._get_ext_path_type(ext_path) # absolute / s3
         artifacts_tar_path = None 
@@ -423,7 +423,7 @@ class ExternalHandler:
         else: 
             # 미지원 external data storage type
             PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
-        PROC_LOGGER.process_info(f" Successfully done saving (path: {save_artifacts_path})")
+        PROC_LOGGER.process_message(f" Successfully done saving (path: {save_artifacts_path})")
         return ext_path 
 
     def _check_duplicated_basedir(self, data_path):
@@ -530,7 +530,7 @@ class ExternalHandler:
                 checksums = copy_and_checksums('', input_data_dir) # 체크값 계산
             except:
                 PROC_LOGGER.process_error(f'Failed to download s3 data folder from << {ext_path} >>')
-        PROC_LOGGER.process_info(f'Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}') 
+        PROC_LOGGER.process_message(f'Successfully done loading external data: \n {ext_path} --> {f"{input_data_dir}"}') 
         return checksums
 
     ## Common Func. 
@@ -540,7 +540,7 @@ class ExternalHandler:
         elif os.path.isabs(_ext_path) == True: # 절대경로. nas, local 둘다 가능 
             return 'absolute'
         elif os.path.isabs(_ext_path) == False: # file이름으로 쓰면 에러날 것임 
-            PROC_LOGGER.process_info(f'<< {_ext_path} >> may be relative path. The reference folder of relative path is << {PROJECT_HOME} >>. \n If this is not appropriate relative path, Loading external data process would raise error.')
+            PROC_LOGGER.process_message(f'<< {_ext_path} >> may be relative path. The reference folder of relative path is << {PROJECT_HOME} >>. \n If this is not appropriate relative path, Loading external data process would raise error.')
             # [중요] 외부 데이터를 ALO main.py와 같은 경로에 두면 에러 
             base_dir = os.path.basename(os.path.normpath(_ext_path)) 
             parent_dir = _ext_path.split(base_dir)[0] # base dir 바로 위 parent dir 

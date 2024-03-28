@@ -36,7 +36,22 @@ def log_decorator(func):
         caller_func = caller_frame.function
         # 원본 함수 호출
         logger_method, msg = func(*args, **kwargs)
-        logger_method(f'{caller_file}({caller_line})|{caller_func}()] {msg}')
+        logger_method(msg = f'{caller_file}({caller_line})|{caller_func}()] {msg}')
+        if logger_method.__name__ == "error":
+            raise
+    return wrapper
+
+def custom_log_decorator(func):
+    ''' for custom log with level as integer
+    '''
+    def wrapper(*args, **kwargs):
+        caller_frame = inspect.stack()[1]
+        caller_file = os.path.basename(caller_frame.filename)
+        caller_line = caller_frame.lineno
+        caller_func = caller_frame.function
+        # 원본 함수 호출
+        logger_method, msg, level = func(*args, **kwargs)
+        logger_method(msg = f'{caller_file}({caller_line})|{caller_func}()] {msg}', level = level)
         if logger_method.__name__ == "error":
             raise
     return wrapper
@@ -44,6 +59,8 @@ def log_decorator(func):
 class ProcessLogger: 
     # envs 미입력 시 설치 과정, 프로세스 진행 과정 등 전체 과정 보기 위한 로그 생성 
     def __init__(self, project_home: str):
+        MSG_LOG_LEVEL = 5
+        logging.addLevelName(MSG_LOG_LEVEL, 'MSG')
         self.project_home = project_home
         self.service = 'ALO'
         if not os.path.exists(TRAIN_LOG_PATH):
@@ -66,41 +83,53 @@ class ProcessLogger:
                 "console": {
                     "class": "logging.StreamHandler",
                     "formatter": "proc_console",
-                    "level": "INFO",
+                    "level": "MSG", # 최소 LEVEL 
                 },
                 "file_train": {
                     "class": "logging.FileHandler",
                     "filename": TRAIN_LOG_PATH + "process.log", 
                     "formatter": "proc_file",
-                    "level": "INFO",
+                    "level": "MSG",
                 },
                 "file_inference": {
                     "class": "logging.FileHandler",
                     "filename": INFERENCE_LOG_PATH + "process.log", 
                     "formatter": "proc_file",
-                    "level": "INFO",
+                    "level": "MSG",
                 },
             },
-            "root": {"handlers": ["console", "file_train", "file_inference"], "level": "INFO"},
-            "loggers": {"ERROR": {"level": "ERROR"}, "WARNING": {"level": "WARNING"}, "INFO": {"level": "INFO"}}
+            "root": {"handlers": ["console", "file_train", "file_inference"], "level": "MSG"},
+            "loggers": {"ERROR": {"level": "ERROR"}, "WARNING": {"level": "WARNING"}, "INFO": {"level": "INFO"}, "MSG": {"level": MSG_LOG_LEVEL}}
         }
     #--------------------------------------------------------------------------------------------------------------------------
     #    Process Logging API
     #--------------------------------------------------------------------------------------------------------------------------
+    @custom_log_decorator
+    def process_message(self, msg):
+        '''custom logging: level MSG_LOG_LEVEL(5)
+        used for ALO process logging 
+        ''' 
+        logging.config.dictConfig(self.process_logging_config)
+        message_logger = logging.getLogger("MSG") 
+        level = message_logger.level
+        return message_logger.log, msg, level
+    
     @log_decorator
     def process_info(self, msg):
         logging.config.dictConfig(self.process_logging_config)
         info_logger = logging.getLogger("INFO") 
-        return info_logger.info, msg 
+        return info_logger.info, msg
     
     @log_decorator
     def process_warning(self, msg):
         logging.config.dictConfig(self.process_logging_config)
         warning_logger = logging.getLogger("WARNING") 
-        return warning_logger.warning, msg 
+        level = warning_logger.level
+        return warning_logger.warning, msg
     
     @log_decorator
     def process_error(self, msg):
         logging.config.dictConfig(self.process_logging_config)
-        error_logger = logging.getLogger("ERROR") 
+        error_logger = logging.getLogger("ERROR")
+        level = error_logger.level 
         return error_logger.error, msg

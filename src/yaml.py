@@ -34,19 +34,19 @@ class Metadata:
         if not pipeline_type in ['train', 'inference', 'all']:
             raise ValueError("pipeline_type must be 'all', 'train' or 'inference'")
         self._get_yaml_data(exp_plan, prefix = 'update_' )
-        PROC_LOGGER.process_info(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan})") 
+        PROC_LOGGER.process_message(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan})") 
         if self.name != self.update_name:
-            PROC_LOGGER.process_info(f"Update name : {self.update_name}")
+            PROC_LOGGER.process_message(f"Update name : {self.update_name}")
             self.name = self.update_name
         if self.version != self.update_version: 
-            PROC_LOGGER.process_info(f"Update version : {self.update_version}")
+            PROC_LOGGER.process_message(f"Update version : {self.update_version}")
             self.version = self.update_version
         ##### external path 
         if self.external_path != self.update_external_path:
-            PROC_LOGGER.process_info(f"Update external_path : {self.update_external_path}")
+            PROC_LOGGER.process_message(f"Update external_path : {self.update_external_path}")
             self.external_path = self.update_external_path
         if self.external_path_permission != self.update_external_path_permission:
-            PROC_LOGGER.process_info(f"Update external_path_permission : {self.update_external_path_permission}")
+            PROC_LOGGER.process_message(f"Update external_path_permission : {self.update_external_path_permission}")
             self.external_path_permission = self.update_external_path_permission
         ##### asset source 와 user parameters 
         if self.user_parameters != self.update_user_parameters:
@@ -56,7 +56,7 @@ class Metadata:
                 self.user_parameters['inference_pipeline'] = self.update_user_parameters['inference_pipeline']
             else:
                 self.user_parameters = self.update_user_parameters
-            PROC_LOGGER.process_info(f"Update user_parameters : {self.update_user_parameters}")
+            PROC_LOGGER.process_message(f"Update user_parameters : {self.update_user_parameters}")
         if self.asset_source != self.update_asset_source:
             if pipeline_type == 'train':
                 self.asset_source['train_pipeline'] = self.update_asset_source['train_pipeline']
@@ -64,7 +64,7 @@ class Metadata:
                 self.asset_source['inference_pipeline'] = self.update_asset_source['inference_pipeline']
             else:
                 self.asset_source = self.update_asset_source
-            PROC_LOGGER.process_info(f"Update asset_source : {self.update_asset_source}")
+            PROC_LOGGER.process_message(f"Update asset_source : {self.update_asset_source}")
         if self.ui_args_detail != self.update_ui_args_detail:
             if pipeline_type == 'train':
                 self.ui_args_detail['train_pipeline'] = self.update_ui_args_detail['train_pipeline']
@@ -72,11 +72,11 @@ class Metadata:
                 self.ui_args_detail['inference_pipeline'] = self.update_ui_args_detail['inference_pipeline']
             else:
                 self.ui_args_detail = self.update_ui_args_detail
-            PROC_LOGGER.process_info(f"Update ui_args_detail : {self.update_ui_args_detail}")
+            PROC_LOGGER.process_message(f"Update ui_args_detail : {self.update_ui_args_detail}")
         ##### asset source 와 user parameters 
         ##### control        
         if self.control != self.update_control:
-            PROC_LOGGER.process_info(f"Update control : {self.update_control}")
+            PROC_LOGGER.process_message(f"Update control : {self.update_control}")
             self.control = self.update_control
         ## exp_plan 만들기. 실험 중에 중간 값들이 변경되어 있으므로, 꼭 ~ 재구성하여 저장한다.
         backup_exp_plan = {}
@@ -122,7 +122,7 @@ class Metadata:
         try:
             exp_plan_file = self.check_and_copy_expplan(exp_plan_file) 
             if update_envs:  
-                PROC_LOGGER.process_info(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan_file})") 
+                PROC_LOGGER.process_message(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan_file})") 
             self.exp_plan = self.get_yaml(exp_plan_file)  ## from compare_yamls.py
             # self.exp_plan = compare_yaml(self.exp_plan) # plan yaml을 최신 compare yaml 버전으로 업그레이드  ## from compare_yamls.py
             self.check_exp_plan_keys(self.exp_plan) 
@@ -138,7 +138,7 @@ class Metadata:
                 if update_envs:
                     # 주의: _update_yaml에서 self.exp_plan의 내용이 바뀜
                     system_envs = self._update_yaml(system_envs=system_envs)
-                PROC_LOGGER.process_info("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
+                PROC_LOGGER.process_message("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
         except:
             PROC_LOGGER.process_error("Failed to read experimental plan yaml.")
         # experimental yaml에 사용자 파라미터와 asset git 주소가 매칭 (from src.utils)

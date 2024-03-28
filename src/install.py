@@ -47,13 +47,13 @@ class Packages:
         count = 1
         # 사용자 환경에 priority_sorted_pkg_list의 각 패키지 존재 여부 체크 및 없으면 설치
         for step_name, package_list in dup_checked_requirements_dict.items(): # 마지막 step_name 은 force-reinstall 
-            PROC_LOGGER.process_info(f"======================================== Start dependency installation : << {step_name} >> ")
+            PROC_LOGGER.process_message(f"======================================== Start dependency installation : << {step_name} >> ")
             for package in package_list:
-                PROC_LOGGER.process_info(f"Start checking existence & installing package - {package} | Progress: ( {count} / {total_num_install} total packages ) ")
+                PROC_LOGGER.process_message(f"Start checking existence & installing package - {package} | Progress: ( {count} / {total_num_install} total packages ) ")
                 count += 1
                 if "--force-reinstall" in package: 
                     try: 
-                        PROC_LOGGER.process_info(f'>>> Start installing package - {package}')
+                        PROC_LOGGER.process_message(f'>>> Start installing package - {package}')
                         subprocess.check_call([sys.executable, '-m', 'pip', 'install', package.replace('--force-reinstall', '').strip(), '--force-reinstall'])            
                     except OSError as e:
                         PROC_LOGGER.process_error(f"Error occurs while --force-reinstalling {package} ~ " + e)  
@@ -62,10 +62,10 @@ class Packages:
                     # 가령 aiplib @ git+http://mod.lge.com/hub/smartdata/aiplatform/module/aip.lib.git@ver2  같은 version 표기가 requirements.txt에 존재해도 conflict 안나는 것 확인 완료 
                     # FIXME 사용자가 가령 pandas 처럼 (==version 없이) 작성하여도 아래 코드는 통과함 
                     pkg_resources.get_distribution(package) # get_distribution tact-time 테스트: 약 0.001s
-                    PROC_LOGGER.process_info(f'[OK] << {package} >> already exists')
+                    PROC_LOGGER.process_message(f'[OK] << {package} >> already exists')
                 except pkg_resources.DistributionNotFound: # 사용자 가상환경에 해당 package 설치가 아예 안 돼있는 경우 
                     try: # nested try/except 
-                        PROC_LOGGER.process_info(f'>>> Start installing package - {package}')
+                        PROC_LOGGER.process_message(f'>>> Start installing package - {package}')
                         subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
                     except OSError as e:
                         # 가령 asset을 만든 사람은 abc.txt라는 파일 기반으로 pip install -r abc.txt 하고 싶었는데, 우리는 requirements.txt 라는 이름만 허용하므로 관련 안내문구 추가  
@@ -81,7 +81,7 @@ class Packages:
                     PROC_LOGGER.process_error(f'ResolutionError occurs while installing package {package} @ {step_name} step. \n Please check the package name or dependency with other asset.')
                 except pkg_resources.ExtractionError: # 위 두 가지 exception에 안걸리면 핸들링 안하겠다 
                     PROC_LOGGER.process_error(f'ExtractionError occurs while installing package {package} @ {step_name} step. \n Please check the package name or dependency with other asset.')
-        PROC_LOGGER.process_info(f"======================================== Finish dependency installation \n")
+        PROC_LOGGER.process_message(f"======================================== Finish dependency installation \n")
         return 
 
     ## FIXME 사용자 환경의 패키지 설치 여부를 매 실행마다 체크하는 것을 on, off 하는 기능이 필요할 지?   
@@ -104,7 +104,7 @@ class Packages:
         # 0. asset_source_code가 local이든 git이든, check_asset_source가 once든 every든 모두 동일하게 항상 모듈의 설치여부는 패키지명, 버전 check 후 없으면 설치 (ver 다르면 notify 후 설치) 
         # 1. 한 pipline 내의 각 step을 루프 돌면서 직접 작성된 패키지 (ex. pandas==3.4)는 직접 설치하고
         # 2. experimental_plan.yaml에 requirements.txt가 기입 돼 있다면 먼저 assets 폴더 내 해당 asset 폴더 밑에 requirements.txt가 존재하는 지 확인 (없으면 에러)
-        # 3. 만약 이미 설치돼 있는 패키지 중 버전이 달라서 재설치 하는 경우는 (pandas==3.4 & pandas==3.2) PROC_LOGGER.process_info로 사용자 notify  
+        # 3. 만약 이미 설치돼 있는 패키지 중 버전이 달라서 재설치 하는 경우는 (pandas==3.4 & pandas==3.2) PROC_LOGGER.process_message로 사용자 notify  
         fixed_txt_name = 'requirements.txt'
         # 어떤 step에 requirements.txt가 존재하면, assets/asset폴더 내에 txt파일 존재유무 확인 후 그 내부에 기술된 패키지들을 추출  
         extracted_requirements_dict = dict() 
@@ -155,7 +155,7 @@ class Packages:
                     pkg_name = pkg_name[ : pkg_name.index('#')]      
                 # ALO master 및 모든 asset들의 종속 패키지를 취합했을 때 버전 다른 중복 패키지 존재 시 먼저 진행되는 step(=asset)의 종속 패키지만 설치  
                 if base_pkg_name in dup_chk_set: 
-                    PROC_LOGGER.process_info(f'>>> Ignored installing << {pkg_name} >>. Another version would be installed in the previous step.')
+                    PROC_LOGGER.process_message(f'>>> Ignored installing << {pkg_name} >>. Another version would be installed in the previous step.')
                 else: 
                     dup_chk_set.add(base_pkg_name)
                     dup_checked_requirements_dict[step_name].append(pkg_name)

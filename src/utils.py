@@ -6,6 +6,42 @@ from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 #--------------------------------------------------------------------------------------------------------------------------
+COLOR_RED = '\033[91m'
+COLOR_END = '\033[0m'
+ARG_NAME_MAX_LENGTH = 30
+COLOR_DICT = {
+   'PURPLE':'\033[95m',
+   'CYAN':'\033[96m',
+   'DARKCYAN':'\033[36m',
+   'BLUE':'\033[94m',
+   'GREEN':'\033[92m',
+   'YELLOW':'\033[93m',
+   'RED':'\033[91m',
+   'BOLD':'\033[1m',
+   'BOLD-GREEN':'\033[1m\033[92m',
+   'UNDERLINE':'\033[4m',
+}
+COLOR_END = '\033[0m'
+
+def print_color(msg, color):
+    """ Description
+        -----------
+            Display text with color 
+
+        Parameters
+        -----------
+            msg (str) : text
+            _color (str) : PURPLE, CYAN, DARKCYAN, BLUE, GREEN, YELLOW, RED, BOLD, UNDERLINE
+
+        example
+        -----------
+            print_color('Display color text', 'BLUE')
+    """
+    if color.upper() in COLOR_DICT.keys():
+        print(COLOR_DICT[color.upper()] + msg + COLOR_END)
+    else:
+        raise ValueError('[ERROR] print_color() function call error. - selected color : {}'.format(COLOR_DICT.keys()))
+    
 def set_args():
     """
     set args for ALO
@@ -34,13 +70,6 @@ def init_redis(system):
     q = RedisQueue('request_inference', host=redis_host, port=int(redis_port), db=0)
     return q        
         
-def _print_step(step_name, sub_title=False):
-    if not sub_title:
-        PROC_LOGGER.process_info("################################################################")
-        PROC_LOGGER.process_info(f'######     {step_name}')
-        PROC_LOGGER.process_info("################################################################")
-    else:
-        PROC_LOGGER.process_info(f"######     {step_name}")
+def _log_process(msg):
+    PROC_LOGGER.process_info(f'====================     {msg}')
 
-def _print_step_finish(step_name):
-    PROC_LOGGER.process_info(f'######     {step_name}     ######\n')
