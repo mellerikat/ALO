@@ -60,7 +60,7 @@ class ALO:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-    Contributer: Sehyun Song, Wonjun Sung, Woosung Jang
+    Contributor: Sehyun Song, Wonjun Sung, Woosung Jang
     """
 
 
