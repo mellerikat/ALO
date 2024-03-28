@@ -185,8 +185,7 @@ class ExternalHandler:
         # s3 key 경로 가져오기 시도 (없으면 환경 변수나 aws config에 설정돼 있어야 추후 s3에서 데이터 다운로드시 에러 안남)
         aws_key_profile = external_path_permission['aws_key_profile'] # 무조건 1개 (str) or None 
         if aws_key_profile is None: 
-            PROC_LOGGER.process_warning('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n \
-                                    you have to write the aws_key_profile or set << AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY >> in your os environment. \n')
+            PROC_LOGGER.process_warning('Not allowed to access aws infra. You did not write any << aws_key_profile >> in the experimental_plan.yaml file.')
         else: 
             if type(aws_key_profile) != str: 
                 PROC_LOGGER.process_error(f"You entered wrong type of << aws_key_profile >> in your expermimental_plan.yaml: << {aws_key_profile} >>. \n Only << str >> type is allowed.")
