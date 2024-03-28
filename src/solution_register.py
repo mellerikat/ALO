@@ -119,7 +119,6 @@ class SolutionRegister:
         ## legacy 버전 보다 낮을 경우, API 변경
         self.api_uri_legacy_version = 1.5
         version = self.check_version()
-        version = 1.6
         
         self.register_solution_api = data[f'{version}']['REGISTER_SOLUTION']
         self.register_solution_instance_api = data[f'{version}']['REGISTER_SOLUTION_INSTANCE']
@@ -1568,7 +1567,7 @@ class SolutionRegister:
                 if return_code == 0:
                     sys.stdout.write(' Done!\n')
                 else:
-                    print(f"\nAn error occurred during build. Return code: {return_code}")
+                    raise ValueError(f"{self.pipeline}_build.log를 확인하세요")
 
     def docker_push(self):
         image_tag = f"{self.ecr_full_url}:v{self.solution_version_new}"
@@ -2680,7 +2679,8 @@ class SolutionRegister:
             with open(PROJECT_HOME + 'Dockerfile', 'r', encoding='utf-8') as file:
                 content = file.read()
             # path = subfolders[0].replace(PROJECT_HOME, "")
-            replace_string = '\n'.join([f"COPY {ASSET_PACKAGE_PATH}/{file} {docker_location}" for file in file_list])
+            path = ASSET_PACKAGE_PATH.replace(PROJECT_HOME, "./")
+            replace_string = '\n'.join([f"COPY {path}{file} {docker_location}" for file in file_list])
 
             requirement_files = [file for file in file_list if file.endswith('.txt')]
             pip_install_commands = '\n'.join([f"RUN pip3 install --no-cache-dir -r {docker_location}{file}" for file in requirement_files])
