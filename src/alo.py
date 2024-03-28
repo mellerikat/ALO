@@ -209,7 +209,6 @@ class ALO:
                     # execute pipline  
                     pipeline = self._execute_pipeline(pipe)
                     # pipeline.history()
-                    a=b
             except:
                 self.error_batch(pipe) 
     
