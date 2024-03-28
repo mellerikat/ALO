@@ -59,6 +59,8 @@ class ALO:
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
+
+    Contributer: Sehyun Song, Wonjun Sung, Woosung Jang
     """
 
 
@@ -76,7 +78,7 @@ class ALO:
             computing: 학습하는 컴퓨팅 자원 (local, sagemaker)
         Returns:
         """
-        self._make_art("Enjoy ALO ~ !!")
+        self._make_art("Let's ALO   ~   ! !")
         print_color(self.copyright_notice, 'BOLD')
 
         # logger 초기화
@@ -351,9 +353,9 @@ class ALO:
     #####################################
     def _make_art(self, str):
         ascii_art = pyfiglet.figlet_format(str, font="slant")
-        print_color("=" * 80, 'BOLD-GREEN')
-        print_color(ascii_art, 'BOLD-GREEN')
-        print_color("=" * 80, 'BOLD-GREEN')
+        print_color("=" * 80 + "\n", 'BOLD-CYAN')
+        print_color(ascii_art, 'BOLD-CYAN')
+        print_color("\n" + "=" * 80, 'BOLD-CYAN')
     
     def _init_logger(self):
         """ALO Master 의 logger 를 초기화 합니다. 

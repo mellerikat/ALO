@@ -19,6 +19,7 @@ COLOR_DICT = {
    'RED':'\033[91m',
    'BOLD':'\033[1m',
    'BOLD-GREEN':'\033[1m\033[92m',
+   'BOLD-CYAN':'\033[1m\033[96m',
    'UNDERLINE':'\033[4m',
 }
 COLOR_END = '\033[0m'
