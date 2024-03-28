@@ -78,7 +78,7 @@ class ALO:
             computing: 학습하는 컴퓨팅 자원 (local, sagemaker)
         Returns:
         """
-        self._make_art("Let's ALO   ~   ! !")
+        self._make_art(" Let's ALO  -  ! !")
         print_color(self.copyright_notice, 'BOLD')
 
         # logger 초기화
