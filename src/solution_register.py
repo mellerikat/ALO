@@ -2593,9 +2593,8 @@ class SolutionRegister:
             yaml.dump(self.sm_yaml, yaml_file, allow_unicode=True, default_flow_style=False, Dumper=NoAliasDumper)
     
     def _set_alo(self):
-        
         self.print_step("Set alo source code for docker container", sub_title=True)
-        alo_src = ['main.py', 'src', 'assets', 'solution', 'alolib', '.git', 'requirements.txt']
+        alo_src = ['main.py', 'src', 'assets', 'solution/experimental_plan.yaml', 'alolib', '.git', 'requirements.txt']
         ## 폴더 초기화
         if os.path.isdir(REGISTER_SOURCE_PATH):
             shutil.rmtree(REGISTER_SOURCE_PATH)
@@ -2604,16 +2603,19 @@ class SolutionRegister:
         for item in alo_src:
             src_path = PROJECT_HOME + item
             if os.path.isfile(src_path):
-                shutil.copy2(src_path, REGISTER_SOURCE_PATH)
-                print_color(f'[INFO] copy from " {src_path} "  -->  " {REGISTER_SOURCE_PATH} " ', color='blue')
+                if item == 'solution/experimental_plan.yaml': 
+                    register_solution_path = REGISTER_ARTIFACT_PATH + 'solution/'
+                    os.makedirs(register_solution_path , exist_ok=True)
+                    shutil.copy2(src_path, register_solution_path)
+                     print_color(f'[INFO] copy from " {src_path} "  -->  " {register_solution_path} " ', color='blue')
+                else: 
+                    shutil.copy2(src_path, REGISTER_SOURCE_PATH)
+                    print_color(f'[INFO] copy from " {src_path} "  -->  " {REGISTER_SOURCE_PATH} " ', color='blue')
             elif os.path.isdir(src_path):
                 dst_path = REGISTER_SOURCE_PATH  + os.path.basename(src_path)
                 shutil.copytree(src_path, dst_path)
                 print_color(f'[INFO] copy from " {src_path} "  -->  " {REGISTER_SOURCE_PATH} " ', color='blue')
         
-        ## experimental_plan 을 변수화 된 값을 저장한다. 
-        self.exp_yaml
-    
     def _reset_alo_solution(self):
         """ select = all, train, inference 를 지원. experimental 에서 삭제할 사항 선택
         """
