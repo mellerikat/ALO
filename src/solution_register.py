@@ -2675,7 +2675,8 @@ class SolutionRegister:
             #         subfolders.append(subfolder_path)
             # step_ 뒤에 붙는 숫자의 크기 기준으로 sort 
             file_list = sorted(next(os.walk(ASSET_PACKAGE_PATH))[2], key=lambda x:int(os.path.splitext(x)[0].split('_')[-1]))
-
+            # train 부터 깔고 inference 깔게끔
+            file_list = [i for i in file_list if i.startswith('train')] + [i for i in file_list if i.startswith('inference')]
             search_string = 'site_packages_location'
             with open(PROJECT_HOME + 'Dockerfile', 'r', encoding='utf-8') as file:
                 content = file.read()
