@@ -2603,7 +2603,7 @@ class SolutionRegister:
             src_path = PROJECT_HOME + item
             if os.path.isfile(src_path):
                 if item == 'solution/experimental_plan.yaml': 
-                    register_solution_path = REGISTER_ARTIFACT_PATH + 'solution/'
+                    register_solution_path = REGISTER_SOURCE_PATH + 'solution/'
                     os.makedirs(register_solution_path , exist_ok=True)
                     shutil.copy2(src_path, register_solution_path)
                     print_color(f'[INFO] copy from " {src_path} "  -->  " {register_solution_path} " ', color='blue')
