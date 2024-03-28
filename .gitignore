@@ -29,3 +29,4 @@ codebuild_solution.zip
 inference_docker_build.log
 train_docker_build.log
 .package_list/
+Pipfile
