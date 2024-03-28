@@ -147,7 +147,7 @@ class ALO:
 
         if os.path.exists(ASSET_PACKAGE_PATH):
             shutil.rmtree(ASSET_PACKAGE_PATH)
-            print_color(f"Folder '{ASSET_PACKAGE_PATH}' has been removed.", 'YELLOW')
+            self.proc_logger.process_message(f"Folder '{ASSET_PACKAGE_PATH}' has been removed & regenerated.")
         os.makedirs(ASSET_PACKAGE_PATH)
         # [loop] only 운영 - pipeline은 inference_pipeline 1개로 고정된 상태 / 최초에 boot_on=True 상태 
         if self.loop: 
