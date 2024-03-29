@@ -124,12 +124,10 @@ class ProcessLogger:
     def process_warning(self, msg):
         logging.config.dictConfig(self.process_logging_config)
         warning_logger = logging.getLogger("WARNING") 
-        level = warning_logger.level
         return warning_logger.warning, msg
     
     @log_decorator
     def process_error(self, msg):
         logging.config.dictConfig(self.process_logging_config)
         error_logger = logging.getLogger("ERROR")
-        level = error_logger.level 
         return error_logger.error, msg
