@@ -332,7 +332,9 @@ class Metadata:
                         continue 
                     for idx, plan_step_dict in enumerate(init_exp_plan):  
                         if sol_step == plan_step_dict['step']:
-                            self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args) #dict update
+                            # 사용자가 experimental_plan.yaml에 args: 빈칸으로 두면 solution metadata update 시 에러가나므로 예외처리 
+                            if self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'] != None: 
+                                self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args) #dict update
                 # external path 덮어 쓰기 
                 if pipe_type == 'train': 
                     check_train_keys = []
