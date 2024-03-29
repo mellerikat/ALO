@@ -333,9 +333,6 @@ class Metadata:
                     for idx, plan_step_dict in enumerate(init_exp_plan):  
                         if sol_step == plan_step_dict['step']:
                             self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0].update(sol_args) #dict update
-                            # [중요] input_path에 뭔가 써져 있으면, system 인자 존재 시에는 해당 란 비운다. (그냥 s3에서 다운받으면 그 밑에있는거 다사용하도록) 
-                            if sol_step == 'input':
-                                self.exp_plan['user_parameters'][cur_pipe_idx][f'{pipe_type}_pipeline'][idx]['args'][0]['input_path'] = None
                 # external path 덮어 쓰기 
                 if pipe_type == 'train': 
                     check_train_keys = []
