@@ -2724,6 +2724,8 @@ def _tar_dir(_path):
     for root, dirs, files in os.walk(PROJECT_HOME  + _path):
         base_dir = root.split(last_dir)[-1] + '/'
         for file_name in files:
+            # print("SSH@@@@@@@@@@@", file_name, base_dir, file_name)
+            #https://stackoverflow.com/questions/2239655/how-can-files-be-added-to-a-tarfile-with-python-without-adding-the-directory-hi
             tar.add(os.path.join(root, file_name), arcname = base_dir + file_name) # /home부터 시작하는 절대 경로가 아니라 train_artifacts/ 혹은 moddels/부터 시작해서 압축해야하므로 
     tar.close()
     
