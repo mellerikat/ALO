@@ -1659,6 +1659,7 @@ class SolutionRegister:
                 ## ui 로 표현할 parameter 존재 시 진행 됨
                 if enable_ui_args:
                     ## step name 추가
+                    print('@@@', new_dict['user_parameters'])
                     for new_step in new_dict['user_parameters']:
                         for cnt, steps in enumerate(subkeys['user_parameters']):
                             if steps['step'] == new_step['step']:
