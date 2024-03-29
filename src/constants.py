@@ -32,6 +32,8 @@ TABULAR_OUTPUT_FORMATS = [".csv"]
 IMAGE_OUTPUT_FORMATS = [".jpg", ".jpeg", ".png", ".svg"]
 ASSET_PACKAGE_DIR = ".package_list/"
 ASSET_PACKAGE_PATH = PROJECT_HOME + ASSET_PACKAGE_DIR
+PROCESS_LOG_FILE = "process.log"
+PIPELINE_LOG_FILE = "pipeline.log" 
 artifacts_structure = {
     'input': {}, 
     'train_artifacts': {

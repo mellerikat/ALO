@@ -393,9 +393,12 @@ class ExternalHandler:
                 shutil.copy(artifacts_tar_path, ext_path)
                 if model_tar_path is not None: 
                     shutil.copy(model_tar_path, ext_path)
+                # save process.log & pipeline.logs into external save path 
+                self._external_copy_logs(pipe_mode, ext_path, ext_type)
             except: 
                 PROC_LOGGER.process_error(f'Failed to copy compressed artifacts from << {artifacts_tar_path} >> & << {model_tar_path} >> into << {ext_path} >>.')
-            finally: 
+            # FIXME tar 찌꺼기 지우기. 안지워도 될지?
+            finally:  
                 os.remove(artifacts_tar_path)
                 shutil.rmtree(TEMP_ARTIFACTS_PATH , ignore_errors=True)
                 if model_tar_path is not None: 
@@ -407,6 +410,8 @@ class ExternalHandler:
                 # s3 접근권한 없으면 에러 발생 
                 s3_uploader = S3Handler(s3_uri=ext_path, aws_key_profile=aws_key_profile)
                 s3_uploader.upload_file(artifacts_tar_path)
+                # save process.log & pipeline.logs into external save path 
+                self._external_copy_logs(pipe_mode, ext_path, ext_type, aws_key_profile)
                 if model_tar_path is not None: 
                     s3_uploader = S3Handler(s3_uri=ext_path, aws_key_profile=aws_key_profile)
                     s3_uploader.upload_file(model_tar_path)
@@ -424,6 +429,23 @@ class ExternalHandler:
             PROC_LOGGER.process_error(f'{ext_path} is unsupported type of external data path.') 
         PROC_LOGGER.process_message(f" Successfully done saving (path: {save_artifacts_path})")
         return ext_path 
+
+    def _external_copy_logs(self, pipe_mode, ext_path, ext_type, aws_key_profile=None):
+        ''' copy {pipeline}_artifacts/logs/* --> {save_{pipeline_artifacts_path} 
+        '''
+        try: 
+            assert pipe_mode in ['train_pipeline', 'inference_pipeline']
+            assert ext_type in ['absolute', 'relative', 's3']
+            log_path = TRAIN_LOG_PATH if pipe_mode == 'train_pipeline' else INFERENCE_LOG_PATH
+            if ext_type == 's3':
+                s3_uploader = S3Handler(s3_uri=ext_path, aws_key_profile=aws_key_profile)
+                s3_uploader.upload_file(log_path + PROCESS_LOG_FILE)
+                s3_uploader.upload_file(log_path + PIPELINE_LOG_FILE)
+            else: 
+                shutil.copy(log_path + PROCESS_LOG_FILE, ext_path)
+                shutil.copy(log_path + PIPELINE_LOG_FILE, ext_path)
+        except: 
+            PROC_LOGGER.process_error(f'Failed to external copy logs')
 
     def _check_duplicated_basedir(self, data_path):
         base_dir_list = [] 
