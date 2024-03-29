@@ -519,7 +519,7 @@ class ALO:
             except FileNotFoundError:
                 self.proc_logger.process_error(f"The file {filename} does not exist.")
         else:
-            self.proc_logger.process_message("Solution metadata was not entered. Skipping the solution metadata to experimental_plan process.")
+            self.proc_logger.process_message("Solution metadata not entered. Skip updating solution metadata into experimental_plan.")
         _log_process("Finish loading solution-metadata")
 
         return json.loads(self.system) if self.system != None else None # None or dict from json 
