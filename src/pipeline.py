@@ -81,18 +81,18 @@ class Pipeline:
         self._set_asset_structure()
 
     def setup(self):
-        _log_process(f"{self.pipeline_type} setup start")
+        _log_process(f"<< SETUP >> {self.pipeline_type} start", highlight=True)
         self._empty_artifacts(self.pipeline_type)
         # print(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         _, packs = self._setup_asset(self.asset_source[self.pipeline_type], self.control['get_asset_source'])
         if packs is not None: 
             self._create_package(packs)
-        _log_process(f"{self.pipeline_type} setup finish")
+        _log_process(f"<< SETUP >> {self.pipeline_type} finish", highlight=True)
         # TODO return 구성
         # return
 
     def load(self, data_path=[]):
-        _log_process(f"{self.pipeline_type} load start")
+        _log_process(f"<< LOAD >> {self.pipeline_type} start", highlight=True)
         ############  Load Model  ##################
         if self.pipeline_type == 'inference_pipeline':
             if (self.external_path['load_model_path'] != None) and (self.external_path['load_model_path'] != ""):
@@ -114,12 +114,12 @@ class Pipeline:
             # v2.3.0 NEW: 실험 history 를 위한 data_id 생성
             ptype = self.pipeline_type.split('_')[0]
             self.system_envs[f'{ptype}_history'].update(data_checksums)
-        _log_process(f"{self.pipeline_type} load finish")
+        _log_process(f"<< LOAD >> {self.pipeline_type} finish", highlight=True)
         # TODO return 구성
         # return
 
     def run(self, steps = 'All'):
-        _log_process(f"{self.pipeline_type} run start")
+        _log_process(f"<< RUN >> {self.pipeline_type} start", highlight=True)
         if steps == 'All':
             for step, asset_config in enumerate(self.asset_source[self.pipeline_type]):
                 _log_process(f"current step: {asset_config['step']}")
@@ -177,10 +177,10 @@ class Pipeline:
         self.system_envs[f'{ptype}_history']['code_id_description'] = checksum_dict
         # 수정된 부분: total_checksum을 문자열의 형태로 저장하며, 길이가 12가 되도록 조정
         self.system_envs[f'{ptype}_history']['code_id'] = total_checksum_str 
-        _log_process(f"{self.pipeline_type} run finish")
+        _log_process(f"<< RUN >> {self.pipeline_type} finish", highlight=True)
 
     def save(self):
-        _log_process(f"{self.pipeline_type} save start")
+        _log_process(f"<< SAVE >> {self.pipeline_type} start", highlight=True)
         ###################################
         ## Step7: summary yaml, output 정상 생성 체크
         ###################################
@@ -228,7 +228,7 @@ class Pipeline:
                     self.artifact.backup_history(self.pipeline_type, self.system_envs, backup_exp_plan, size=self.control['backup_size'])
                 except:
                     PROC_LOGGER.process_error("Failed to backup artifacts into << history >>")
-        _log_process(f"{self.pipeline_type} save finish")
+        _log_process(f"<< SAVE >> {self.pipeline_type} finish", highlight=True)
 
     def history(self, data_id="", param_id="", code_id="", parameter_steps=[]):
         """ history 에 저장된 실험 결과를 Table 로 전달. id 로 솔루션 등록 가능하도록 하기
