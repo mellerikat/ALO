@@ -71,6 +71,14 @@ def init_redis(system):
     q = RedisQueue('request_inference', host=redis_host, port=int(redis_port), db=0)
     return q        
         
-def _log_process(msg):
-    PROC_LOGGER.process_info(f'====================     {msg}')
+def _log_process(msg, highlight=False):
+    if highlight==True:
+        msg = "".join([f'\n----------------------------------------------------------------------------------------------------------------------\n', \
+                        f'                                        {msg}\n', \
+                        f'----------------------------------------------------------------------------------------------------------------------\n'])
+        PROC_LOGGER.process_info(msg)
+    elif highlight==False: 
+        PROC_LOGGER.process_info(f'--------------------     {msg}')
 
+    else: 
+        raise ValueError("hightlight arg. must be boolean")
