@@ -276,7 +276,7 @@ class ExternalHandler:
             aws_key_profile = external_path_permission['aws_key_profile'] # 무조건 1개 (str)
             PROC_LOGGER.process_message(f's3 private key file << aws_key_profile >> loaded successfully. \n')
         except:
-            PROC_LOGGER.process_message('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the aws_key_profile path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n')
+            PROC_LOGGER.process_warning('Not allowed to access aws infra. You did not write any << aws_key_profile >> in the experimental_plan.yaml file.')
             aws_key_profile = None
         PROC_LOGGER.process_message(f"Start load model from external path: << {ext_path} >>. \n")
         ext_type = self._get_ext_path_type(ext_path) # absolute / relative / s3
@@ -366,7 +366,7 @@ class ExternalHandler:
             aws_key_profile = external_path_permission['aws_key_profile'] # 무조건 1개 (str)
             PROC_LOGGER.process_message(f's3 private key file << aws_key_profile >> loaded successfully. \n')
         except:
-            PROC_LOGGER.process_message('You did not write any << aws_key_profile >> in the config yaml file. When you wanna get data from s3 storage, \n you have to write the aws_key_profile path or set << ACCESS_KEY, SECRET_KEY >> in your os environment. \n' )
+            PROC_LOGGER.process_warning('Not allowed to access aws infra. You did not write any << aws_key_profile >> in the experimental_plan.yaml file.')
             aws_key_profile = None
         # external path가 존재하는 경우 
         # save artifacts 
