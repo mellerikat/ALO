@@ -6,6 +6,7 @@ import shutil
 import traceback
 import subprocess
 from datetime import datetime, timezone
+from time import time 
 from git import Repo, GitCommandError
 import yaml
 import pyfiglet
@@ -146,7 +147,6 @@ class ALO:
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
-
         if os.path.exists(ASSET_PACKAGE_PATH):
             shutil.rmtree(ASSET_PACKAGE_PATH)
             self.proc_logger.process_message(f"Folder '{ASSET_PACKAGE_PATH}' has been removed & regenerated.")
@@ -214,11 +214,21 @@ class ALO:
     
     def _execute_pipeline(self, pipe): 
         try: 
+            pipeline_start_time = time()
             pipeline = self.pipeline(pipeline_type=pipe)
             pipeline.setup()
+            pipeline_setup_time = time()
             pipeline.load()
+            pipeline_load_time = time()
             pipeline.run()
+            pipeline_run_time = time()
             pipeline.save()
+            pipeline_save_time = time()
+            self.proc_logger.process_info(f"{pipe} setup time: {pipeline_setup_time-pipeline_start_time}") 
+            self.proc_logger.process_info(f"{pipe} load time: {pipeline_load_time-pipeline_setup_time}") 
+            self.proc_logger.process_info(f"{pipe} run time: {pipeline_run_time-pipeline_load_time}") 
+            self.proc_logger.process_info(f"{pipe} save time: {pipeline_save_time-pipeline_run_time}") 
+            self.proc_logger.process_info(f"{pipe} total time: {pipeline_save_time-pipeline_start_time}") 
             return pipeline 
         except: 
             self.proc_logger.process_error("Failed to execute pipeline.")
@@ -515,14 +525,14 @@ class ALO:
                     content = yaml.load(file, Loader=yaml.FullLoader)  # 파일 내용을 읽고 자료구조로 변환
                 # 로드한 YAML 내용을 JSON 문자열로 변환
                 self.system = json.dumps(content)
-                self.proc_logger.process_message(f"==========        Loaded solution_metadata: \n{self.system}")
             except FileNotFoundError:
                 self.proc_logger.process_error(f"The file {filename} does not exist.")
         else:
-            self.proc_logger.process_message("Solution metadata not entered. Skip updating solution metadata into experimental_plan.")
+            self.proc_logger.process_message("Solution metadata file name not entered. Skip updating solution metadata into experimental_plan.")
         _log_process("Finish loading solution-metadata")
-
-        return json.loads(self.system) if self.system != None else None # None or dict from json 
+        json_solution_meta = json.loads(self.system)
+        self.proc_logger.process_message(f"==========        Loaded solution_metadata: \n{json_solution_meta}")
+        return json.loads(json_solution_meta) if self.system != None else None # None or dict from json 
     
     def load_exp_plan(self, sol_meta, experimental_plan, system_envs):
         _log_process("Load experimental_plan.yaml")
