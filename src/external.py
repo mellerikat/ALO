@@ -138,11 +138,10 @@ class S3Handler:
         try:
             # 버킷의 콘텐츠 나열 시도
             for obj in bucket.objects.limit(1):
-                print(f"Access to the bucket '{self.bucket}' is confirmed.")
-                print(f"Here's one object key for testing purposes: {obj.key}")
+                PROC_LOGGER.process_message(f"Access to the bucket '{self.bucket}' is confirmed.")
                 break
             else:
-                print(f"Bucket '{self.bucket}' is accessible but may be empty.")
+                PROC_LOGGER.process_message(f"Bucket '{self.bucket}' is accessible but may be empty.")
         except NoCredentialsError:
             PROC_LOGGER.process_error("Credentials not found. Unable to test bucket access.")
         except ClientError as e:
@@ -378,12 +377,14 @@ class ExternalHandler:
         model_tar_path = None 
         if pipe_mode == "train_pipeline":
             artifacts_tar_path = self._tar_dir("train_artifacts") 
-            model_tar_path = self._tar_dir("train_artifacts/models") 
+            if os.listdir(TRAIN_MODEL_PATH) != 0: # model이 생성 됐을 시만 압축 가능  
+                model_tar_path = self._tar_dir("train_artifacts/models") 
         # FIXME train-inference 같이 돌릴 때 train, inf 같은 external save 경로로 plan yaml에 지정하면  models tar gz 덮어씌워질수있음 
         elif pipe_mode == "inference_pipeline": 
             artifacts_tar_path = self._tar_dir("inference_artifacts") 
             if "models" in os.listdir(PROJECT_HOME + "inference_artifacts/"): # FIXME 이거 필요할지? 
-                model_tar_path = self._tar_dir("inference_artifacts/models") 
+                if os.listdir(INFERENCE_MODEL_PATH) != 0: # model이 생성 됐을 시만 압축 가능  
+                    model_tar_path = self._tar_dir("inference_artifacts/models") 
         ######### 
         # FIXME external save path 를 지우고 다시 만드는게 맞을지? (로컬이든 s3든)
         if (ext_type  == 'absolute') or (ext_type  == 'relative'):
