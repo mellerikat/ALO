@@ -11,7 +11,7 @@ from git import Repo, GitCommandError
 import yaml
 import pyfiglet
 # local import
-from src.utils import print_color, init_redis, _log_process
+from src.utils import print_color, init_redis, _log_process, _log_show
 from src.constants import *
 from src.artifacts import Aritifacts
 from src.install import Packages
@@ -168,7 +168,7 @@ class ALO:
                 try: 
                     self.proc_logger.process_error("Failed to boot-on.")
                 finally:
-                    self._error_backup(self, pipe)
+                    self._error_backup(pipe)
             # infinite loop 
             while True: 
                 try:
@@ -229,6 +229,8 @@ class ALO:
             self.proc_logger.process_info(f"{pipe} run time: {pipeline_run_time-pipeline_load_time}") 
             self.proc_logger.process_info(f"{pipe} save time: {pipeline_save_time-pipeline_run_time}") 
             self.proc_logger.process_info(f"{pipe} total time: {pipeline_save_time-pipeline_start_time}") 
+            ## 24.04.02 NEW: log_show (SHOW 키워드 parsing 하여 마지막 table summary) 기능 추가 
+            _log_show(pipe)
             return pipeline 
         except: 
             self.proc_logger.process_error("Failed to execute pipeline.")

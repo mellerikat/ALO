@@ -19,7 +19,7 @@ from src.external import ExternalHandler
 from src.logger import ProcessLogger
 from src.artifacts import Aritifacts
 from src.yaml import Metadata
-from src.utils import  _log_process, _log_show
+from src.utils import  _log_process
 
 PROC_LOGGER = ProcessLogger(PROJECT_HOME)
 
@@ -158,9 +158,7 @@ class Pipeline:
                 try:
                     self.process_asset_step(asset_config, step)
                 except:
-                    PROC_LOGGER.process_error(f"Failed to process step: << {steps} >>")
-        ## 24.04.02 NEW: log_show (SHOW 키워드 parsing 하여 마지막 table summary) 기능 추가 
-        _log_show(self.pipeline_type)
+                    PROC_LOGGER.process_error(f"Failed to process step: << {steps} >>"))
         ## v2.3.0 NEW: param_id 생성 
         params = self.user_parameters[self.pipeline_type]
         ptype = self.pipeline_type.split('_')[0]
