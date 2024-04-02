@@ -214,7 +214,6 @@ class ALO:
     
     def _execute_pipeline(self, pipe): 
         try: 
-            #pipeline_start_time = time() 
             pipeline_start_time = time()
             pipeline = self.pipeline(pipeline_type=pipe)
             pipeline.setup()
