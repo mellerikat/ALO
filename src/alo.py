@@ -254,10 +254,8 @@ class ALO:
         # backup error history & save error artifact
         # raise error and kill the program    
         try:  
-            print('debug1')
             self.proc_logger.process_error(traceback.format_exc())
         finally:
-            print('debug2')
             self._error_backup(pipe)   
 
     
