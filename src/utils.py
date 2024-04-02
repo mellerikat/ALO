@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 from src.constants import *
 from src.logger import ProcessLogger
 #--------------------------------------------------------------------------------------------------------------------------
@@ -82,3 +83,33 @@ def _log_process(msg, highlight=False):
 
     else: 
         raise ValueError("hightlight arg. must be boolean")
+
+def _log_show(pipeline_type): 
+    assert pipeline_type in ['train_pipeline', 'inference_pipeline']
+    if pipeline_type == 'train_pipeline': 
+        with open(TRAIN_LOG_PATH + PIPELINE_LOG_FILE, 'r') as f:
+            log_lines = f.readlines()
+    else: 
+        with open(INFERENCE_LOG_PATH + PIPELINE_LOG_FILE, 'r') as f:
+            log_lines = f.readlines()
+    user_show, alo_show  = [], [] # N
+    user_time_inc, alo_time_inc = [], [] # N-1 
+    for line in log_lines:
+        if line.startswith("[SHOW"): 
+            split_line = line.split('|')
+            _time = split_line[1]
+            if 'USER' in split_line: 
+                user_show.append(line.strip('\n'))
+                user_time_inc.append(datetime.strptime(_time, '%Y-%m-%d %H:%M:%S,%f'))
+            elif 'ALO' in split_line: 
+                alo_show.append(line.strip('\n'))
+                alo_time_inc.append(datetime.strptime(_time, '%Y-%m-%d %H:%M:%S,%f'))
+    user_time_diff = ['- time increment: 0s --- '] + ['- time increment: {}s --- '.format((j - i).total_seconds()) for i, j in zip(user_time_inc[:-1], user_time_inc[1:])]
+    alo_time_diff = ['- time increment: 0s --- '] + ['- time increment: {}s --- '.format((j - i).total_seconds()) for i, j in zip(alo_time_inc[:-1], alo_time_inc[1:])]
+    PROC_LOGGER.process_info(f'\n===========================================================    < SUMMARY SHOW - ALO >    ===========================================================\n' \
+        + '\n'.join([x + y for x, y in zip(alo_time_diff, alo_show)])) 
+    PROC_LOGGER.process_info(f'\n===========================================================    < SUMMARY SHOW - USER >    ===========================================================\n' \
+        + '\n'.join([x + y for x, y in zip(user_time_diff, user_show)])) 
+            
+        
+        

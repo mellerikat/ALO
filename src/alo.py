@@ -6,6 +6,7 @@ import shutil
 import traceback
 import subprocess
 from datetime import datetime, timezone
+from time import time 
 from git import Repo, GitCommandError
 import yaml
 import pyfiglet
@@ -146,7 +147,6 @@ class ALO:
         실험 계획 (experimental_plan.yaml) 은 입력 받은 config 와 동일한 경로에 있어야 합니다.
         운영 계획 (solution_metadata) 은 입력 받은 solution_metadata 값과 동일한 경로에 있어야 합니다.
         """
-
         if os.path.exists(ASSET_PACKAGE_PATH):
             shutil.rmtree(ASSET_PACKAGE_PATH)
             self.proc_logger.process_message(f"Folder '{ASSET_PACKAGE_PATH}' has been removed & regenerated.")
@@ -214,11 +214,13 @@ class ALO:
     
     def _execute_pipeline(self, pipe): 
         try: 
+            pipeline_start_time = time() 
             pipeline = self.pipeline(pipeline_type=pipe)
             pipeline.setup()
             pipeline.load()
             pipeline.run()
             pipeline.save()
+            self.proc_logger.process_info(f"{pipe} total time: {time()-pipeline_start_time}") 
             return pipeline 
         except: 
             self.proc_logger.process_error("Failed to execute pipeline.")
