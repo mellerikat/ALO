@@ -530,9 +530,8 @@ class ALO:
         else:
             self.proc_logger.process_message("Solution metadata file name not entered. Skip updating solution metadata into experimental_plan.")
         _log_process("Finish loading solution-metadata")
-        json_solution_meta = json.loads(self.system)
-        self.proc_logger.process_message(f"==========        Loaded solution_metadata: \n{json_solution_meta}")
-        return json_solution_meta if self.system != None else None # None or dict from json 
+        self.proc_logger.process_message(f"==========        Loaded solution_metadata: \n{json.loads(self.system)}")
+        return json.loads(self.system) if self.system != None else None # None or dict from json 
     
     def load_exp_plan(self, sol_meta, experimental_plan, system_envs):
         _log_process("Load experimental_plan.yaml")
