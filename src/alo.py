@@ -167,7 +167,7 @@ class ALO:
             except: 
                 try: 
                     self.proc_logger.process_error("Failed to boot-on.")
-                finally:
+                finally: # FIXME finally --> except로 바꿔야하나?
                     self._error_backup(pipe)
             # infinite loop 
             while True: 
@@ -252,10 +252,10 @@ class ALO:
         
     def error_batch(self, pipe): 
         # backup error history & save error artifact
-        # raise error and kill the program    
-        try:  
+        # raise error and kill the program 
+        try: 
             self.proc_logger.process_error(traceback.format_exc())
-        finally:
+        except:
             self._error_backup(pipe)   
 
     
