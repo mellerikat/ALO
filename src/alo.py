@@ -256,7 +256,12 @@ class ALO:
         try: 
             self.proc_logger.process_error(traceback.format_exc())
         except:
-            self._error_backup(pipe)   
+            try:
+                print('start error backup') 
+                self._error_backup(pipe)   
+            except Exception as e: 
+                print('debug;', str(e))
+            raise
 
     
     def _error_backup(self, pipe):

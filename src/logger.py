@@ -59,7 +59,7 @@ def custom_log_decorator(func):
 class ProcessLogger: 
     # envs 미입력 시 설치 과정, 프로세스 진행 과정 등 전체 과정 보기 위한 로그 생성 
     def __init__(self, project_home: str):
-        MSG_LOG_LEVEL = 5
+        MSG_LOG_LEVEL = 11
         logging.addLevelName(MSG_LOG_LEVEL, 'MSG')
         self.project_home = project_home
         self.service = 'ALO'
@@ -106,7 +106,7 @@ class ProcessLogger:
     #--------------------------------------------------------------------------------------------------------------------------
     @custom_log_decorator
     def process_message(self, msg):
-        '''custom logging: level MSG_LOG_LEVEL(5)
+        '''custom logging: level MSG_LOG_LEVEL(11)
         used for ALO process logging 
         ''' 
         logging.config.dictConfig(self.process_logging_config)
