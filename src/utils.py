@@ -87,10 +87,16 @@ def _log_process(msg, highlight=False):
 def _log_show(pipeline_type): 
     assert pipeline_type in ['train_pipeline', 'inference_pipeline']
     if pipeline_type == 'train_pipeline': 
-        with open(TRAIN_LOG_PATH + PIPELINE_LOG_FILE, 'r') as f:
+        file_path = TRAIN_LOG_PATH + PIPELINE_LOG_FILE
+        if not os.path.isfile(file_path): #boot 일땐 아직 log 안생겼으므로 pass 
+            return
+        with open(file_path, 'r') as f:
             log_lines = f.readlines()
     else: 
-        with open(INFERENCE_LOG_PATH + PIPELINE_LOG_FILE, 'r') as f:
+        file_path = INFERENCE_LOG_PATH + PIPELINE_LOG_FILE
+        if not os.path.isfile(file_path):
+            return
+        with open(file_path, 'r') as f:
             log_lines = f.readlines()
     user_show, alo_show  = [], [] # N
     user_time_inc, alo_time_inc = [], [] # N-1 
