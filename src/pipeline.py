@@ -158,7 +158,7 @@ class Pipeline:
                 try:
                     self.process_asset_step(asset_config, step)
                 except:
-                    PROC_LOGGER.process_error(f"Failed to process step: << {steps} >>"))
+                    PROC_LOGGER.process_error(f"Failed to process step: << {steps} >>")
         ## v2.3.0 NEW: param_id 생성 
         params = self.user_parameters[self.pipeline_type]
         ptype = self.pipeline_type.split('_')[0]
