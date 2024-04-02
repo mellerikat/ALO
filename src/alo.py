@@ -91,14 +91,12 @@ class ALO:
         # alolib을 설치
         self._set_alolib()
 
-
         exp_plan_path = config
         self.system = system
         self.loop = loop
         self.computing = computing
         pipeline_type = mode
         self.system_envs = {}
-
 
         # TODO default로 EXP PLAN을 넣어 주었는데 아래 if 문과 같이 사용할 되어 지는지 확인***
         if exp_plan_path == "" or exp_plan_path == None:
@@ -263,18 +261,23 @@ class ALO:
         1. backup error history
         2. save error artifacts 
         '''
-        ## id 생성 
-        sttime = self.system_envs['experimental_start_time']
-        exp_name = self.system_envs['experimental_name']
-        curr = self.system_envs['current_pipeline'].split('_')[0]
-        random_number = '{:08}'.format(random.randint(0, 99999999))
-        self.system_envs[f"{curr}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
-        # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
-        # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
-        self.artifact.backup_history(pipe, self.system_envs, backup_exp_plan=self.exp_yaml, error=True, size=self.control['backup_size'])
-        # error 발생해도 external save artifacts 하도록        
-        _ = self.ext_data.external_save_artifacts(pipe, self.external_path, self.external_path_permission)
-        
+        try:
+            ## id 생성 
+            sttime = self.system_envs['experimental_start_time']
+            exp_name = self.system_envs['experimental_name']
+            curr = self.system_envs['current_pipeline'].split('_')[0]
+            random_number = '{:08}'.format(random.randint(0, 99999999))
+            self.system_envs[f"{curr}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
+            # 에러 발생 시 self.control['backup_artifacts'] 가 True, False던 상관없이 무조건 backup (폴더명 뒤에 _error 붙여서) 
+            # TODO error 발생 시엔 external save 되는 tar.gz도 다른 이름으로 해야할까 ? 
+            self.artifact.backup_history(pipe, self.system_envs, backup_exp_plan=self.exp_yaml, error=True, size=self.control['backup_size'])
+            # error 발생해도 external save artifacts 하도록    
+            # external_save_artifacts에서 원하는 format으로 변환 [{k1:v1}, {k2:v2}, ..] --> {k1:v1, k2:v2, ..}    
+            external_path = {list(item.keys())[0]:list(item.values())[0] for item in self.exp_yaml['external_path']}
+            external_path_permission = {list(item.keys())[0]:list(item.values())[0] for item in self.exp_yaml['external_path_permission']}
+            _ = self.ext_data.external_save_artifacts(pipe, external_path, external_path_permission)
+        except Exception as e: 
+            raise NotImplementedError(str(e))
     def sagemaker_runs(self): 
         try:
             try: 
@@ -460,6 +463,8 @@ class ALO:
 
         ## load experimental_plan.yaml
         self.exp_yaml, sys_envs = self.load_exp_plan(sol_meta, exp_plan_path, self.system_envs)
+        # 업데이트된 yaml을 추후 읽을 수 있도록 파일에 저장
+        self.meta.save_yaml(self.exp_yaml, DEFAULT_EXP_PLAN)
         self._set_attr()
         # loop 모드면 항상 처음에 boot 모드
         if self.computing != 'local': #sagemaker
