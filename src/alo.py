@@ -255,14 +255,8 @@ class ALO:
         # raise error and kill the program 
         try: 
             self.proc_logger.process_error(traceback.format_exc())
-        except:
-            try:
-                print('start error backup') 
-                self._error_backup(pipe)   
-            except Exception as e: 
-                print('debug;', str(e))
-            raise
-
+        finally:
+            self._error_backup(pipe)   
     
     def _error_backup(self, pipe):
         ''' 
