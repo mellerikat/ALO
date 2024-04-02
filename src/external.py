@@ -439,11 +439,15 @@ class ExternalHandler:
             log_path = TRAIN_LOG_PATH if pipe_mode == 'train_pipeline' else INFERENCE_LOG_PATH
             if ext_type == 's3':
                 s3_uploader = S3Handler(s3_uri=ext_path, aws_key_profile=aws_key_profile)
-                s3_uploader.upload_file(log_path + PROCESS_LOG_FILE)
-                s3_uploader.upload_file(log_path + PIPELINE_LOG_FILE)
+                if os.path.isfile(log_path + PROCESS_LOG_FILE): # 없을 수 도 있으므로 
+                    s3_uploader.upload_file(log_path + PROCESS_LOG_FILE)
+                if os.path.isfile(log_path + PIPELINE_LOG_FILE):
+                    s3_uploader.upload_file(log_path + PIPELINE_LOG_FILE)
             else: 
-                shutil.copy(log_path + PROCESS_LOG_FILE, ext_path)
-                shutil.copy(log_path + PIPELINE_LOG_FILE, ext_path)
+                if os.path.isfile(log_path + PROCESS_LOG_FILE):
+                    shutil.copy(log_path + PROCESS_LOG_FILE, ext_path)
+                if os.path.isfile(log_path + PIPELINE_LOG_FILE):
+                    shutil.copy(log_path + PIPELINE_LOG_FILE, ext_path)
         except: 
             PROC_LOGGER.process_error(f'Failed to external copy logs')
 
