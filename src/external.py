@@ -138,11 +138,10 @@ class S3Handler:
         try:
             # 버킷의 콘텐츠 나열 시도
             for obj in bucket.objects.limit(1):
-                print(f"Access to the bucket '{self.bucket}' is confirmed.")
-                print(f"Here's one object key for testing purposes: {obj.key}")
+                PROC_LOGGER.process_message(f"Access to the bucket '{self.bucket}' is confirmed.")
                 break
             else:
-                print(f"Bucket '{self.bucket}' is accessible but may be empty.")
+                PROC_LOGGER.process_message(f"Bucket '{self.bucket}' is accessible but may be empty.")
         except NoCredentialsError:
             PROC_LOGGER.process_error("Credentials not found. Unable to test bucket access.")
         except ClientError as e:
