@@ -525,14 +525,14 @@ class ALO:
                     content = yaml.load(file, Loader=yaml.FullLoader)  # 파일 내용을 읽고 자료구조로 변환
                 # 로드한 YAML 내용을 JSON 문자열로 변환
                 self.system = json.dumps(content)
-                self.proc_logger.process_message(f"==========        Loaded solution_metadata: \n{self.system}")
             except FileNotFoundError:
                 self.proc_logger.process_error(f"The file {filename} does not exist.")
         else:
-            self.proc_logger.process_message("Solution metadata not entered. Skip updating solution metadata into experimental_plan.")
+            self.proc_logger.process_message("Solution metadata file name not entered. Skip updating solution metadata into experimental_plan.")
         _log_process("Finish loading solution-metadata")
-
-        return json.loads(self.system) if self.system != None else None # None or dict from json 
+        json_solution_meta = json.loads(self.system)
+        self.proc_logger.process_message(f"==========        Loaded solution_metadata: \n{json_solution_meta}")
+        return json.loads(json_solution_meta) if self.system != None else None # None or dict from json 
     
     def load_exp_plan(self, sol_meta, experimental_plan, system_envs):
         _log_process("Load experimental_plan.yaml")
