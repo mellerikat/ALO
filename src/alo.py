@@ -214,13 +214,22 @@ class ALO:
     
     def _execute_pipeline(self, pipe): 
         try: 
-            pipeline_start_time = time() 
+            #pipeline_start_time = time() 
+            pipeline_start_time = time()
             pipeline = self.pipeline(pipeline_type=pipe)
             pipeline.setup()
+            pipeline_setup_time = time()
             pipeline.load()
+            pipeline_load_time = time()
             pipeline.run()
+            pipeline_run_time = time()
             pipeline.save()
-            self.proc_logger.process_info(f"{pipe} total time: {time()-pipeline_start_time}") 
+            pipeline_save_time = time()
+            self.proc_logger.process_info(f"{pipe} setup time: {pipeline_setup_time-pipeline_start_time}") 
+            self.proc_logger.process_info(f"{pipe} load time: {pipeline_load_time-pipeline_setup_time}") 
+            self.proc_logger.process_info(f"{pipe} run time: {pipeline_run_time-pipeline_load_time}") 
+            self.proc_logger.process_info(f"{pipe} save time: {pipeline_save_time-pipeline_run_time}") 
+            self.proc_logger.process_info(f"{pipe} total time: {pipeline_save_time-pipeline_start_time}") 
             return pipeline 
         except: 
             self.proc_logger.process_error("Failed to execute pipeline.")
