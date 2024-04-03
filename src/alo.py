@@ -552,9 +552,12 @@ class ALO:
         # # TODO 2.2.1 added (sagemaker 일 땐 학습만 진행)
         system_envs['pipeline_list'] = ["train_pipeline"]
         from sagemaker_training import environment      
-        # save_train_artifacts_path를 sagemaker model 저장 경로로 변경 
         for i, v in enumerate(self.exp_yaml['external_path']):
-            if 'save_train_artifacts_path' in v.keys(): 
+            # external path train load data는 every 고정이므로 아예 비워서 input 경로에 있는 data를 docker안에서 사용하도록 
+            if 'load_train_data_path' in v.keys(): 
+                self.exp_yaml['external_path'][i] = {'load_train_data_path': None}
+            # save_train_artifacts_path를 sagemaker model 저장 경로로 변경 
+            elif 'save_train_artifacts_path' in v.keys(): 
                 self.exp_yaml['external_path'][i] = {'save_train_artifacts_path': environment.Environment().model_dir}
         # docker 내에서 git에서 asset 다시 받으면 안되므로 무조건 once로 저장 
         for i, v in enumerate(self.exp_yaml['control']):
