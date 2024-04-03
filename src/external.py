@@ -519,7 +519,7 @@ class ExternalHandler:
         ####################################################
         # input_data_dir 만들기 
         try: 
-            os.makedirs(input_data_dir) # , exist_ok=True) 할 필요 없음. 어짜피 이미 external_load_data 함수 마지막 단에서 지워놨기 때문에 
+            os.makedirs(input_data_dir, exist_ok=True) # 할 필요 없음. 어짜피 이미 external_load_data 함수 마지막 단에서 지워놨기 때문에 
         except: 
             PROC_LOGGER.process_error(f'Failed to create << {input_data_dir} >> path.') 
         # 외부 경로 type에 따른 데이터 가져오기 분기 
