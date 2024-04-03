@@ -222,11 +222,13 @@ class ALO:
             pipeline_run_time = time()
             pipeline.save()
             pipeline_save_time = time()
-            self.proc_logger.process_info(f"{pipe} setup time: {pipeline_setup_time-pipeline_start_time}") 
-            self.proc_logger.process_info(f"{pipe} load time: {pipeline_load_time-pipeline_setup_time}") 
-            self.proc_logger.process_info(f"{pipe} run time: {pipeline_run_time-pipeline_load_time}") 
-            self.proc_logger.process_info(f"{pipe} save time: {pipeline_save_time-pipeline_run_time}") 
-            self.proc_logger.process_info(f"{pipe} total time: {pipeline_save_time-pipeline_start_time}") 
+            time_info_list = [f"{pipe} setup time: {round(pipeline_setup_time-pipeline_start_time, 3)}s", \
+                        f"{pipe} load time: {round(pipeline_load_time-pipeline_setup_time, 3)}s", \
+                        f"{pipe} run time: {round(pipeline_run_time-pipeline_load_time, 3)}s", \
+                        f"{pipe} save time: {round(pipeline_save_time-pipeline_run_time, 3)}s", \
+                        f"{pipe} total time: {round(pipeline_save_time-pipeline_start_time, 3)}s"]
+            for time_info in time_info_list: 
+                self.proc_logger.process_message(time_info)
             ## 24.04.02 NEW: log_show (SHOW 키워드 parsing 하여 마지막 table summary) 기능 추가 
             _log_show(pipe)
             return pipeline 
