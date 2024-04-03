@@ -15,4 +15,5 @@ def main():
     alo.main()
 
 if __name__ == "__main__":
-    main()
+    for _ in range(2):
+        main()

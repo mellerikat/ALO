@@ -463,8 +463,6 @@ class ALO:
 
         ## load experimental_plan.yaml
         self.exp_yaml, sys_envs = self.load_exp_plan(sol_meta, exp_plan_path, self.system_envs)
-        # 업데이트된 yaml을 추후 읽을 수 있도록 파일에 저장
-        self.meta.save_yaml(self.exp_yaml, DEFAULT_EXP_PLAN)
         self._set_attr()
         # loop 모드면 항상 처음에 boot 모드
         if self.computing != 'local': #sagemaker
