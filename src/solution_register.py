@@ -116,10 +116,30 @@ class SolutionRegister:
         with open(file_name, 'r') as file:
             data = json.load(file)
         
+        def convert_to_float(input_str):
+            try:
+                float_value = float(input_str)  
+                return float_value
+            except ValueError:
+                pass
+
+        def find_max_value(input_list):
+            max_value = None
+            for item in input_list:
+                converted_item = convert_to_float(item)
+                if isinstance(converted_item, float):
+                    if max_value is None or converted_item > max_value:
+                        max_value = converted_item
+            return max_value
+        
         self.api_uri = data['API']
         ## legacy 버전 보다 낮을 경우, API 변경
         self.api_uri_legacy_version = 1.5
         version = self.check_version()
+        max_val = find_max_value(list(data.keys()))
+
+        if version >max_val:
+            version = max_val
         
         self.register_solution_api = data[f'{version}']['REGISTER_SOLUTION']
         self.register_solution_instance_api = data[f'{version}']['REGISTER_SOLUTION_INSTANCE']
