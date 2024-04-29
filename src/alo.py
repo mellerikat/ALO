@@ -418,7 +418,13 @@ class ALO:
                 ALOVER = repo.active_branch.name
                 # repository_url = ALO_LIB_URI
                 # destination_directory = ALO_LIB
-                cloned_repo = Repo.clone_from(ALO_LIB_URI, ALO_LIB, branch=ALOVER)
+                try:
+                    cloned_repo = Repo.clone_from(ALO_LIB_URI, ALO_LIB, branch=ALOVER)
+                    print("Repository cloned successfully from the LGE URL.")
+                except:
+                    cloned_repo = Repo.clone_from(ALO_LIB_MEERKAT_URI, ALO_LIB, branch=ALOVER)
+                    print("Repository cloned successfully from the MEERKAT URL.")
+                
                 self.proc_logger.process_message(f"alolib {ALOVER} git pull success.\n")
             else: 
                 self.proc_logger.process_message("alolib already exists in local path.\n")

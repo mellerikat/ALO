@@ -6,6 +6,7 @@ PROJECT_HOME = os.path.dirname(os.path.abspath(os.path.dirname(__file__))) + "/"
 # 2. https://git-codecommit.ap-northeast-2.amazonaws.com/v1/repos/alolib
 ALO_LIB = PROJECT_HOME + "alolib/"
 ALO_LIB_URI = "http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git"
+ALO_LIB_MEERKAT_URI = "https://github.com/meerkat-aicontents-framework/alolib-source"
 TIME_FORMAT = '%Y%m%dT%H%M%SZ'
 TIME_FORMAT_DISPLAY = '%Y-%m-%d %H:%M:%S'
 # interface mode support type 
