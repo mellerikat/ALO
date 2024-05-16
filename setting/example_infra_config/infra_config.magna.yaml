@@ -1,0 +1,22 @@
+'AIC_URI': "https://aic-kic.aidxlge.com/"  
+"REGION": "ap-northeast-2"
+"WORKSPACE_NAME": "magna-ws"  
+"BUILD_METHOD": "buildah"  # docker, buildah, codebuild
+"LOGIN_MODE": "ldap" 
+"VERSION": 1.1
+"REPOSITORY_TAGS": 
+  - "Key=Company,Value=LGE"
+  - "Key=Owner,Value=IC360"
+  - "Key=HQ,Value=CDO"
+  - "Key=Division,Value=CDO"
+  - "Key=Infra Region,Value=KIC"
+  - "Key=Service Mode,Value=OP"
+  - "Key=Cost Type,Value=COMPUTING"
+  - "Key=Project,Value=CIS"
+  - "Key=Sub Project,Value=CISM"
+  - "Key=System,Value=AIDX"
+"AWS_KEY_PROFILE": ""
+## 'type': 'WINDOWS_CONTAINER'|'LINUX_CONTAINER'|'LINUX_GPU_CONTAINER'|'ARM_CONTAINER'|'WINDOWS_SERVER_2019_CONTAINER'|'LINUX_LAMBDA_CONTAINER'|'ARM_LAMBDA_CONTAINER',
+"CODEBUILD_ENV_TYPE": "LINUX_CONTAINER"
+## 'computeType': 'BUILD_GENERAL1_SMALL'|'BUILD_GENERAL1_MEDIUM'|'BUILD_GENERAL1_LARGE'|'BUILD_GENERAL1_XLARGE'|'BUILD_GENERAL1_2XLARGE'|'BUILD_LAMBDA_1GB'|'BUILD_LAMBDA_2GB'|'BUILD_LAMBDA_4GB'|'BUILD_LAMBDA_8GB'|'BUILD_LAMBDA_10GB',
+"CODEBUILD_ENV_COMPUTE_TYPE": "BUILD_GENERAL1_SMALL"

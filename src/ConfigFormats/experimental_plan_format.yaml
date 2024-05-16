@@ -1,0 +1,35 @@
+## external load data, load model, save artifacts directories path 
+name: titanic-sample
+version: 1.0.0
+external_path:
+    - load_train_data_path: ./solution/sample_data/train/
+    - load_inference_data_path: ./solution/sample_data/test/
+    - save_train_artifacts_path: /external/save/train/artifacts/folder3/
+    - save_inference_artifacts_path: /external/save/inference/artifacts/folder4/
+    - load_model_path: /external/load/model/folder5/
+## s3 access key file path 
+external_path_permission:
+    - aws_key_profile: /s3/permission/aws_key_file
+
+## asset parameters info. 
+user_parameters: []
+
+## asset install info. 
+asset_source: []
+
+control:
+    ## 1. whether to install assets and dependency packages once or every time. 
+    - get_asset_source: once ## once, every
+    ## 2. whether to backup saved artifacts
+    - backup_artifacts: True ## True, False
+    ## 3. whether to backup log
+    - backup_log: True  ## True, False
+    ## 4. determine artifacts backup size(MB)
+    - backup_size: 1000
+    ## 5. asset data, config interfacing method - memory: (fast) / file: (saved; non-volatilizing) 
+    - interface_mode: memory ## memory, file
+    ## 6. inference artifacts compression format 
+    - save_inference_format: tar.gz ## tar.gz, zip
+    ## 7. resource check 
+    - check_resource: False ## True: measure memory, cpu / False  
+ui_args_detail: []

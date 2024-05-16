@@ -1,0 +1,12 @@
+'inference_only': False # True, False
+'solution_update': False
+'solution_name': titanic-demo-1
+'solution_type': private
+'contents_type': 
+    'support_labeling': False
+    'inference_result_datatype': table # 'image'
+    'train_datatype': table # 'image'
+    'labeling_column_name': 
+'train_gpu': False ## cpu, gpu
+'inference_gpu': False
+"inference_arm": False  # amd, arm  

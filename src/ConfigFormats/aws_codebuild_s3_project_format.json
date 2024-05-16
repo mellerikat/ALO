@@ -1,0 +1,38 @@
+{
+    "name": "",
+    "source": {
+      "type": "S3",
+      "location": ""
+    },
+    "artifacts": {
+        "type": "NO_ARTIFACTS"
+      },
+    "cache": {
+      "type": "S3",
+      "location": "",
+      "modes": [
+          "LOCAL_DOCKER_LAYER_CACHE"
+      ]
+    },
+    "tags": [{
+          "key": "",
+          "value": ""
+      }],
+    "environment": {
+      "type": "",
+      "image": "aws/codebuild/standard:5.0",
+      "computeType": "",
+      "privilegedMode": ""
+    },
+    "logsConfig": {
+      "cloudWatchLogs":{ 
+      "status": "DISABLED"     
+      },
+      "s3Logs": {
+        "status": "ENABLED",
+        "location": "",
+        "encryptionDisabled": "",
+        "bucketOwnerAccess": "NONE"}
+    },
+    "serviceRole": ""
+  }

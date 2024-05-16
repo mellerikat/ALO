@@ -1,0 +1,17 @@
+### system info. 
+'AIC_URI': "https://web.aic-dev.lgebigdata.com/"  ## 실 서버 
+"REGION": "ap-northeast-2"
+"WORKSPACE_NAME": "cism-ws"  ## magna-ws, cism-ws
+"BUILD_METHOD": "buildah"  # docker, buildah, codebuild
+"LOGIN_MODE": "static" ## ldap, static
+"VERSION": 1.1
+"REPOSITORY_TAGS": 
+  - "Key=Description,Value=Kubeflow Study"
+  - "Key=Owner,Value=DX엔지니어링팀"
+  - "Key=IamUser,Value=hyunsoo0802.lim"
+  - "Key=ExpriationDate,Value=2024-04"
+"AWS_KEY_PROFILE": "register-ai-conductor"
+## 'type': 'WINDOWS_CONTAINER'|'LINUX_CONTAINER'|'LINUX_GPU_CONTAINER'|'ARM_CONTAINER'|'WINDOWS_SERVER_2019_CONTAINER'|'LINUX_LAMBDA_CONTAINER'|'ARM_LAMBDA_CONTAINER',
+"CODEBUILD_ENV_TYPE": "LINUX_CONTAINER"
+## 'computeType': 'BUILD_GENERAL1_SMALL'|'BUILD_GENERAL1_MEDIUM'|'BUILD_GENERAL1_LARGE'|'BUILD_GENERAL1_XLARGE'|'BUILD_GENERAL1_2XLARGE'|'BUILD_LAMBDA_1GB'|'BUILD_LAMBDA_2GB'|'BUILD_LAMBDA_4GB'|'BUILD_LAMBDA_8GB'|'BUILD_LAMBDA_10GB',
+"CODEBUILD_ENV_COMPUTE_TYPE": "BUILD_GENERAL1_SMALL"
