@@ -782,10 +782,10 @@ class ALO:
         Returns: -
 
         """
+        ## read redis error table 
+        self.redis_error_table = self._read_redis_error_table()
+        self.system_envs['redis_error_table'] = self.redis_error_table
         if system_envs['boot_on'] and system_envs['loop']:
-            ## read redis error table 
-            self.redis_error_table = self._read_redis_error_table()
-            self.system_envs['redis_error_table'] = self.redis_error_table
             self.redis_list = RedisList(host=system_envs['redis_host'], port=system_envs['redis_port'], db=system_envs['redis_db_number'])
             self.redis_pubsub = RedisPubSub(host=system_envs['redis_host'], port=system_envs['redis_port'], db=system_envs['redis_db_number'])
             self.redis_pubsub.publish("alo_status", "booting")
