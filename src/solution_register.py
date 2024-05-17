@@ -51,7 +51,6 @@ class SolutionRegister:
         Returns: -
 
         """
-        self.sol_reg_index = 0
         self.print_step("Initiate ALO operation mode")
         print_color("[SYSTEM] Solutoin 등록에 필요한 setup file 들을 load 합니다. ", color="green")
         self.infra_setup = check_and_load_yaml(infra_setup, mode='infra_setup')
@@ -151,7 +150,6 @@ class SolutionRegister:
         skip_build = (self.debugging or self.skip_generation_docker)
         codebuild_client, build_id = self.make_docker(skip_build)
         self.docker_push()
-        self.print_register_step()
         self._set_container_uri()
         return codebuild_client, build_id
 
@@ -425,7 +423,6 @@ class SolutionRegister:
         print_color('< Pre-existing AI Solutions >', color='cyan')
         for idx, sol in enumerate(solution_list): 
             print_color(f'{idx}. {sol}', color='cyan')
-        self.print_register_step()
 
     def _get_alo_version(self):
         """ get alo version 
@@ -479,7 +476,6 @@ class SolutionRegister:
             pprint(description)
         except Exception as e: 
             raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{str(e)}")
-        self.print_register_step()
 
     def set_wrangler(self):
         ## FIXME wrangler spec-out 
@@ -660,7 +656,6 @@ class SolutionRegister:
             print_color(f'- private: {response_json["ecr_base_path"]["public"]}', color='cyan') 
         print_color(f"[SYSTEM] AWS ECR: \n {self.ecr_name}", color='green') 
         print_color(f"[SYSTEM] AWS S3 bucket: \n {self.bucket_name}", color='green') 
-        self.print_register_step()
     
     def set_pipeline_uri(self, mode, data_paths = [], skip_update=False):
         """ If one of the dataset, artifacts, or model is selected, 
@@ -1041,7 +1036,6 @@ class SolutionRegister:
                 shutil.rmtree(REGISTER_MODEL_PATH, ignore_errors=True)
         else:
             raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
-        self.print_register_step()
 
     def make_docker(self, skip_build=False):
         """ Create a docker for upload to ECR.
@@ -1079,7 +1073,6 @@ class SolutionRegister:
             else: 
                 pass 
             ## build docker image 
-            self.print_register_step()
             self.print_step(f"Build {builder} image", sub_title=True)
             if is_remote:
                 try: 
@@ -1092,7 +1085,6 @@ class SolutionRegister:
                 self._build_docker(is_docker=is_docker)
                 end = time.time()
                 print(f"{builder} build time : {end - start:.5f} sec")
-                self.print_register_step()
         else:
             self._set_aws_ecr_skipbuild()
         if self.infra_setup["BUILD_METHOD"] == "codebuild": 
@@ -1763,7 +1755,6 @@ class SolutionRegister:
             print_color(columns, color='cyan')
             for i in item_list: 
                 print_color(i, color='cyan')
-        self.print_register_step()
         return self.candidate_format
     
     def register_solution_instance(self): 
@@ -1817,7 +1808,6 @@ class SolutionRegister:
         if response.status_code == 200:
             print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
             print(f"[INFO] response: \n {self.response_solution_instance}")
-            self.print_register_step()
             ## create interface directory
             try:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
@@ -1949,7 +1939,6 @@ class SolutionRegister:
         if response.status_code == 200:
             print_color("[SUCCESS] Stream Run 요청을 성공하였습니다. ", color='cyan')
             print(f"[INFO] response: \n {response_json}")
-            self.print_register_step()
             ## create interface directory
             try:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
@@ -2780,17 +2769,6 @@ class SolutionRegister:
             return param
         else:
             raise ValueError("You should enter only string value for parameter.")
-    
-    def print_register_step(self): 
-        """ print registration steps
-
-        Args: -
-        
-        Returns: -
-
-        """
-        print_color(f"ALO register step {self.sol_reg_index}/10 complete.", color='PURPLE')
-        self.sol_reg_index = self.sol_reg_index + 1
     
     def check_single_pipeline(self):
         """check whether it is single pipeline solution 
