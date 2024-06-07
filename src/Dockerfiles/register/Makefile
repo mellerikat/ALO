@@ -1,11 +1,11 @@
 # MAKEFILE FOR CONTROLLER DOCKER IMAGE
-######## Modify TAG when solution version update #####
+###### Modify TAG when solution version update #####
 NS='ecr-repo-an2-cism-dev-aic'
 REPO='alo-test-swj'
 TAG='latest'
 TYPE='train'
 URL='086558720570.dkr.ecr.ap-northeast-2.amazonaws.com/$(NS)/$(TYPE)/$(REPO)'
-################################################################
+###########################################################################
 
 DOCKERFILE='Dockerfile'
 

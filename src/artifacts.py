@@ -1,6 +1,7 @@
-from datetime import datetime
+import os 
 import shutil
 import yaml
+from datetime import datetime
 from src.constants import *
 from src.logger import ProcessLogger
 
@@ -81,10 +82,15 @@ class Aritifacts:
                 shutil.copy2(src_path, backup_source_path)
             elif os.path.isdir(src_path):
                 dst_path = backup_source_path  + os.path.basename(src_path)
-                shutil.copytree(src_path, dst_path)
+                ## [NOTE] do not copy .git in asset directory
+                if item == 'assets':
+                    shutil.copytree(src_path, dst_path, ignore=shutil.ignore_patterns('.git'))
+                else: 
+                    shutil.copytree(src_path, dst_path)
         ## only backup experimental_plan.yaml in the solution directory (without sample data)
         os.makedirs(backup_source_path + "solution/", exist_ok=True)
-        shutil.copy2(DEFAULT_EXP_PLAN, backup_source_path + 'solution/') 
+        ## plan path could be default path (solution/experimental_plan.yaml) or custom path 
+        shutil.copy2(system_envs['experimental_plan_path'], backup_source_path + 'solution/') 
         ## backup artifacts
         for key, value in BASE_DIRS_STRUCTURE[f'{ptype}_artifacts'].items():
             dst_path = backup_path + key + "/"
@@ -109,20 +115,18 @@ class Aritifacts:
         train_path = os.path.join(HISTORY_PATH, 'train')
         inference_path = os.path.join(HISTORY_PATH, 'inference')
         ## calculate directory size 
-        def _get_folder_size(start_path):
-            total_size = 0
-            for dirpath, dirnames, filenames in os.walk(start_path):
-                for f in filenames:
-                    fp = os.path.join(dirpath, f)
-                    if not os.path.islink(fp) and os.path.exists(fp):
-                        total_size += os.path.getsize(fp)
-            return total_size
+        def _get_folder_size(path):
+            if not os.path.exists(path): 
+                return float(0)
+            import subprocess
+            result = subprocess.check_output(['du', '-sb', path]).decode('utf-8').split()[0]
+            return float(result)
         train_size = _get_folder_size(train_path)
         inference_size = _get_folder_size(inference_path)
         total_size = train_size + inference_size
         ## nothing happens within size limit 
         if total_size <= folder_size_limit:
-            PROC_LOGGER.process_message("[backup_history] Current total size is within the limit. No deletion required.")
+            PROC_LOGGER.process_message(f"[backup_history] Current total size is within the limit. No deletion required - (current history size: {total_size} B / size limit: {folder_size_limit} B)")
             return
         ## size tobe deleted
         total_to_delete = total_size - folder_size_limit
@@ -130,6 +134,10 @@ class Aritifacts:
         train_to_delete = (train_size / total_size) * total_to_delete
         inference_to_delete = (inference_size / total_size) * total_to_delete
         def _delete_from_folder(folder_path, target_size):
+            ## [NOTE] folder existence check for single pipeline
+            if not os.path.exists(folder_path): 
+                PROC_LOGGER.process_message(f"< {folder_path} > does not exist. Skip deleting the path while history backup size limit checking.")
+                return 
             folders = []
             for item in os.listdir(folder_path):
                 full_path = os.path.join(folder_path, item)
@@ -139,6 +147,7 @@ class Aritifacts:
                         utc_time = datetime.strptime(utc_time_str, TIME_FORMAT)
                         folders.append((full_path, utc_time))
                     except ValueError:
+                        PROC_LOGGER.process_warning("Time parsing error during history backup.") ## FIXME 
                         continue
             folders.sort(key=lambda x: x[1])
             current_size = _get_folder_size(folder_path)
@@ -146,7 +155,7 @@ class Aritifacts:
                 if current_size <= target_size:
                     break
                 folder_size = _get_folder_size(folder)
-                PROC_LOGGER.process_message(f"Delete history folder: {folder}")  
+                PROC_LOGGER.process_message(f"[backup_history] Backup size limit exceeded. Delete history folder: {folder}")  
                 shutil.rmtree(folder)
                 ## update current size after direcotry deletion 
                 current_size -= folder_size  

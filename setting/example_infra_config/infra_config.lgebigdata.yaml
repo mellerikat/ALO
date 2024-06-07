@@ -1,8 +1,8 @@
 ### system info. 
-'AIC_URI': "https://web.aic-dev.lgebigdata.com/"  ## AI빅데이터실 서버 
+'AIC_URI': "https://web.aic-dev.lgebigdata.com/" 
 "REGION": "ap-northeast-2"
 "WORKSPACE_NAME": "cism-ws"  ## magna-ws, cism-ws
-"BUILD_METHOD": "docker"  # docker, buildah, codebuild
+"BUILD_METHOD": "docker"  ## docker, buildah, codebuild
 "LOGIN_MODE": "static" ## ldap, static
 "VERSION": 1.1
 "REPOSITORY_TAGS": 

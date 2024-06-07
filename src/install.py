@@ -65,6 +65,15 @@ class Packages:
                     except OSError as e:
                         PROC_LOGGER.process_error(f"Error occurs while --force-reinstalling {package} ~ " + e)  
                     continue 
+                
+                if "--index-url" in package:
+                    try: 
+                        PROC_LOGGER.process_message(f'>>> Start installing package - {package}')
+                        split_name = package.split(" ")
+                        subprocess.check_call([sys.executable, '-m', 'pip', 'install', split_name[0], split_name[1],split_name[2]])
+                    except OSError as e:
+                        PROC_LOGGER.process_error(f"Error occurs while --force-reinstalling {package} ~ " + e)  
+                    continue 
                 ## Check whether the same version is already installed.
                 try:
                     ## {package} @ git+http://~.git@ver~ format in the requirements.txt don't cause conflict.
@@ -129,16 +138,22 @@ class Packages:
         dup_checked_requirements_dict = defaultdict(list) 
         dup_chk_set = set() 
         force_reinstall_list = [] 
+        link_install_list = []
         for step_name, requirements_list in extracted_requirements_dict.items(): 
             for pkg in requirements_list: 
-                pkg_name = pkg.replace(" ", "") 
+                if "--index-url" in pkg:
+                    link_install_list.append(pkg)
+                    dup_chk_set.add(pkg)
+                    continue
+                
+                pkg_name = pkg.replace(" ", "")
                 ## after removing all spaces, extract the base name of the package, \
                 ## excluding comparison operators and version numbers. 
                 if "--force-reinstall" in pkg_name: 
                     ## not {pkg_name} but {pkg} since --force-reinstall needs a space in front
                     force_reinstall_list.append(pkg)
                     dup_chk_set.add(pkg)
-                    continue 
+                    continue
                 ## extract the base name of the package, excluding the version and any comments
                 base_pkg_name = "" 
                 ## skip lines that contain comments or are empty in the requirements.txt file
@@ -173,6 +188,7 @@ class Packages:
                     dup_checked_requirements_dict[step_name].append(pkg_name)
         ## force reinstall is added to perform the installation again at the end
         dup_checked_requirements_dict['force-reinstall'] = force_reinstall_list
+        dup_checked_requirements_dict['link_install'] = link_install_list
         ## install packages 
         self._install_packages(dup_checked_requirements_dict, dup_chk_set)
         return dup_checked_requirements_dict, extracted_requirements_dict

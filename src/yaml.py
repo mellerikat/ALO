@@ -142,7 +142,7 @@ class Metadata:
         except:
             PROC_LOGGER.process_error(f"Failed to save yaml into << {save_path} >>")
 
-    def read_yaml(self, exp_plan_file,  sol_meta={}, system_envs={}, update_envs=True):
+    def read_yaml(self, exp_plan_file, sol_meta={}, system_envs={}, update_envs=True):
         """ Read experimental plan yaml 
 
         Args: 
@@ -155,12 +155,12 @@ class Metadata:
         
         """
         try:
+            PROC_LOGGER.process_message("Start to read experimental plan yaml (& update by solution meta)")
             assert type(sol_meta) == dict 
             assert type(system_envs) == dict 
             redis_pubsub = system_envs["redis_pubsub_instance"]
             exp_plan_file = self.check_copy_exp_plan(exp_plan_file) 
-            if update_envs:  
-                PROC_LOGGER.process_message(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan_file})") 
+            PROC_LOGGER.process_message(f"Successfully loaded << experimental_plan.yaml >> (file: {exp_plan_file})") 
             try: 
                 self.exp_plan = self.get_yaml(exp_plan_file)  
             except: 
@@ -183,13 +183,56 @@ class Metadata:
                     except: 
                         if redis_pubsub is not None:
                             redis_pubsub.publish("alo_fail", json.dumps(system_envs["redis_error_table"]["E112"]))
-                PROC_LOGGER.process_message("Finish updating solution_metadata.yaml --> experimental_plan.yaml")
+                PROC_LOGGER.process_message("Finish updating solution metadata --> experimental plan")
         except:
             PROC_LOGGER.process_error("Failed to read experimental plan yaml.")
         ## match experimental plan yaml user parameters and asset git uri info.
         self._match_steps()
         return self.exp_plan
 
+    def overwrite_solution_meta(self, exp_plan={}, sol_meta={}, system_envs={}, update_envs=True):
+        """ overwrite solution metadata info. to experimental plan dict 
+
+        Args: 
+            exp_plan        (dict): experimental plan dict 
+            sol_meta        (dict): solution metadata info dict
+            system_envs     (dict): system envs dict (for ALO internal interface)
+            update_envs     (bool): whether to update system envs  
+            
+        Returns: -
+        
+        """
+        try:
+            PROC_LOGGER.process_message("Start overwriting solution metadata --> experimental plan")
+            assert type(sol_meta) == dict 
+            assert type(system_envs) == dict 
+            ## experimental plan to class variable 
+            self.exp_plan = exp_plan 
+            redis_pubsub = system_envs["redis_pubsub_instance"]
+            self.check_exp_plan_keys(self.exp_plan) 
+            ## info to class variables
+            self._get_yaml_data(self.exp_plan)
+            ## save name & version into {system_envs}
+            if update_envs:
+                system_envs["experimental_name"] = self.name
+                system_envs["experimental_version"] = self.version
+            ## solution metadata yaml --> exp plan yaml overwrite
+            if len(sol_meta) != 0:
+                self.sol_meta = sol_meta
+                if update_envs:
+                    try: 
+                        ## (Note) {self.exp_plan} changes at _update_yaml()
+                        system_envs = self._update_yaml(system_envs=system_envs)
+                    except: 
+                        if redis_pubsub is not None:
+                            redis_pubsub.publish("alo_fail", json.dumps(system_envs["redis_error_table"]["E112"]))
+                PROC_LOGGER.process_message("Finish updating solution metadata --> experimental plan")
+        except:
+            PROC_LOGGER.process_error("Failed to overwrite solution meta to experimental plan.")
+        ## match experimental plan yaml user parameters and asset git uri info.
+        self._match_steps()
+        return self.exp_plan
+    
     def check_exp_plan_keys(self, exp_plan: dict): 
         """ Check experimental plan keys 
 

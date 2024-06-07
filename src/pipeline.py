@@ -562,23 +562,22 @@ class Pipeline:
         ## compress and transfer (copy) artifacts to external storage, such as S3 or NAS
         try:
             ext_type, ext_saved_path = self.external.external_save_artifacts(self.pipeline_type, self.external_path, self.external_path_permission, self.control['save_inference_format'])
+            ## in loop mode, deliver the completion of artifacts creation to the EdgeApp via Redis.
+            if self.system_envs['loop']:
+                ## external inference artifact path can be local storage or s3 
+                ## s3 upload file is blocking operation. Don't have to check file generation completion at s3
+                if ((ext_type in ['absolute', 'relative']) and ('inference_artifacts.{}'.format(self.control["save_inference_format"]) in os.listdir(ext_saved_path))) or (ext_type == 's3'): 
+                    ## resend the inference summary that was generated for {send_summary} channel 
+                    redis_list = self.system_envs['redis_list_instance']
+                    redis_key = self.system_envs['redis_key_artifacts']
+                    ## redis rput 
+                    redis_list.rput(redis_key, self.system_envs['success_str'])
+                    PROC_LOGGER.process_message("Completes putting artifacts creation << success >> signal into redis queue.")
+                    self.system_envs['runs_status'] = 'artifacts'
         except:
-            PROC_LOGGER.process_error("Failed to save artifacts into external path.")
-        ## in loop mode, deliver the completion of artifacts creation to the EdgeApp via Redis.
-        if self.system_envs['loop']:
-            ## external inference artifact path can be local storage or s3 
-            ## s3 upload file is blocking operation. Don't have to check file generation completion at s3
-            if ((ext_type in ['absolute', 'relative']) and ('inference_artifacts.{}'.format(self.control["save_inference_format"]) in os.listdir(ext_saved_path))) or (ext_type == 's3'): 
-                ## resend the inference summary that was generated for {send_summary} channel 
-                redis_list = self.system_envs['redis_list_instance']
-                redis_key = self.system_envs['redis_key_artifacts']
-                ## redis rput 
-                redis_list.rput(redis_key, self.system_envs['success_str'])
-                PROC_LOGGER.process_message("Completes putting artifacts creation << success >> signal into redis queue.")
-                self.system_envs['runs_status'] = 'artifacts'
-            else:
+            if self.system_envs['loop']:
                 self._publish_redis_msg("alo_fail", json.dumps(self.system_envs['redis_error_table']["E162"]))  
-                PROC_LOGGER.process_error("Failed to redis-put. << inference_artifacts.tar.gz >> not found.")
+            PROC_LOGGER.process_error("Failed to save artifacts into external path. << inference_artifacts.{} >> not found.".format(self.control["save_inference_format"]))
         return ext_saved_path
 
     def get_parameter(self, step_name):

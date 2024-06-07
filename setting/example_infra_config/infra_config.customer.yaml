@@ -1,7 +1,7 @@
 'AIC_URI': "https://aic-kic.aidxlge.com/"  
 "REGION": "ap-northeast-2"
 "WORKSPACE_NAME": "cism-ws"  
-"BUILD_METHOD": "buildah"  # docker, buildah, codebuild
+"BUILD_METHOD": "buildah"  ## docker, buildah, codebuild
 "LOGIN_MODE": "ldap" 
 "VERSION": 1.1
 "REPOSITORY_TAGS": 

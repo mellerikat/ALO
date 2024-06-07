@@ -1,10 +1,10 @@
 'AIC_URI': "https://storage.meerkat-ai.com/"
 "REGION": "ap-northeast-2"
-"WORKSPACE_NAME": "lge-ws" ## 현재 생성되어있는 ws
+"WORKSPACE_NAME": "lge-ws" 
 "BUILD_METHOD": "docker" # docker, buildah, codebuild
-"LOGIN_MODE": "static" ## ldap 미적용이므로 static
+"LOGIN_MODE": "static" 
 "VERSION": 1.1
-"REPOSITORY_TAGS": [] ## TAG 구분은 정의되지 않았음
+"REPOSITORY_TAGS": [] 
 "AWS_KEY_PROFILE": "register-solution-storage"
 ## 'type': 'WINDOWS_CONTAINER'|'LINUX_CONTAINER'|'LINUX_GPU_CONTAINER'|'ARM_CONTAINER'|'WINDOWS_SERVER_2019_CONTAINER'|'LINUX_LAMBDA_CONTAINER'|'ARM_LAMBDA_CONTAINER',
 "CODEBUILD_ENV_TYPE": "LINUX_CONTAINER"

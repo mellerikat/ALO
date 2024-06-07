@@ -3,6 +3,7 @@ import botocore
 import docker
 import io
 import json
+import logging 
 import os
 import pyfiglet
 import re
@@ -16,15 +17,19 @@ import yaml
 from copy import deepcopy 
 from botocore.exceptions import ProfileNotFound, ClientError, NoCredentialsError
 from docker.errors import APIError
-from pprint import pprint
 from yaml import Dumper
 from src.constants import *
-from src.utils import print_color
 
 #--------------------------------------------------------------------------------------------------------------------------
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 KUBEFLOW_STATUS = ("pending", "running", "succeeded", "skipped", "failed", "error")
+## setup logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    stream_handler = logging.StreamHandler()
+    logger.addHandler(stream_handler)
 #--------------------------------------------------------------------------------------------------------------------------
 
 class SolutionRegister:
@@ -51,13 +56,12 @@ class SolutionRegister:
         Returns: -
 
         """
-        self.print_step("Initiate ALO operation mode")
-        print_color("[SYSTEM] Solutoin 등록에 필요한 setup file 들을 load 합니다. ", color="green")
+        self.print_step("Initiate Solution Register")
+        logger.info("[SYSTEM] setup infra, solution info, experimental plan")
         self.infra_setup = check_and_load_yaml(infra_setup, mode='infra_setup')
         self.solution_info = check_and_load_yaml(solution_info, mode='solution_info')
         self.exp_yaml = check_and_load_yaml(experimental_plan, mode='experimental_plan')
-        print_color("[SYSTEM] infra_setup (max display: 5 line): ", color='green')
-        pprint(self.infra_setup, depth=5)
+        logger.info(f"[SYSTEM] infra setup: \n {self.infra_setup} ")
         ## Setup AIConductor API
         file_name = SOURCE_HOME + 'config/ai_conductor_api.json'
         ## read json from file 
@@ -94,7 +98,7 @@ class SolutionRegister:
         ## for debugging 
         self.debugging = False 
         self.skip_generation_docker = False        
-        make_art("Register AI Solution!!!")
+        make_art("Register AI Solution !")
         self._s3_access_check()
 
     def set_solution_settings(self):
@@ -178,7 +182,7 @@ class SolutionRegister:
         ## wait until codebuild finish for each pipeline 
         for pipe in codebuild_run_meta:
             if codebuild_run_meta[pipe][0] != None and codebuild_run_meta[pipe][1] != None: 
-                self._batch_get_builds(codebuild_run_meta[pipe][0], codebuild_run_meta[pipe][1], status_period=20)
+                self._batch_get_builds(codebuild_run_meta[pipe][0], codebuild_run_meta[pipe][1])
         if not self.debugging:
             ## Since it is before solution registration, code to delete the solution cannot be included.
             self.register_solution()
@@ -186,7 +190,7 @@ class SolutionRegister:
             ## If registration fails, delete the solution.
             self.register_solution_instance()  
 
-    def run_train(self, status_period=5, delete_solution=False):
+    def run_train(self, status_period=30, delete_solution=False):
         """ request running train docker in AI conductor infra
         
         Args: 
@@ -197,7 +201,7 @@ class SolutionRegister:
 
         """
         if self.solution_info['inference_only']:
-            raise ValueError("학습 요청은 inference_only=False 일 때만 가능합니다.")
+            logger.error("run-train request allowed when inference_only=False")
         else:
             try: 
                 self.login()
@@ -226,11 +230,11 @@ class SolutionRegister:
 
         """
         if not sub_title:
-            print_color("\n######################################################", color='blue')
-            print_color(f'#######    {step_name}', color='blue')
-            print_color("######################################################\n", color='blue')
+            logger.info("\n######################################################")
+            logger.info(f'######    {step_name}')
+            logger.info("######################################################\n")
         else:
-            print_color(f'\n#######  {step_name}', color='blue')
+            logger.info(f'\n######  {step_name}')
 
     def check_version(self):
         """ Check AIC version and convert API 
@@ -248,20 +252,21 @@ class SolutionRegister:
         if response.status_code == 200:
             response_json = response.json()
             version_str = response_json['versions'][0]['ver_str']
-            print_color(f"[SUCCESS] Version 을 확인 하였습니다. (current_version: {version_str}). ", color='cyan')
+            logger.info(f"AIC version check: {version_str})")
             match = re.match(r'(\d+\.\d+)', version_str)
             if match:
                 version = float(match.group(1))
             else:
                 version = float(version_str)
+            ## FIXME legacy version ?
             if self.api_uri_legacy_version >= version:
                 self.api_uri.update(self.api_uri_legacy)
-                print_color(f"[INFO] API 의 uri 가 변경되었습니다.", color='yellow')
-                pprint(f"changed_uri:{self.api_uri_legacy}")
+                logger.info(f"[INFO] API URI changed")
+                logger.info(f"changed uri:{self.api_uri_legacy}")
         elif response.status_code == 400:
-            raise ValueError("[ERROR] version 을 확인할 수 없습니다.  ")
+            logger.error("[ERROR] Failed to check AIC version ")
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            logger.info(f"[ERROR] Unsupported error code: {response.status_code}")
         return version
 
     def login(self, id = None, pw = None): 
@@ -279,7 +284,7 @@ class SolutionRegister:
         Returns: -
 
         """
-        self.print_step("Connect to AI Conductor..", sub_title=True)
+        logger.info("Connect to AI Conductor..")
         try:
             if id != None and pw != None:
                 self.login_data = json.dumps({
@@ -287,14 +292,14 @@ class SolutionRegister:
                     "login_pw": pw
                 })
         except Exception as e:
-            print(e)
+            logger.error(str(e))
         try:
             if self.infra_setup["LOGIN_MODE"] == 'ldap':
                 response = requests.post(self.infra_setup["AIC_URI"] + self.api_uri["LDAP_LOGIN"], data = self.login_data)
             else:
                 response = requests.post(self.infra_setup["AIC_URI"] + self.api_uri["STATIC_LOGIN"], data = self.login_data)
         except Exception as e:
-            print(e)
+            logger.error(str(e))
         response_login = response.json()
         cookies = response.cookies.get_dict()
         access_token = cookies.get('access-token', None)
@@ -302,51 +307,49 @@ class SolutionRegister:
         'access-token' : access_token 
         }
         if response.status_code == 200:
-            print_color("[SUCCESS] login OK", color='cyan')
+            logger.info("[SUCCESS] login OK")
             ws_list = []
             for ws in response_login["workspace"]:
                 ws_list.append(ws["name"])
-            print(f"Workspace list: {ws_list}")
+            logger.info(f"Workspace list: {ws_list}")
             if response_login['account_id']:
                 if self.debugging:
-                    print_color(f'[SYSTEM] Success getting cookie from AI Conductor:\n {self.aic_cookie}', color='green')
-                    print_color(f'[SYSTEM] Success Login: {response_login}', color='green')
+                    logger.info(f'[SYSTEM] Success getting cookie from AI Conductor:\n {self.aic_cookie}')
+                    logger.info(f'[SYSTEM] Success Login: {response_login}')
                 if self.infra_setup["WORKSPACE_NAME"] in ws_list:
-                    msg = f'[SYSTEM] 접근 요청하신 workspace ({self.infra_setup["WORKSPACE_NAME"]}) 은 해당 계정으로 접근 가능합니다.'
-                    print_color(msg, color='green')
+                    msg = f'[SYSTEM] workspace ({self.infra_setup["WORKSPACE_NAME"]}) is accessible'
+                    logger.info(msg)
                 else:
-                    ws_name = self.infra_setup["WORKSPACE_NAME"]
-                    msg = f'{ws_name} workspace는 해당 계정으로 접근 불가능 합니다.'
-                    raise ValueError(msg)
+                    msg = f'[SYSTEM] workspace ({self.infra_setup["WORKSPACE_NAME"]}) is not accessible'
+                    logger.error(msg)
             else: 
-                print_color(f'\n>> Failed Login: {response_login}', color='red')   
+                logger.error(f'\n>> Failed Login: {response_login}')   
         elif response.status_code == 401:
-            print_color("[ERROR] login 실패. 잘못된 아이디 또는 비밀번호입니다.", color='red')
+            logger.error("[ERROR] Failed Login. Wrong ID or Password")
             if response_login['detail']['error_code'] == 'USER.LOGIN.000':
                 pass
             if response_login['detail']['error_code'] == 'USER.LOGIN.001':
                 if 'login_fail_count' in list(response_login['detail'].keys()):
                     count = response_login['detail']['login_fail_count']
-                    print(f"Password를 오기입하셨습니다 {count} / 5 번 남았습니다.")
+                    logger.error(f"Wrong Password ( {count} / 5 )")
                 else:
-                    print(f"{id}를 오기입 하셨습니다") 
+                    logger.error(f"Wrong ID: {id}") 
             if response_login['detail']['error_code'] == 'USER.LOGIN.002':
                 if 'login_fail_count' in list(response_login['detail'].keys()):
                     if int(response_login['detail']['login_fail_count']) == 5:
-                        print(f"5번 잘못 입력하셨습니다. 계정이 잠겼으니 관리자에게 문의 하세요.")
+                        logger.error(f"5 times wrong. Account has been locked, contact the administrator")
             if response_login['detail']['error_code'] == 'USER.LOGIN.003':
                 if 'unused_period' in list(response_login['detail'].keys()):
-                    up = response_login['detail']['unused_period']
-                    print(f'{up} 만큼 접속하지 않으셔서 계정이 잠겼습니다.')
-                    print(f'관리자에게 문의하세요.')
+                    unused_period = response_login['detail']['unused_period']
+                    logger.error(f'Your account has been locked because you have not logged in for {unused_period} periods.')
         elif response.status_code == 400:
-            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.response_solution["detail"])
+            logger.error("[ERROR] Bad request. Failed to register AI solution")
+            logger.error("Error message: {}".format(self.response_solution["detail"]))
         elif response.status_code == 422:
-            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.response_solution["detail"])
+            logger.error("[ERROR] Failed to validate. Failed to register AI solution")
+            logger.error("Error message: {}".format(self.response_solution["detail"]))
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
     
     def check_solution_name(self, name=None): 
         """ Check if the solution name the user intends to register is available for use. 
@@ -363,14 +366,14 @@ class SolutionRegister:
         if not name:
             name = self.solution_info['solution_name']
         ## solution name rule 
-        name = name
-        ## check name length limit 100  
-        if len(name.encode('utf-8')) > 100:
-            raise ValueError("The solution name must be less than 50 bytes.")   
+        ## FIXME check name length limit 100  
+        len_limit = 100
+        if len(name.encode('utf-8')) > len_limit:
+            logger.error(f"The length of solution name must be less than {len_limit}")   
         ## only lower case, number allowed 
         pattern = re.compile('^[a-zA-Z0-9-]+$')
         if not pattern.match(name):
-            raise ValueError("The solution name can only contain lowercase letters / dash / number (ex. my-solution-v0)")
+            logger.error("The solution name can only contain lowercase letters / dash / number (ex. my-solution-v0)")
         ## solution name uniqueness check 
         ## {only_public} - 1: public, private / 0: only workspace 
         solution_data = {
@@ -389,40 +392,32 @@ class SolutionRegister:
                 ## solution update
                 if self.solution_info['solution_update']:
                     if name == sol['name']: 
-                        txt = f"[SUCCESS] The solution name ({name}) already exists and can be upgraded. " 
                         self.solution_name = name
                         ## latest check ([0])
                         self.solution_version_new = int(sol['versions'][0]['version']) + 1  
                         self.solution_version_id = sol['id']
-                        print_color(txt, color='green')
+                        logger.info(f"[SUCCESS] The solution name ({name}) already exists. It can be upgraded.")
         else: 
-            msg = f"<< solutions >> key not found in AI Solution data. API_URI={aic+api}"
-            raise ValueError(msg)
+            logger.error(f"<< solutions >> key not found in AI Solution data. API_URI={aic+api}")
         ## handle update error
         if self.solution_info['solution_update']:
             if not name in solution_list:
-                txt = f"[ERROR] if solution_update is True, the same solution name cannot exist.(name: {name})"
-                print_color(txt, color='red')
-                raise ValueError("Not found solution name.")
+                logger.error(f"[ERROR] if solution_update=True, the same solution name should already exist (name: {name})")
         ## handle new solution name 
         else:
             ## check pre-existence of name 
             if name in solution_list:
-                txt = f"[SYSTEM] the solution name ({name}) already exists in the AI solution list. Please enter another name !!"
-                print_color(txt, color='red')
-                msg = f'[INFO] solution name list (workspace: {self.infra_setup["WORKSPACE_NAME"]}):'
-                print(msg)
-                raise ValueError("Not allowed solution name.")
+                logger.error(f"[SYSTEM] the solution name ({name}) already exists in the AI solution list. Please enter another name.")
             ## new solution name 
             else:  
                 txt = f"[SUCCESS] the solution name ({name}) is available." 
                 self.solution_name = name
                 self.solution_version_new = 1
                 self.solution_version_id = None
-                print_color(txt, color='green')
-        print_color('< Pre-existing AI Solutions >', color='cyan')
+                logger.info(txt)
+        logger.info('Pre-existing AI Solutions: \n')
         for idx, sol in enumerate(solution_list): 
-            print_color(f'{idx}. {sol}', color='cyan')
+            logger.info(f'{idx}. {sol}')
 
     def _get_alo_version(self):
         """ get alo version 
@@ -470,12 +465,10 @@ class SolutionRegister:
         try: 
             self.sm_yaml['description'].update(description)
             self._save_yaml()
-
-            print_color(f"[SUCCESS] Update solution_metadata.yaml.", color='green')
-            print(f"description:")
-            pprint(description)
+            logger.info(f"[SUCCESS] Update solution_metadata.yaml.")
+            logger.info(f"description: {description}")
         except Exception as e: 
-            raise NotImplementedError(f"Failed to set << description >> in the solution_metadata.yaml \n{str(e)}")
+            logger.error(f"Failed to set << description >> in the solution_metadata.yaml \n {str(e)}")
 
     def set_wrangler(self):
         ## FIXME wrangler spec-out 
@@ -495,8 +488,7 @@ class SolutionRegister:
             self.sm_yaml['wrangler_dataset_uri'] = ''
             self._save_yaml()
         except:
-            msg = f"[WARNING] wrangler.py 가 해당 위치에 존재해야 합니다. (path: {REGISTER_WRANGLER_PATH})"
-            print_color(msg, color="yellow")
+            logger.info(f"[WARNING] wrangler.py must be exist at this path: \n {REGISTER_WRANGLER_PATH}")
             self.sm_yaml['wrangler_code_uri'] = ''
             self.sm_yaml['wrangler_dataset_uri'] = ''
             self._save_yaml()
@@ -510,7 +502,7 @@ class SolutionRegister:
         Returns: -
 
         """
-        self.print_step("Set Edge Condcutor & Edge App", sub_title=True)
+        self.print_step("Set Edge Condcutor & Edge App related metadata", sub_title=True)
         if len(metadata_value) == 0:
             metadata_value = self.solution_info['contents_type']
         ## check edgeconductor related keys 
@@ -521,30 +513,29 @@ class SolutionRegister:
             for k in user_dict.keys():
                 self._check_parammeter(k)
                 if k not in check_keys: 
-                    raise ValueError(f"[ERROR] << {k} >> is not allowed for contents_type key. \
+                    logger.error(f"[ERROR] << {k} >> is not allowed for contents_type key. \
                                      (keys: support_labeling, inference_result_datatype, train_datatype) ")
             ## check necessary keys
             for k in check_keys:
                 if k not in user_dict.keys(): 
-                    raise ValueError(f"[ERROR] << {k} >> must be in the edgeconductor_interface key list.")
+                    logger.error(f"[ERROR] << {k} >> must be in the edgeconductor_interface key list.")
             ## check type and key existence 
             if isinstance(user_dict['support_labeling'], bool):
                 pass
             else: 
-                raise ValueError("[ERROR] << support_labeling >> parameter must have boolean type.")
+                logger.error("[ERROR] << support_labeling >> parameter must have boolean type.")
             if user_dict['inference_result_datatype'] not in allowed_datatypes:
-                raise ValueError(f"[ERROR] << inference_result_datatype >> parameter must have the value among these: \n{allowed_datatypes}")
+                logger.error(f"[ERROR] << inference_result_datatype >> parameter must have the value among these: \n{allowed_datatypes}")
             if user_dict['train_datatype'] not in allowed_datatypes:
-                raise ValueError(f"[ERROR] << train_datatype >> parameter must have the value among these: \n{allowed_datatypes}")                  
+                logger.error(f"[ERROR] << train_datatype >> parameter must have the value among these: \n {allowed_datatypes}")                  
         ## edgeconductor interface 
         _check_edgeconductor_interface(metadata_value)
         self.sm_yaml['edgeconductor_interface'] = metadata_value
         ## update edgeapp related info. 
         self.sm_yaml['edgeapp_interface'] = {'single_pipeline': self.check_single_pipeline(), 'redis_server_uri': "", 'redis_db_number': 0}
         self._save_yaml()
-        msg = "[SUCCESS] contents_type 을 solution_metadata 에 성공적으로 업데이트 하였습니다."
-        print_color(msg, color="green")
-        print(f"edgeconductor_interfance: {metadata_value}")
+        logger.info("[SUCCESS] contents_type --> solution_metadata updated")
+        logger.info(f"edgeconductor_interface: {metadata_value}")
 
     def set_resource_list(self):
         """ list up AIC train resource 
@@ -554,7 +545,7 @@ class SolutionRegister:
         Returns: -
 
         """
-        self.print_step(f"Display {self.pipeline} Resource List")
+        self.print_step(f"Display resource list")
         self.login()
         params = {
             "workspace_name": self.infra_setup["WORKSPACE_NAME"],
@@ -566,16 +557,16 @@ class SolutionRegister:
             response = requests.get(aic+api, params=params, cookies=self.aic_cookie)
             response_json = response.json()
         except: 
-            raise NotImplementedError("[ERROR] Failed to get workspaces info.")
+            logger.error("[ERROR] Failed to get workspaces info.")
         resource_list = []
         try: 
             for spec in response_json["specs"]:
                 resource_list.append(spec["name"])
         except: 
-            raise ValueError("Got wrong workspace info.")
-        print(f"{self.pipeline} Available resource list (type{resource_list}):")
-        print_color(f"< Allowed Specs >", color='cyan')
-        print(response_json["specs"])
+            logger.error("Got wrong workspace info.")
+        logger.info(f"{self.pipeline} available resource types list: \n {resource_list}")
+        logger.info(f"< Allowed Specs >")
+        logger.info(response_json["specs"])
         ## as self variable
         self.resource_list = resource_list
         return resource_list
@@ -594,24 +585,21 @@ class SolutionRegister:
         """
         self.print_step(f"Set {self.pipeline} Resource")
         if len(self.resource_list) == 0: 
-            msg = f"[ERROR] set_resource_list 함수를 먼저 실행 해야 합니다."
-            raise ValueError(msg)
+            logger.error(f"[ERROR] set_resource_list() function must precede")
         ## erorr when input is empty 
         if resource == '':
-            msg = f"[ERROR] 입력된 {self.pipeline}_resource 가 empty 입니다. Spec 을 선택해주세요. (type={self.resource_list})"
-            raise ValueError(msg)
+            logger.error(f"[ERROR] {self.pipeline}_resource is empty. Select spec. (supported: {self.resource_list})")
         if not resource in self.resource_list:
-            msg = f"[ERROR] 입력된 {self.pipeline}_resource 가 '{resource}' 입니다. 미지원 값입니다. (type={self.resource_list})"
-            raise ValueError(msg)
+            logger.error(f"[ERROR] {self.pipeline}_resource is {resource} which is not supported. (supported: {self.resource_list})")
         self.sm_yaml['pipeline'][self.sm_pipe_pointer]["resource"] = {"default": resource}
         ## There is no scenario for selecting resources for inference. It is forcibly fixed to standard.
         if self.pipeline == "inference":
             self.sm_yaml['pipeline'][self.sm_pipe_pointer]["resource"] = {"default": 'standard'}
             resource = 'standard'
-            msg = f"EdgeApp 에 대한 resource 설정은 현재 미지원 입니다. resource=standard 로 고정 됩니다."
-            print_color(msg, color="yellow")
-        print_color(f"[SUCCESS] Update solution_metadat.yaml:", color='green')
-        print(f"pipeline[{self.sm_pipe_pointer}]: -resource: {resource}")
+            msg = f"EdgeApp resource selection is not supported. << resource = standard >> is fixed"
+            logger.info(msg)
+        logger.info(f"[SUCCESS] Update solution_metadat.yaml")
+        logger.info(f"Set resource: {resource}")
         self._save_yaml()
 
     def load_system_resource(self): 
@@ -634,7 +622,7 @@ class SolutionRegister:
             response = requests.get(aic+api, params=params, cookies=self.aic_cookie)
             response_json = response.json()
         except: 
-            raise NotImplementedError("Failed to get workspaces info.")
+            logger.error("Failed to get workspaces info.")
         ## workspace ecr, s3 info as self variables
         try:
             solution_type = self.solution_info["solution_type"]
@@ -644,18 +632,18 @@ class SolutionRegister:
             self.bucket_name_icon = response_json["s3_bucket_name"]["public"] 
             self.ecr_name = response_json["ecr_base_path"][solution_type]
         except Exception as e:
-            raise ValueError(f"Wrong format of << workspaces >> received from REST API:\n {e}")
+            logger.error(f"Wrong format of << workspaces >> received from REST API:\n {e}")
         ## debugging mode 
         if self.debugging:
-            print_color(f"\n[INFO] S3_BUCUKET_URI:", color='green') 
-            print_color(f'- public: {response_json["s3_bucket_name"]["public"]}', color='cyan') 
-            print_color(f'- private: {response_json["s3_bucket_name"]["public"]}', color='cyan') 
+            logger.info(f"\n[INFO] S3_BUCUKET_URI:") 
+            logger.info(f'- public: {response_json["s3_bucket_name"]["public"]}') 
+            logger.info(f'- private: {response_json["s3_bucket_name"]["public"]}') 
 
-            print_color(f"\n[INFO] ECR_URI:", color='green') 
-            print_color(f'- public: {response_json["ecr_base_path"]["public"]}', color='cyan') 
-            print_color(f'- private: {response_json["ecr_base_path"]["public"]}', color='cyan') 
-        print_color(f"[SYSTEM] AWS ECR: \n {self.ecr_name}", color='green') 
-        print_color(f"[SYSTEM] AWS S3 bucket: \n {self.bucket_name}", color='green') 
+            logger.info(f"\n[INFO] ECR_URI:") 
+            logger.info(f'- public: {response_json["ecr_base_path"]["public"]}') 
+            logger.info(f'- private: {response_json["ecr_base_path"]["public"]}') 
+        logger.info(f"[SYSTEM] AWS ECR: \n {self.ecr_name}") 
+        logger.info(f"[SYSTEM] AWS S3 bucket: \n {self.bucket_name}") 
     
     def set_pipeline_uri(self, mode, data_paths = [], skip_update=False):
         """ If one of the dataset, artifacts, or model is selected, 
@@ -689,33 +677,33 @@ class SolutionRegister:
             else: 
                 uri = {'model_uri': None}
         else:
-            raise ValueError("mode must be one of [data, artifact, model]")
+            logger.error("mode must be one of [data, artifact, model]")
         try: 
             if self.pipeline == 'train':
                 if not self.sm_yaml['pipeline'][self.sm_pipe_pointer]['type'] == 'train':
-                    raise ValueError("Setting << artifact_uri >> in the solution_metadata.yaml is only allowed for << train >> pipeline. \n - current pipeline: {self.pipeline}")
+                    logger.error("Setting << artifact_uri >> in the solution_metadata.yaml is only allowed for << train >> pipeline. \n - current pipeline: {self.pipeline}")
                 ## model uri only in inference pipeine 
                 if mode == "model":
-                    raise ValueError("Setting << model_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
+                    logger.error("Setting << model_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
             ## inference
             else: 
                 if not self.sm_yaml['pipeline'][self.sm_pipe_pointer]['type'] == 'inference':
-                    raise ValueError("Setting << artifact_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
+                    logger.error("Setting << artifact_uri >> in the solution_metadata.yaml is only allowed for << inference >> pipeline. \n - current pipeline: {self.pipeline}")
             if skip_update:
                 pass
             else:
                 self.sm_yaml['pipeline'][self.sm_pipe_pointer].update(uri)
                 self._save_yaml()
-                print_color(f'[SUCCESS] Update solution_metadata.yaml:', color='green')
+                logger.info(f'[SUCCESS] Update solution_metadata.yaml')
                 if mode == "artifact":
-                    print(f'pipeline type: {self.pipeline}, artifact_uri: {uri} ')
+                    logger.info(f'pipeline type: {self.pipeline}, artifact_uri: {uri}')
                 elif mode == "data":
-                    print(f'pipeline type: {self.pipeline}, dataset_uri: {uri} ')
+                    logger.info(f'pipeline type: {self.pipeline}, dataset_uri: {uri}')
                 ## model
                 else: 
-                    print(f'pipeline type:{self.pipeline}, model_uri: {uri} ')
+                    logger.info(f'pipeline type:{self.pipeline}, model_uri: {uri}')
         except Exception as e: 
-            raise NotImplementedError(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{str(e)}")
+            logger.error(f"Failed to set << artifact_uri >> in the solution_metadata.yaml \n{str(e)}")
         return prefix_uri
     
     def register_solution(self): 
@@ -750,31 +738,31 @@ class SolutionRegister:
             response = requests.post(aic+api, params=solution_params, data=data, cookies=self.aic_cookie)
             self.response_solution = response.json()
         except Exception as e: 
-            raise NotImplementedError(f"Failed to register AI solution: \n {str(e)}")
+            logger.error(f"Failed to register AI solution: \n {str(e)}")
         if response.status_code == 200:
-            print_color("[SUCCESS] AI Solution 등록을 성공하였습니다. ", color='cyan')
-            print(f"[INFO] AI solution register response: \n {self.response_solution}")
+            logger.info(f"[INFO] AI solution register response: \n {self.response_solution}")
+            logger.info("[SUCCESS] AI solution is registered")
             ## create interface directory
             try:
                 if os.path.exists(REGISTER_INTERFACE_PATH):
                     shutil.rmtree(REGISTER_INTERFACE_PATH)
                 os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory while registering solution instance: \n {str(e)}")
+                logger.error(f"Failed to generate interface directory while registering solution instance: \n {str(e)}")
             ## json data file save 
             path = REGISTER_INTERFACE_PATH + self.SOLUTION_FILE
             with open(path, 'w') as f:
               json.dump(response.json(), f, indent=4)
-              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+              logger.info(f"[SYSTEM] save register result to {path}")
         elif response.status_code == 400:
-            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            raise ValueError("Error message: {}".format(self.response_solution["detail"]))
+            logger.info("[ERROR] Bad request. Failed to register AI Solution")
+            logger.error("Error message: {}".format(self.response_solution["detail"]))
         elif response.status_code == 422:
-            print_color("[ERROR] AI Solution 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다..", color='red')
-            raise ValueError("Error message: {}".format(self.response_solution["detail"]))
+            logger.info("[ERROR] Failed to validate. Failed to register AI Solution")
+            logger.error("Error message: {}".format(self.response_solution["detail"]))
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-            raise ValueError("Error message: {}".format(self.response_solution["detail"]))
+            logger.info(f"[ERROR] Unsupported error code: {response.status_code}")
+            logger.error("Error message: {}".format(self.response_solution["detail"]))
  
     def select_icon(self, name):
         # FIXME spec-out  
@@ -801,26 +789,26 @@ class SolutionRegister:
 
         """
         self.print_step("Check to access S3")
-        print("**********************************")
+        logger.info("**********************************")
         profile_name = self.infra_setup["AWS_KEY_PROFILE"]
         try:
             self.session = boto3.Session(profile_name=profile_name)
             self.s3_client = self.session.client('s3', region_name=self.infra_setup['REGION'])
         except ProfileNotFound:
-            print_color(f"[WARNING] AWS profile {profile_name} not found. Create session and s3 client without aws profile.", color="yellow")
+            logger.info(f"[WARNING] AWS profile {profile_name} not found. Create session and s3 client without aws profile.")
             self.session = boto3.Session()
             self.s3_client = boto3.client('s3', region_name=self.infra_setup['REGION'])
         except Exception:
-            raise ValueError("The aws credentials are not available.")
-        print_color(f"[INFO] AWS region: {self.infra_setup['REGION']}", color='blue')
+            logger.error("The aws credentials are not available.")
+        logger.info(f"[INFO] AWS region: {self.infra_setup['REGION']}")
         access_check = isinstance(boto3.client('s3', region_name=self.infra_setup['REGION']), botocore.client.BaseClient)
         if access_check == True:       
-            print_color(f"[INFO] AWS S3 access check: OK", color="green")
+            logger.info(f"[INFO] AWS S3 access check: OK")
         else: 
-            raise ValueError(f"[ERROR] AWS S3 access check: Fail")
+            logger.error(f"[ERROR] AWS S3 access check: Fail")
         return access_check
 
-    def _s3_delete(self, s3, bucket_name, s3_path):
+    def _s3_delete(self, s3, bucket_name, s3_path, log_interval=50):
         """ delete s3 path 
         
         Args: 
@@ -833,36 +821,40 @@ class SolutionRegister:
         try: 
             objects_to_delete = s3.list_objects(Bucket=bucket_name, Prefix=s3_path)
             if 'Contents' in objects_to_delete:
-                for obj in objects_to_delete['Contents']:
+                len_obj = len(objects_to_delete['Contents'])
+                for idx, obj in enumerate(objects_to_delete['Contents']):
                     self.s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                    print_color(f'[SYSTEM] Deleted pre-existing S3 object: {obj["Key"]}', color = 'yellow')
+                    if idx % log_interval == 0:
+                        logger.info(f'[SYSTEM] Deleted pre-existing S3 objects --- ( {idx} / {len_obj} )')
             s3.delete_object(Bucket=bucket_name, Key=s3_path)
         except: 
-            raise NotImplementedError("Failed to s3 delete") 
+            logger.error("Failed to s3-delete") 
             
-    def _s3_update(self, s3, bucket_name, data_path, local_folder, s3_path):
-        """ upload data to s3 path 
+    def _s3_update(self, s3, bucket_name, local_folder, s3_path, log_interval=50):
+        """ upload data to s3 path.
         
         Args: 
             bucket_name     (str): s3 bucket name
-            data_path       (str): local data path 
             local_folder    (str): local data directory name
             s3_path         (str): s3 path tobe uploaded
+            log_interval    (int): data upload log interval 
             
         Returns: -
 
         """
-        s3.put_object(Bucket=bucket_name, Key=(s3_path))
-        try:    
-            response = s3.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
-        except NoCredentialsError as e:
-            raise NoCredentialsError(f"[NoCredentialsError] Failed to create s3 bucket and file upload: \n {str(e)}")
-        except Exception as e:
-            raise NotImplementedError(f"Failed to create s3 bucket and file upload: \n {str(e)}")
-        uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
-        print_color(f"[SUCCESS] update data to S3: \n", color='green')
-        print(f"{uploaded_path}")
-        return 
+        ## FIXME s3.put_object(Bucket=bucket_name, Key=(s3_path))
+        for root, dirs, files in os.walk(local_folder):
+            for idx, file in enumerate(files):
+                data_path = os.path.join(root, file)
+                try:    
+                    response = s3.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
+                except NoCredentialsError as e:
+                    logger.error(f"[NoCredentialsError] Failed to create s3 bucket and file upload: \n {str(e)}")
+                except Exception as e:
+                    logger.error(f"Failed to create s3 bucket and file upload: \n {str(e)}")
+                # uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
+                if idx % log_interval == 0:  
+                    logger.info(f"[SUCCESS] uploaded files to {bucket_name + '/' + s3_path} --- ( {idx} / {len(files)} )")
 
     def s3_upload_data(self):
         """ upload data file to s3  
@@ -875,7 +867,7 @@ class SolutionRegister:
         self.print_step(f"Upload {self.pipeline} data to S3")
         if "train" in self.pipeline:
             local_folder = INPUT_DATA_HOME + "train/"
-            print_color(f'[SYSTEM] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
+            logger.info(f'[SYSTEM] Start uploading data into S3 from local folder:\n {local_folder}')
             try: 
                 ## update solution metadata 
                 data_uri_list = []
@@ -886,15 +878,12 @@ class SolutionRegister:
                 s3_prefix_uri = self.set_pipeline_uri(mode="data", data_paths=data_uri_list)
                 ## delete & upload data to S3
                 self._s3_delete(self.s3_client, self.bucket_name, s3_prefix_uri) 
-                for root, dirs, files in os.walk(local_folder):
-                    for file in files:
-                        data_path = os.path.join(root, file)
-                        self._s3_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri)
+                self._s3_update(self.s3_client, self.bucket_name, local_folder, s3_prefix_uri)
             except Exception as e: 
-                raise NotImplementedError(f'[ERROR] Failed to upload local data into S3: \n {str(e)}') 
+                logger.error(f'[ERROR] Failed to upload local data into S3: \n {str(e)}') 
         elif "inference" in self.pipeline:
             local_folder = INPUT_DATA_HOME + "inference/"
-            print_color(f'[INFO] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
+            logger.info(f'[INFO] Start uploading data into S3 from local folder:\n {local_folder}')
             try: 
                 ## update solution metadata
                 data_uri_list = []
@@ -905,14 +894,11 @@ class SolutionRegister:
                 s3_prefix_uri = self.set_pipeline_uri(mode="data", data_paths=data_uri_list)
                 ## delete & upload data to S3
                 self._s3_delete(self.s3_client, self.bucket_name, s3_prefix_uri) 
-                for root, dirs, files in os.walk(local_folder):
-                    for file in files:
-                        data_path = os.path.join(root, file)
-                        self._s3_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri)
+                self._s3_update(self.s3_client, self.bucket_name, local_folder, s3_prefix_uri)
             except Exception as e: 
-                raise NotImplementedError(f'[ERROR] Failed to upload local data into S3: \n {str(e)}') 
+                logger.error(f'[ERROR] Failed to upload local data into S3: \n {str(e)}') 
         else:
-            raise ValueError(f"[ERROR] Not allowed value for << pipeline >>: {self.pipeline}")
+            logger.error(f"[ERROR] Not allowed value for << pipeline >>: {self.pipeline}")
 
     def s3_upload_stream_data(self, stream_id='stream_id', instance_id='insatsnce_id'):
         """ Upload the data existing in the input folder to s3 for streaming.
@@ -928,17 +914,14 @@ class SolutionRegister:
         self.print_step(f"Upload {self.pipeline} data to S3")
         ## only upload train data 
         local_folder = INPUT_DATA_HOME + "train/"
-        print_color(f'[SYSTEM] Start uploading data into S3 from local folder:\n {local_folder}', color='cyan')
+        logger.info(f'[SYSTEM] Start uploading data into S3 from local folder:\n {local_folder}')
         try:
             s3_prefix_uri = "streams/" + f"{stream_id}/{instance_id}/train/data/"
             ## delete & upload data to S3
             self._s3_delete(self.s3_client, self.bucket_name, s3_prefix_uri) 
-            for root, dirs, files in os.walk(local_folder):
-                for file in files:
-                    data_path = os.path.join(root, file)
-                    self._s3_update(self.s3_client, self.bucket_name, data_path, local_folder, s3_prefix_uri)
+            self._s3_update(self.s3_client, self.bucket_name, local_folder, s3_prefix_uri)
         except Exception as e: 
-            raise NotImplementedError(f'[ERROR] Failed to upload local data into S3') 
+            logger.error(f'[ERROR] Failed to upload local data into S3') 
         ## dict for updating solution metadata 
         data_paths = []
         for item in os.listdir(local_folder):
@@ -972,20 +955,17 @@ class SolutionRegister:
             if 'Contents' in objects_to_delete:
                 for obj in objects_to_delete['Contents']:
                     self.s3_client.delete_object(Bucket=bucket_name, Key=obj['Key'])
-                    print_color(f'[INFO] Deleted pre-existing S3 object:', color = 'yellow')
-                    print(f'{obj["Key"]}')
+                    logger.info(f'[INFO] Deleted pre-existing S3 object: \n {obj["Key"]}')
             self.s3_client.delete_object(Bucket=bucket_name, Key=s3_path)
         self.s3_client.put_object(Bucket=bucket_name, Key=(s3_path +'/'))
         try:    
             response = self.s3_client.upload_file(data_path, bucket_name, s3_path + data_path[len(local_folder):])
         except NoCredentialsError as e:
-            raise NoCredentialsError(f"[NoCredentialsError] Failed to upload file onto s3: \n {str(e)}")
+            logger.error(f"[NoCredentialsError] Failed to upload file onto s3: \n {str(e)}")
         except Exception as e:
-            raise NotImplementedError(f"Failed to upload file onto s3: \n {str(e)}")
+            logger.error(f"Failed to upload file onto s3: \n {str(e)}")
         uploaded_path = bucket_name + '/' + s3_path + data_path[len(local_folder):]
-        print_color(f"[SYSTEM] S3 object key (new): ", color='green')
-        print(f"{uploaded_path }")
-        return 
+        logger.info(f"[SYSTEM] S3 object uploaded: {uploaded_path}")
 
     def s3_upload_artifacts(self):
         """ upload artifacts to s3
@@ -999,19 +979,19 @@ class SolutionRegister:
         try: 
             s3_prefix_uri = self.set_pipeline_uri(mode="artifact")
         except Exception as e: 
-            raise NotImplementedError(f'Failed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
+            logger.error(f'Failed updating solution_metadata.yaml - << artifact_uri >> info / pipeline: {self.pipeline} \n{e}')
         if "train" in self.pipeline:
             ## local path of artifacts compressed file
             artifacts_path = _tar_dir("train_artifacts") 
             local_folder = os.path.split(artifacts_path)[0] + '/'
-            print_color(f'[SYSTEM] Start uploading train artifacts into S3 from local folder:\n {local_folder}', color='cyan')
+            logger.info(f'[SYSTEM] Start uploading train artifacts into S3 from local folder:\n {local_folder}')
             self.s3_process(self.bucket_name, artifacts_path, local_folder, s3_prefix_uri) 
             shutil.rmtree(REGISTER_ARTIFACT_PATH , ignore_errors=True)
         elif "inference" in self.pipeline:
             ## upload inference artifacts  
             artifacts_path = _tar_dir("inference_artifacts")  
             local_folder = os.path.split(artifacts_path)[0] + '/'
-            print_color(f'[INFO] Start uploading inference artifacts into S3 from local folder:\n {local_folder}', color='cyan')
+            logger.info(f'[INFO] Start uploading inference artifacts into S3 from local folder:\n {local_folder}')
             self.s3_process(self.bucket_name, artifacts_path, local_folder, s3_prefix_uri)
             shutil.rmtree(REGISTER_ARTIFACT_PATH , ignore_errors=True)
             ## upload model.tar.gz to s3 
@@ -1022,7 +1002,7 @@ class SolutionRegister:
                 ## model tar.gz saved local path 
                 model_path = _tar_dir("train_artifacts/models")
                 local_folder = os.path.split(model_path)[0] + '/'
-                print_color(f'\n[SYSTEM] Start uploading << model >> into S3 from local folder: \n {local_folder}', color='cyan')
+                logger.info(f'\n[SYSTEM] Start uploading << model >> into S3 from local folder: \n {local_folder}')
                 ## (Note) Since the train artifacts have already been uploaded to the same path, \
                 ## do not delete the object when uploading model.tar.gz.
                 self.s3_process(self.bucket_name, model_path, local_folder, train_artifacts_s3_path, delete=False) 
@@ -1031,11 +1011,11 @@ class SolutionRegister:
                 ## None (null) if single pipeline  
                 self.set_pipeline_uri(mode="model")
             except Exception as e: 
-                raise NotImplementedError(f'[ERROR] Failed updating solution_metadata.yaml - << model_uri >> info / pipeline: {self.pipeline} \n{e}')
+                logger.error(f'[ERROR] Failed updating solution_metadata.yaml - << model_uri >> info / pipeline: {self.pipeline} \n{e}')
             finally:
                 shutil.rmtree(REGISTER_MODEL_PATH, ignore_errors=True)
         else:
-            raise ValueError(f"Not allowed value for << pipeline >>: {self.pipeline}")
+            logger.error(f"Not allowed value for << pipeline >>: {self.pipeline}")
 
     def make_docker(self, skip_build=False):
         """ Create a docker for upload to ECR.
@@ -1079,12 +1059,12 @@ class SolutionRegister:
                     ## remote docker build & ecr push 
                     codebuild_client, build_id = self._aws_codebuild() 
                 except Exception as e: 
-                    raise NotImplementedError(str(e))
+                    logger.error(str(e))
             else: 
                 start = time.time()
                 self._build_docker(is_docker=is_docker)
                 end = time.time()
-                print(f"{builder} build time : {end - start:.5f} sec")
+                logger.info(f"{builder} build time : {end - start:.5f} sec")
         else:
             self._set_aws_ecr_skipbuild()
         if self.infra_setup["BUILD_METHOD"] == "codebuild": 
@@ -1106,7 +1086,7 @@ class SolutionRegister:
         ecr_scope = self.infra_setup["WORKSPACE_NAME"].split('-')[0] 
         self.ecr_repo = self.ecr_name.split("/")[1] + '/' + ecr_scope + "/ai-solutions/" + self.solution_name + "/" + self.pipeline + "/"  + self.solution_name  
         self.ecr_full_url = self.ecr_url + '/' + self.ecr_repo 
-        print_color(f"[SYSTEM] Target AWS ECR repository: \n {self.ecr_repo}", color='cyan')
+        logger.info(f"[SYSTEM] Target AWS ECR repository: \n {self.ecr_repo}")
 
     def _set_aws_ecr(self):
         """ set aws ecr 
@@ -1126,23 +1106,23 @@ class SolutionRegister:
             try:
                 self.ecr_client = self.session.client('ecr',region_name=self.infra_setup['REGION'])
             except:
-                print_color(f"[WARNING] ecr client creation with session failed. Start creating ecr client from boto3", color="yellow")
+                logger.info(f"[WARNING] ecr client creation with session failed. Start creating ecr client from boto3")
                 self.ecr_client = boto3.client('ecr', region_name=self.infra_setup['REGION'])
         except Exception as e:
-            raise ValueError(f"Failed to create ecr client. \n {str(e)}")
+            logger.error(f"Failed to create ecr client. \n {str(e)}")
         ## if same ecr named exists, delete and re-create 
         ## During a solution update, only the own version should be deleted - deleting the entire repo would make the cache feature unusable.
         if self.solution_info['solution_update'] == False:
             try:
                 self.ecr_client.delete_repository(repositoryName=self.ecr_repo, force=True)
-                print_color(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...", color='yellow')
+                logger.info(f"[SYSTEM] Repository {self.ecr_repo} already exists. Deleting...")
             except Exception as e:
-                print_color(f"[WARNING] Failed to delete pre-existing ECR Repository. \n {str(e)}", color='yellow')
+                logger.info(f"[WARNING] Failed to delete pre-existing ECR Repository. \n {str(e)}")
         else: 
             try:
-                print_color(f"Now in solution update mode. Only delete current version docker image.", color='yellow')
+                logger.info(f"Now in solution update mode. Only delete current version docker image.")
                 resp_ecr_image_list = self.ecr_client.list_images(repositoryName=self.ecr_repo)
-                print(resp_ecr_image_list)
+                logger.info(f"ecr image list response: \n {resp_ecr_image_list}")
                 cur_ver_image = []
                 for image in resp_ecr_image_list['imageIds']:
                     if 'imageTag' in image.keys():
@@ -1152,8 +1132,8 @@ class SolutionRegister:
                 if len(cur_ver_image) != 0: 
                     resp_delete_cur_ver = self.ecr_client.batch_delete_image(repositoryName=self.ecr_repo, imageIds=cur_ver_image)
             except Exception as e:
-                raise NotImplementedError(f'Failed to delete current versioned image \n {str(e)}') 
-        print_color(f"[SYSTEM] target AWS ECR url: \n {self.ecr_full_url}", color='blue')
+                logger.error(f'Failed to delete current version image \n {str(e)}') 
+        logger.info(f"[SYSTEM] target AWS ECR url: \n {self.ecr_full_url}")
     
     def buildah_login(self, password):
         """ buildah login
@@ -1177,12 +1157,12 @@ class SolutionRegister:
             p1.stdout.close()  
             output, _ = p2.communicate()
             if p2.returncode != 0:
-                raise RuntimeError(output.decode('utf-8'))
-            print(f"Successfully logged in to {self.ecr_url} with Buildah")
+                logger.error(output.decode('utf-8'))
+            logger.info(f"Successfully logged in - {self.ecr_url} with Buildah")
         except subprocess.CalledProcessError as e:
-            print(f"An error occurred during Buildah login: {e.output.decode('utf-8')}")
+            logger.info(f"An error occurred during Buildah login: \n {e.output.decode('utf-8')}")
         except RuntimeError as e:
-            print(e)
+            logger.error(str(e))
     
     def get_user_password(self):
         """ get user and aws password 
@@ -1202,7 +1182,7 @@ class SolutionRegister:
             import base64
             user, password = base64.b64decode(token).decode('utf-8').split(':')
         except ClientError as e:
-            print(f"An error occurred: {e}")
+            logger.info(f"An error occurred: {str(e)}")
             return None
         return user, password
     
@@ -1220,17 +1200,16 @@ class SolutionRegister:
         if is_docker:
             self.docker_client = docker.from_env(version='1.24')
             if not self.docker_client.ping():
-                raise ValueError("Docker 연결을 실패 했습니다")
+                logger.error("Docker connection error")
             try:
                 ## aws ecr login
                 login_results = self.docker_client.login(username=user, password=password, registry=self.ecr_url, reauth=True)
-                print('login_results {}'.format(login_results))
-                print(f"Successfully logged in to {self.ecr_url}")
+                logger.info(f'[SYSTEM] AWS ECR | {builder} login result: {login_results}')
+                logger.info(f"[SUCCESS] logged in to {self.ecr_url}")
             except APIError as e:
-                print(f"An error occurred during {builder} login: {e}")
+                logger.error(f"An error occurred during {builder} login: {e}")
         else:
             self.buildah_login(password)
-        print_color(f"[SYSTEM] AWS ECR | {builder} login result:", color='cyan')
 
     def _parse_tags(self, tags):
         """ parse tag string into dictionary list 
@@ -1268,10 +1247,10 @@ class SolutionRegister:
                 ## parse tags 
                 tags_new = self._parse_tags(tags)
                 resp = self.ecr_client.tag_resource(resourceArn=repository_arn, tags=tags_new)
-                print_color(f"[SYSTEM] AWS ECR create-repository response: ", color='cyan')
-                print(f"{resp}")
+                logger.info(f"[SYSTEM] AWS ECR create-repository response: ")
+                logger.info(f"{resp}")
             except Exception as e:
-                raise NotImplementedError(f"Failed to AWS ECR create-repository:\n + {e}")
+                logger.error(f"Failed to AWS ECR create-repository:\n + {str(e)}")
 
     def _aws_codebuild(self):
         """ run aws codebuild for remote docker build & push  
@@ -1289,7 +1268,7 @@ class SolutionRegister:
             iam_client = session.client('iam', region_name=self.infra_setup["REGION"])
             codebuild_role = iam_client.get_role(RoleName = 'CodeBuildServiceRole')['Role']['Arn']
         except: 
-            raise NotImplementedError("Failed to get aws codebuild arn")
+            logger.error("Failed to get aws codebuild Arn")
         ## 1. make buildspec.yml  
         if self.pipeline == 'train':
             buildspec = self._make_buildspec_commands()
@@ -1324,35 +1303,35 @@ class SolutionRegister:
         try: 
             with open(AWS_CODEBUILD_ZIP_PATH + AWS_CODEBUILD_BUILDSPEC_FILE, 'w') as file:
                 yaml.safe_dump(buildspec, file)
-            print_color(f"[SUCCESS] Saved {AWS_CODEBUILD_BUILDSPEC_FILE} file for aws codebuild", color='green')
+            logger.info(f"[SUCCESS] Saved {AWS_CODEBUILD_BUILDSPEC_FILE} file for aws codebuild")
         except: 
-            raise NotImplementedError(f"Failed to save {AWS_CODEBUILD_BUILDSPEC_FILE} file for aws codebuild")
+            logger.error(f"Failed to save {AWS_CODEBUILD_BUILDSPEC_FILE} file for aws codebuild")
         ## AWS_CODEBUILD_ZIP_PATH --> .zip (AWS_CODEBUILD_S3_SOLUTION_FILE)
         try: 
             shutil.make_archive(PROJECT_HOME + AWS_CODEBUILD_S3_SOLUTION_FILE, 'zip', AWS_CODEBUILD_ZIP_PATH)
-            print_color(f"[SUCCESS] Saved {AWS_CODEBUILD_S3_SOLUTION_FILE}.zip file for aws codebuild", color='green')
+            logger.info(f"[SUCCESS] Saved {AWS_CODEBUILD_S3_SOLUTION_FILE}.zip file for aws codebuild")
         except: 
-            raise NotImplementedError(f"Failed to save {AWS_CODEBUILD_S3_SOLUTION_FILE}.zip file for aws codebuild")
+            logger.error(f"Failed to save {AWS_CODEBUILD_S3_SOLUTION_FILE}.zip file for aws codebuild")
         ## 4. s3 upload solution.zip
         local_file_path = PROJECT_HOME + AWS_CODEBUILD_S3_SOLUTION_FILE + '.zip'
         local_folder = os.path.split(local_file_path)[0] + '/'
-        print_color(f'\n[SYSTEM] Start uploading << {AWS_CODEBUILD_S3_SOLUTION_FILE}.zip >> into S3 from local folder:\n {local_folder}', color='cyan')
+        logger.info(f'\n[SYSTEM] Start uploading << {AWS_CODEBUILD_S3_SOLUTION_FILE}.zip >> into S3 from local folder:\n {local_folder}')
         self.s3_process(self.bucket_name, local_file_path, local_folder, s3_prefix_uri)
         ## 5. run aws codebuild create-project
         try:
             codebuild_client = session.client('codebuild', region_name=self.infra_setup['REGION'])
         except ProfileNotFound:
-            print_color(f"[INFO] Start AWS codebuild access check without key file.", color="blue")
+            logger.info(f"[INFO] Start AWS codebuild access check without key file.")
             codebuild_client = boto3.client('codebuild', region_name=self.infra_setup['REGION'])
         except Exception as e:
-            raise ValueError(f"The credentials are not available: \n {str(e)}")
+            logger.error(f"The credentials are not available: \n {str(e)}")
         ## If a project with the same name already exists, delete it.
         ws_name = self.infra_setup["WORKSPACE_NAME"].split('-')[0]
         ## (Note) '/' not allowed in {project_name}
         project_name = f'{ws_name}_ai-solutions_{self.solution_name}_v{self.solution_version_new}'
         if project_name in codebuild_client.list_projects()['projects']: 
             resp_delete_proj = codebuild_client.delete_project(name=project_name) 
-            print_color(f"[INFO] Deleted pre-existing codebuild project: {project_name} \n {resp_delete_proj}", color='yellow')
+            logger.info(f"[INFO] Deleted pre-existing codebuild project: {project_name} \n {resp_delete_proj}")
         resp_create_proj = codebuild_client.create_project(name = project_name, \
                                                 source = codebuild_project_json['source'], \
                                                 artifacts = codebuild_project_json['artifacts'], \
@@ -1363,19 +1342,19 @@ class SolutionRegister:
                                                 serviceRole = codebuild_project_json['serviceRole'])
         ## 6. run aws codebuild start-build 
         if type(resp_create_proj)==dict and 'project' in resp_create_proj.keys():
-            print_color(f"[SUCCESS] CodeBuild create project response: \n {resp_create_proj}", color='green')
+            logger.info(f"[SUCCESS] CodeBuild create project response: \n {resp_create_proj}")
             proj_name = resp_create_proj['project']['name']
             assert type(proj_name) == str
             try: 
                 resp_start_build = codebuild_client.start_build(projectName = proj_name)
             except: 
-                raise NotImplementedError(f"[FAIL] Failed to start-build CodeBuild project: {proj_name}")
+                logger.error(f"[FAIL] Failed to start-build CodeBuild project: {proj_name}")
             if type(resp_start_build)==dict and 'build' in resp_start_build.keys(): 
                 build_id = resp_start_build['build']['id']
             else: 
-                raise ValueError(f"[FAIL] << build id >> not found in response of codebuild - start_build")
+                logger.error(f"[FAIL] << build id >> not found in response of codebuild - start_build")
         else: 
-            raise NotImplementedError(f"[FAIL] Failed to create CodeBuild project \n {resp_create_proj}")           
+            logger.error(f"[FAIL] Failed to create CodeBuild project \n {resp_create_proj}")           
         return codebuild_client, build_id
 
     def _make_codebuild_s3_project(self, bucket_uri, codebuild_role):
@@ -1412,7 +1391,7 @@ class SolutionRegister:
         codebuild_project_json['cache']['location'] = bucket_uri + 'cache'
         codebuild_project_json['logsConfig']['s3Logs']['location'] = bucket_uri + 'logs'
         codebuild_project_json['logsConfig']['s3Logs']['encryptionDisabled'] = True 
-        print('codebuild project json: \n', codebuild_project_json)
+        logger.info(f'codebuild project json: \n {codebuild_project_json}')
         return codebuild_project_json
         
     def _make_buildspec_commands(self):
@@ -1480,7 +1459,7 @@ class SolutionRegister:
         del buildspec['phases']['post_build']
         return buildspec
     
-    def _batch_get_builds(self, codebuild_client, build_id, status_period=20):
+    def _batch_get_builds(self, codebuild_client, build_id, status_period=30):
         """ batch get codebuild status 
         
         Args: 
@@ -1497,22 +1476,21 @@ class SolutionRegister:
         while True: 
             resp_batch_get_builds = codebuild_client.batch_get_builds(ids = [build_id])  
             if type(resp_batch_get_builds)==dict and 'builds' in resp_batch_get_builds.keys():
-                print_color(f'Response-batch-get-builds: ', color='blue')
-                print(resp_batch_get_builds)
-                print('-------------------------------------------------------------------------------- \n')
+                logger.info(f'Response-batch-get-builds: \n {resp_batch_get_builds}')
+                logger.info('-------------------------------------------------------------------------------- \n')
                 ## assert len(resp_batch_get_builds) == 1 
                 ## Since there will only be one build per pipeline, only one item is embedded in the ids list.
                 build_status = resp_batch_get_builds['builds'][0]['buildStatus']
                 ## 'SUCCEEDED'|'FAILED'|'FAULT'|'TIMED_OUT'|'IN_PROGRESS'|'STOPPED'
                 if build_status == 'SUCCEEDED':
-                    print_color(f"[SUCCESS] Completes remote build with AWS CodeBuild", color='green')
+                    logger.info(f"[SUCCESS] Completes remote build with AWS CodeBuild")
                     break 
                 elif build_status == 'IN_PROGRESS': 
-                    print_color(f"[IN PROGRESS] In progress.. remote building with AWS CodeBuild", color='blue')
+                    logger.info(f"[IN PROGRESS] In progress.. remote building with AWS CodeBuild")
                     time.sleep(status_period)
                 else: 
                     self._download_codebuild_s3_log(resp_batch_get_builds) 
-                    raise NotImplementedError(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
+                    logger.error(f"[FAIL] Failed to remote build with AWS CodeBuild: \n Build Status - {build_status}")
         ## TODO s3 delete .zip ? 
         return build_status
 
@@ -1531,9 +1509,9 @@ class SolutionRegister:
             s3_bucket, file_key = s3_log_path.split('/', maxsplit=1) 
             local_file_path = PROJECT_HOME + f"codebuild_fail_log_{codebuild_id}.gz".replace(':', '_')
             self.s3_client.download_file(s3_bucket, file_key, local_file_path)
-            print_color(f'\n Downloaded: s3://{s3_bucket}/{file_key} \n --> {local_file_path} \n Please check the log!', color='red')
+            logger.info(f'\n Downloaded: s3://{s3_bucket}/{file_key} \n --> {local_file_path} \n Please check the log!')
         except Exception as e: 
-            raise NotImplementedError(f"Failed to download codebuild fail log \n {e}")
+            logger.error(f"Failed to download codebuild fail log \n {e}")
         
     def _build_docker(self, is_docker):
         """ build docker image
@@ -1562,7 +1540,7 @@ class SolutionRegister:
                                 last_update_time = time.time()
                     sys.stdout.write(' Done!\n')
             except Exception as e:
-                print(f"An error occurred: {e}")
+                logger.info(f"An error occurred: {str(e)}")
         else:
             with open(log_file_path, "wb") as log_file:
                 command = ['sudo', 'buildah', 'bud', '--isolation', 'chroot', '-t', image_tag, '.']
@@ -1578,7 +1556,7 @@ class SolutionRegister:
                 if return_code == 0:
                     sys.stdout.write(' Done!\n')
                 else:
-                    raise ValueError(f"{self.pipeline}_build.log를 확인하세요")
+                    logger.error(f"[ERROR] Please check error log: {self.pipeline}_build.log")
 
     def docker_push(self):
         """ docker push to ecr
@@ -1597,9 +1575,9 @@ class SolutionRegister:
                     ## processing status print (...)
                     sys.stdout.write('.')
                     sys.stdout.flush()
-                print("\nDone")
+                logger.info("docker push done")
             except Exception as e:
-                print(f"Exception occurred: {e}")
+                logger.info(f"Exception occurred: {str(e)}")
         elif self.infra_setup['BUILD_METHOD'] == 'buildah':
             subprocess.run(['sudo', 'buildah', 'push', f'{self.ecr_full_url}:v{self.solution_version_new}'])
             subprocess.run(['sudo', 'buildah', 'logout', '-a'])
@@ -1619,11 +1597,11 @@ class SolutionRegister:
             ## ful url contains tags info.
             data = {'container_uri': f'{self.ecr_full_url}:v{self.solution_version_new}'} 
             self.sm_yaml['pipeline'][self.sm_pipe_pointer].update(data)
-            print_color(f"[SYSTEM] Completes setting << container_uri >> in solution_metadata.yaml:", color='green')
-            print(f"container_uri: {data['container_uri']}")
+            logger.info(f"[SYSTEM] Completes setting << container_uri >> in solution_metadata.yaml:")
+            logger.info(f"container_uri: {data['container_uri']}")
             self._save_yaml()
         except Exception as e: 
-            raise NotImplementedError(f"Failed to set << container_uri >> in the solution_metadata.yaml \n {str(e)}")
+            logger.error(f"Failed to set << container_uri >> in the solution_metadata.yaml \n {str(e)}")
 
     def set_user_parameters(self, display_table=False):
         """ Display the parameters created in experimental_plan.yaml and define their functionality.
@@ -1635,7 +1613,7 @@ class SolutionRegister:
             candidate_format    (dict): candidate params format
 
         """
-        self.print_step(f"Set {self.pipeline} user parameters:")
+        self.print_step(f"Set {self.pipeline} user parameters")
         def rename_key(d, old_key, new_key): 
             if old_key in d:
                 d[new_key] = d.pop(old_key)
@@ -1706,11 +1684,11 @@ class SolutionRegister:
                                                             if user_ui_arg == detail_name:
                                                                 filtered_new_step_args.append(detail_step_info)
                                                     else: 
-                                                        print_color(f"<< ui_args >> key not found in {step_name} step", color='yellow')
+                                                        logger.info(f"<< ui_args >> key not found in {step_name} step")
                                     subkeys['user_parameters'][cnt]['args'] = filtered_new_step_args
                         args_diff = list(set(user_names) - set(detail_names))
                         if len(args_diff) != 0: 
-                            raise ValueError(f"These ui arg keys are not in ui_args_detail:\n {args_diff}")
+                            logger.error(f"These ui arg keys are not in ui_args_detail:\n {args_diff}")
                 self.sm_yaml['pipeline'][self.sm_pipe_pointer].update({'parameters':subkeys})
                 ## save yaml
                 self._save_yaml()
@@ -1752,9 +1730,9 @@ class SolutionRegister:
                     table_idx += 1
                 step_idx += 1
         if display_table:
-            print_color(columns, color='cyan')
+            logger.info(columns)
             for i in item_list: 
-                print_color(i, color='cyan')
+                logger.info(f"{i}")
         return self.candidate_format
     
     def register_solution_instance(self): 
@@ -1769,21 +1747,20 @@ class SolutionRegister:
         self.login()
         if os.path.exists(REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE):
             path = REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE
-            print(f'[SYSTEM] AI solution instance 가 등록되어 있어 과정을 생략합니다. (등록정보: {path})')
+            logger.info(f'[SYSTEM] AI solution instance already registered. (register path: {path})')
             return 
         else:
             path = REGISTER_INTERFACE_PATH + self.SOLUTION_FILE
-            msg = f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다."
+            msg = f"[SYSTEM] Check AI solution register info. at {path}"
             load_response = self._load_response_yaml(path, msg)
-        print_color('load_response: \n', color='blue')
-        print(load_response)
+        logger.info(f'load_response: \n {load_response}')
         ## instance name
         name = load_response['name'] + \
             "-" + f'v{load_response["versions"][0]["version"]}'
         self.solution_instance_params = {
             "workspace_name": load_response['scope_ws']
         }
-        print_color(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}", color='blue')
+        logger.info(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}")
         ## read solution metadata  
         with open(SOLUTION_META, 'r') as file:
             yaml_data = yaml.safe_load(file)
@@ -1806,31 +1783,31 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         self.response_solution_instance = response.json()
         if response.status_code == 200:
-            print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
-            print(f"[INFO] response: \n {self.response_solution_instance}")
+            logger.info(f"[INFO] response: \n {self.response_solution_instance}")
+            logger.info("[SUCCESS] AI solution instance is registered")
             ## create interface directory
             try:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
+                logger.error(f"Failed to generate interface directory: \n {str(e)}")
             ## save json to file
             path = REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE
             with open(path, 'w') as f:
               json.dump(self.response_solution_instance, f, indent=4)
-              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+              logger.info(f"[SYSTEM] save register result at {path}")
         elif response.status_code == 400:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            logger.error("[ERROR] Bad Request. Failed to register AI solution instance.")
             self.delete_stream()
             self.delete_solution()
-            raise ValueError("Error message: ", self.response_solution_instance["detail"])
+            logger.error("Error message: {}".format(self.response_solution_instance["detail"]))
         elif response.status_code == 422:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
+            logger.error("[ERROR] Failed to validate. Failed to register AI solution instance.")
             self.delete_stream()
             self.delete_solution()
-            raise ValueError("Error message: ", self.response_solution_instance["detail"])
+            logger.error("Error message: {}".format(self.response_solution_instance["detail"]))
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            logger.info(f"[ERROR] Unsupported error code: {response.status_code}")
             self.delete_stream()
             self.delete_solution()
     
@@ -1846,11 +1823,11 @@ class SolutionRegister:
         ## file load 
         if os.path.exists(REGISTER_INTERFACE_PATH + self.STREAM_FILE):
             path = REGISTER_INTERFACE_PATH + self.STREAM_FILE
-            print(f'[SYSTEM] AI solution instance 가 등록되어 있어 과정을 생략합니다. (등록정보: {path})')
+            logger.info(f'[SYSTEM] AI solution stream is already registered (register path: {path})')
             return 
         else:
             path = REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE
-            msg = f"[SYSTEM] AI solution instance 등록 정보를 {path} 에서 확인합니다."
+            msg = f"[SYSTEM] Check AI solution stream register info at {path}"
             load_response = self._load_response_yaml(path, msg)
         ## register stream  
         params = {
@@ -1871,30 +1848,30 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         self.response_stream = response.json()
         if response.status_code == 200:
-            print_color("[SUCCESS] Stream 등록을 성공하였습니다. ", color='cyan')
-            print(f"[INFO] response: \n {self.response_stream}")
+            logger.info(f"[INFO] response: \n {self.response_stream}")
+            logger.info("[SUCCESS] Stream is registered")
             ## create interface directory
             try:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
+                logger.error(f"Failed to generate interface directory: \n {str(e)}")
             ## save json to file 
             path = REGISTER_INTERFACE_PATH + self.STREAM_FILE
             with open(path, 'w') as f:
               json.dump(self.response_stream, f, indent=4)
-              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+              logger.info(f"[SYSTEM] save register result at {path}")
         elif response.status_code == 400:
             self.delete_solution()
-            print_color("[ERROR] Stream 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.response_stream["detail"])
+            logger.info("Error message: {}".format(self.response_stream["detail"]))
+            logger.error(f"[ERROR] Bad request. Failed to register stream.")
         elif response.status_code == 422:
             self.delete_solution()
-            print_color("[ERROR] Stream 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.response_stream["detail"])
+            logger.info("Error message: {}".format(self.response_stream["detail"]))
+            logger.error("[ERROR] Failed to validate. Failed to register stream.")
         else:
             self.delete_solution()
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
     
     def request_run_stream(self): 
         """ request train for stream
@@ -1907,14 +1884,14 @@ class SolutionRegister:
         self.print_step("Request AI solution stream run")
         ## stream info. file load 
         path = REGISTER_INTERFACE_PATH + self.STREAM_FILE
-        msg = f"[SYSTEM] Stream 등록 정보를 {path} 에서 확인합니다."
+        msg = f"[SYSTEM] Check stream register info at {path}"
         load_response = self._load_response_yaml(path, msg)
         ## stream params
         stream_params = {
             "stream_id": load_response['id'],
             "workspace_name": load_response['workspace_name']
         }
-        pprint(stream_params)
+        logger.info("{}".format(stream_params))
         ## Upload train sample data to the s3 path required by the stream (similar to edge conductor).
         dataset_uri = self.s3_upload_stream_data(stream_id=load_response['id'], instance_id=load_response['instance_id'])
         ## read solution metadata  
@@ -1937,37 +1914,36 @@ class SolutionRegister:
         response_json = response.json()
 
         if response.status_code == 200:
-            print_color("[SUCCESS] Stream Run 요청을 성공하였습니다. ", color='cyan')
-            print(f"[INFO] response: \n {response_json}")
+            logger.info("[SUCCESS] Stream-run requested")
+            logger.info(f"[INFO] response: \n {response_json}")
             ## create interface directory
             try:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
+                logger.error(f"Failed to generate interface directory: \n {str(e)}")
             ## save json to file
             path = REGISTER_INTERFACE_PATH + self.STREAM_RUN_FILE
             with open(path, 'w') as f:
               json.dump(response_json, f, indent=4)
-              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+              logger.info(f"[SYSTEM] save stream-run result at {path}")
         elif response.status_code == 400:
             self.delete_stream()
             self.delete_solution_instance()
             self.delete_solution()
-            print_color("[ERROR] Stream Run 요청을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            raise ValueError("Error message: {}".format(response_json["detail"]))
+            logger.info("Error message: {}".format(response_json["detail"]))
+            logger.error("[ERROR] Bad request. Failed to requeset stream-run")
         elif response.status_code == 422:
             self.delete_stream()
             self.delete_solution_instance()
             self.delete_solution()
-            print_color("[ERROR] Stream Run 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            raise ValueError("Error message: {}".format(response_json["detail"]))
+            logger.info("Error message: {}".format(response_json["detail"]))
+            logger.error("[ERROR] Failed to validate. Failed to requeset stream-run")
         else:
             self.delete_stream()
             self.delete_solution_instance()
             self.delete_solution()
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-            raise ValueError(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})")
+            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
 
     def get_log_error(self):
         """ get error log
@@ -1977,6 +1953,12 @@ class SolutionRegister:
         Returns: -
 
         """
+        s3 = self.session.client('s3')
+        file_name = 'train_artifacts.tar.gz'
+        error_msg = "[ERROR]"
+        process_log = 'log/process.log'
+        pipeline_log = 'log/pipeline.log'
+        step = ""
         def _get_log_error(log_file_name, step = ""):
             error_started = False
             log_file = tar.extractfile(log_file_name)
@@ -1986,23 +1968,16 @@ class SolutionRegister:
                     if "current step" in msg:
                         step = msg.split(":")[1].replace(" ", "")
                     if error_msg in msg:
-                        print(f"error step is {step}")
+                        logger.info(f"error step: {step}")
                         error_started = True
                     if error_started:
-                        print(msg)
+                        logger.info(msg)
             log_file.close()
-        file_name = 'train_artifacts.tar.gz'
-        error_msg = "[ERROR]"
-        process_log = 'log/process.log'
-        pipeline_log = 'log/pipeline.log'
-        step = ""
-        s3 = self.session.client('s3')
         ## FIXME only supports train 
         s3_tar_file_key = "ai-solutions/" + self.solution_name + f"/v{self.solution_version_new}/" + 'train'  + f"/artifacts/{file_name}"
         try:
             s3_object = s3.get_object(Bucket=self.bucket_name, Key=s3_tar_file_key)
             s3_streaming_body = s3_object['Body']
-
             with io.BytesIO(s3_streaming_body.read()) as tar_gz_stream:
                 ## go to stream start point
                 tar_gz_stream.seek(0)  
@@ -2011,11 +1986,11 @@ class SolutionRegister:
                         _get_log_error(process_log, step)
                         _get_log_error(pipeline_log, step)
                     except KeyError:
-                        print(f'log file is not exist in the tar archive')
+                        logger.info(f'log file is not exist in the tar archive')
         except Exception as e:
-            raise NotImplementedError(str(e))
+            logger.error(str(e))
         
-    def get_stream_status(self, status_period=20):
+    def get_stream_status(self, status_period=30):
         """ Proceed with the action handling for each status supported by KUBEFLOW_STATUS. KUBEFLOW_STATUS options include 
             ("Pending", "Running", "Succeeded", "Skipped", "Failed", "Error"). 
                 Pending: Notifies that the docker container is about to run.
@@ -2034,7 +2009,7 @@ class SolutionRegister:
         self.print_step("Get AI solution stream status")
         ## stream file load 
         path = REGISTER_INTERFACE_PATH + self.STREAM_RUN_FILE
-        msg = f"[SYSTEM] Stream 실행 정보를 {path} 에서 확인합니다."
+        msg = f"[SYSTEM] Check stream status at {path}"
         load_response = self._load_response_yaml(path, msg)
 
         stream_history_params = {
@@ -2057,53 +2032,51 @@ class SolutionRegister:
                 status = self.response_stream_status["status"]
                 status = status.lower()
                 if not status in KUBEFLOW_STATUS:
-                    raise ValueError(f"[ERROR] 지원하지 않는 status 입니다. (status: {status})")
+                    logger.error(f"[ERROR] Unsupported stream status (status: {status})")
                 end_time = time.time()
                 elapsed_time = end_time - start_time
                 elapsed_time_str = time.strftime(time_format, time.localtime(elapsed_time))
                 if status == "succeeded":
-                    print_color(f"[SUCCESS] (run_time: {elapsed_time_str}) Train pipeline (status:{status}) 정상적으로 실행 하였습니다. ", color='green')
+                    logger.info(f"[SUCCESS] (run_time: {elapsed_time_str}) Train pipeline succeeds (status:{status})")
                     ## save json to file 
                     path = REGISTER_INTERFACE_PATH + self.STREAM_STATUS_FILE
                     with open(path, 'w') as f:
                       json.dump(self.response_stream_status, f, indent=4)
-                      print_color(f"[SYSTEM] status 확인 결과를 {path} 에 저장합니다.",  color='green')
+                      logger.info(f"[SYSTEM] Save stream status result at {path}")
                     return status 
                 elif status == "failed":
-                    print_color(f"[ERROR] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 실패 하였습니다. ", color='red')
+                    logger.info(f"[ERROR] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline failed (status:{status})")
                     return status 
                 elif status == "pending":
-                    print_color(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 준비 중입니다. ", color='yellow')
+                    logger.info(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline is pending (status:{status})")
                     continue
                 elif status == "running":
-                    print_color(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 실행 중입니다. ", color='yellow')
+                    logger.info(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline is running (status:{status})")
                     continue
                 elif status == "skipped":
-                    print_color(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 스킵 되었습니다. ", color='yellow')
+                    logger.info(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline is skipped (status:{status})")
                     return status 
                 elif status == "error":
-                    print_color(f"[ERROR] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline (status:{status}) 에러 발생 하였습니다. ", color='red')
+                    logger.info(f"[ERROR] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline error (status:{status})")
                     return status 
                 else:
-                    raise ValueError(f"[ERROR] 지원하지 않는 status 입니다. (status: {status})")
+                    logger.error(f"[ERROR] Unsupported stream status (status: {status})")
             elif response.status_code == 400:
                 self.delete_stream()
                 self.delete_solution_instance()
                 self.delete_solution()
-                raise ValueError(f"[ERROR] Stream status 요청을 실패하였습니다. 잘못된 요청입니다. ")
+                logger.error(f"[ERROR] Bad request. Failed to get stream status")
             elif response.status_code == 422:
                 self.delete_stream()
                 self.delete_solution_instance()
                 self.delete_solution()
-                print_color("[ERROR] Stream status 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-                print("Error message: ", self.response_stream_status["detail"])
-                raise ValueError(f"[ERROR] Stream status 요청을 실패하였습니다. 유효성 검사를 실패 하였습니다.")
+                logger.info("Error message: {}".format(self.response_stream_status["detail"]))
+                logger.error("[ERROR] Failed to validate. Failed to get Stream status")
             else:
                 self.delete_stream()
                 self.delete_solution_instance()
                 self.delete_solution()
-                print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-                raise ValueError(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})")
+                logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
     
     def download_artifacts(self): 
         """ download artifacts
@@ -2113,7 +2086,7 @@ class SolutionRegister:
         Returns: -
 
         """
-        self.print_step("\n Download train artifacts \n")
+        self.print_step("Download train artifacts")
         def split_s3_path(s3_path): 
             ## Remove 's3://' and split the first part based on '/' to obtain the bucket and the remaining path.
             path_parts = s3_path.replace('s3://', '').split('/', 1)
@@ -2131,13 +2104,13 @@ class SolutionRegister:
                 key = obj['Key']
                 filename = key.split('/')[-1] 
                 if filename not in [COMPRESSED_TRAIN_ARTIFACTS_FILE, COMPRESSED_MODEL_FILE]:
-                    print(f'Skip downloading: {filename}')
+                    logger.info(f'Skip downloading: {filename}')
                     continue 
                 local_file_path = PROJECT_HOME + filename
                 self.s3_client.download_file(s3_bucket, key, local_file_path)
-                print_color(f'\n Downloaded: {s3_bucket}/{key}{filename} --> \n {local_file_path} \n Please check the log in the artifact file', color='cyan')
+                logger.info(f'\n Downloaded: {s3_bucket}/{key}{filename} --> \n {local_file_path} \n Please check the log in the artifact file')
         except: 
-            raise NotImplementedError("Failed to download train artifacts.")
+            logger.error("Failed to download train artifacts.")
 
     def delete_stream_history(self): 
         """ delete stream history
@@ -2151,7 +2124,7 @@ class SolutionRegister:
         self.login()
         ## file load 
         path = REGISTER_INTERFACE_PATH + self.STREAM_RUN_FILE
-        msg = f"[SYSTEM] stream 등록 정보를 {path} 에서 확인합니다."
+        msg = f"[SYSTEM] Check stream info at {path}"
         load_response = self._load_response_yaml(path, msg)
         ## stream register 
         stream_params = {
@@ -2165,25 +2138,24 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         response_delete_stream_history = response.json()
         if response.status_code == 200:
-            print_color("[SUCCESS] Stream history 삭제를 성공하였습니다. ", color='cyan')
-            print(f"[INFO] response: \n {response_delete_stream_history}")
+            logger.info(f"[INFO] response: \n {response_delete_stream_history}")
+            logger.info("[SUCCESS] Deleted stream history")
             ## if success deletion, delete files in path  
             if os.path.exists(path):
                 os.remove(path)
-                print(f'File removed successfully! (file: {path})')
+                logger.info(f'[SUCCESS] File removed (file: {path})')
             else:
-                print(f'File does not exist! (file: {path})')
+                logger.info(f'File does not exist (file: {path})')
         elif response.status_code == 400:
-            print_color("[WARNING] Stream history 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='yellow')
-            print("Error message: ", response_delete_stream_history["detail"])
+            logger.info("Error message: {}".format(response_delete_stream_history["detail"]))
+            logger.error("[ERROR] Bad request. Failed to delete stream history")
             ## althogh fails, delete stream history
         elif response.status_code == 422:
-            print_color("[ERROR] Stream history 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", response_delete_stream_history["detail"])
-            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_stream_history}")
+            logger.info("Error message: {}".format(response_delete_stream_history["detail"]))
+            logger.error(f"[ERROR] Failed to delete stream: \n {response_delete_stream_history}")
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_stream_history}")
+            logger.info(f"[ERROR] Unsupported error code: {response.status_code}")
+            logger.error(f"[ERROR] Failed to delete stream history: \n {response_delete_stream_history}")
 
     def delete_stream(self,solution_id=None): 
         """ delete stream 
@@ -2199,7 +2171,7 @@ class SolutionRegister:
         if not solution_id:  
             ## file load 
             path = REGISTER_INTERFACE_PATH + self.STREAM_FILE
-            msg = f"[SYSTEM] stream 등록 정보를 {path} 에서 확인합니다."
+            msg = f"[SYSTEM] Check stream register info at {path}"
             load_response = self._load_response_yaml(path, msg)
             params = {
                 "stream_id": load_response['id'],
@@ -2219,25 +2191,24 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         response_delete_stream = response.json()
         if response.status_code == 200:
-            print_color("[SUCCESS] Stream 삭제를 성공하였습니다. ", color='cyan')
-            print(f"[INFO] response: \n {response_delete_stream}")
+            logger.info(f"[INFO] response: \n {response_delete_stream}")
+            logger.info("[SUCCESS] Stream is deleted")
             if not solution_id:  
                 ## if success deletion, delete files in path 
                 if os.path.exists(path):
                     os.remove(path)
-                    print(f'File removed successfully! (file: {path})')
+                    logger.info(f'File removed successfully (file: {path})')
                 else:
-                    print(f'File does not exist! (file: {path})')
+                    logger.info(f'File does not exist (file: {path})')
         elif response.status_code == 400:
-            print_color("[ERROR] Stream 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", response_delete_stream["detail"])
+            logger.info("Error message: {}".format(response_delete_stream["detail"]))
+            logger.error("[ERROR] Bad request. Failed to delete stream")
         elif response.status_code == 422:
-            print_color("[ERROR] Stream 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", response_delete_stream["detail"])
-            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_stream}")
+            logger.info("Error message: {}".format(response_delete_stream["detail"]))
+            logger.error(f"[ERROR] Failed to validate. Failed to delete stream. \n {response_delete_stream}")
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_stream}")
+            logger.info(f"[ERROR] Unsupported error code: \n {response.status_code}")
+            logger.error(f"[ERROR] Failed to delete stream: \n {response_delete_stream}")
 
     def delete_solution_instance(self, solution_id=None): 
         """ delete instance
@@ -2253,7 +2224,7 @@ class SolutionRegister:
         if not solution_id: 
             ## file load 
             path = REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE
-            msg = f"[SYSTEM] AI solution instance 등록 정보를 {path} 에서 확인합니다."
+            msg = f"[SYSTEM] Check AI solution instance register info at {path}"
             load_response = self._load_response_yaml(path, msg)
             params = {
                 "instance_id": load_response['id'],
@@ -2272,24 +2243,23 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         response_delete_instance = response.json()
         if response.status_code == 200:
-            print_color("[SUCCESS] AI solution instance 삭제를 성공하였습니다. ", color='cyan')
-            print(f"[INFO] response: \n {response_delete_instance}")
+            logger.info(f"[INFO] response: \n {response_delete_instance}")
+            logger.info("[SUCCESS] AI solution instance is deleted")
             if not solution_id:  
                 if os.path.exists(path):
                     os.remove(path)
-                    print(f'File removed successfully! (file: {path})')
+                    logger.info(f'File removed successfully (file: {path})')
                 else:
-                    print(f'File does not exist! (file: {path})')
+                    logger.info(f'File does not exist (file: {path})')
         elif response.status_code == 400:
-            print_color("[ERROR] AI solution insatnce 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", response_delete_instance["detail"])
+            logger.info("Error message: {}".format(response_delete_instance["detail"]))
+            logger.error("[ERROR] Bad request. Failed to delete AI solution insatnce")
         elif response.status_code == 422:
-            print_color("[ERROR] AI solution instance 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", response_delete_instance["detail"])
-            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_instance}")
+            logger.info("Error message: {}".format(response_delete_instance["detail"]))
+            logger.error(f"[ERROR] Failed to validate. Failed to delete AI solution instance: \n {response_delete_instance}")
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-            raise NotImplementedError(f"Failed to delete stream: \n {response_delete_instance}")
+            logger.info(f"[ERROR] Unsupported error code: \n {response.status_code}")
+            logger.error(f"[ERROR] Failed to delete AI solution instance: \n {response_delete_instance}")
 
     def delete_solution(self, delete_all=False, solution_id=None): 
         ## FIXME delete_all ? 
@@ -2304,12 +2274,11 @@ class SolutionRegister:
         """
         self.print_step("Delete AI solution")
         self.login()
+        ## file load 
+        path = REGISTER_INTERFACE_PATH + self.SOLUTION_FILE
+        msg = f"[SYSTEM] Check AI solution register info at {path}"
         if self.solution_info["solution_update"]:
-            ## file load 
-            path = REGISTER_INTERFACE_PATH + self.SOLUTION_FILE
-            msg = f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다."
             load_response = self._load_response_yaml(path, msg)
-
             version_id = load_response['versions'][0]['id']
             params = {
                 "solution_version_id": version_id,
@@ -2318,11 +2287,7 @@ class SolutionRegister:
             api = self.api_uri["REGISTER_SOLUTION"] + f"/{version_id}/version"
         else:
             if not solution_id:
-                ## file load 
-                path = REGISTER_INTERFACE_PATH + self.SOLUTION_FILE
-                msg = f"[SYSTEM] AI solution 등록 정보를 {path} 에서 확인합니다."
                 load_response = self._load_response_yaml(path, msg)
-
                 params = {
                     "solution_id": load_response['id'],
                     "workspace_name": load_response['scope_ws']
@@ -2340,29 +2305,28 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         if response.status_code == 200:
             response_delete_solution = response.json()
-            print_color("[SUCCESS] AI solution 삭제를 성공하였습니다. ", color='cyan')
-            print(f"[INFO] response: \n {response_delete_solution}")
+            logger.info(f"[INFO] response: \n {response_delete_solution}")
+            logger.info("[SUCCESS] AI solution is deleted")
             if not solution_id: 
                 if os.path.exists(path):
                     os.remove(path)
-                    print(f'File removed successfully! (file: {path})')
+                    logger.info(f'File removed successfully (file: {path})')
                 else:
-                    print(f'File does not exist! (file: {path})')
+                    logger.info(f'File does not exist (file: {path})')
         elif response.status_code == 400:
             response_delete_solution = response.json()
-            print_color("[ERROR] AI solution 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", response_delete_solution["detail"])
+            logger.info("Error message: {}".format(response_delete_solution["detail"]))
+            logger.error("[ERROR] Bad request. Failed to delete AI solution")
         elif response.status_code == 422:
             response_delete_solution = response.json()
-            print_color("[ERROR] AI solution 삭제를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", response_delete_solution["detail"])
-            raise NotImplementedError(f"Failed to delete solution: \n {response_delete_solution}")
+            logger.info("Error message: {}".format(response_delete_solution["detail"]))
+            logger.error(f"[ERROR] Failed to validate. Failed to delete solution: \n {response_delete_solution}")
         elif response.status_code == 500:
-            print_color("[ERROR] AI solution 삭제를 실패하였습니다. 잘못된 요청입니다. ", color='red')
+            logger.info("[ERROR] Internal server error. Failed to delete AI solution")
         else:
             response_delete_solution = response.json()
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
-            raise NotImplementedError(f"Failed to delete solution: \n {response_delete_solution}")
+            logger.info(f"[ERROR] Unsupported error code: \n {response.status_code}")
+            logger.error(f"[ERROR] Failed to delete solution: \n {response_delete_solution}")
 
     def list_stream(self): 
         """ list stream
@@ -2376,7 +2340,7 @@ class SolutionRegister:
         self.stream_params = {
             "workspace_name": self.infra_setup['WORKSPACE_NAME']
         }
-        print_color(f"\n[INFO] AI solution interface information: \n {self.stream_params}", color='blue')
+        logger.info(f"\n[INFO] AI solution interface information: \n {self.stream_params}")
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["STREAMS"]
         response = requests.get(aic+api, 
@@ -2384,33 +2348,32 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         self.stream_list = response.json()
         if response.status_code == 200:
-            print_color("[SUCCESS] stream list 조회를 성공하였습니다. ", color='cyan')
-            pprint("[INFO] response: ")
+            logger.info("[SUCCESS] got stream list")
+            logger.info("[INFO] response: ")
             for cnt, instance in enumerate(self.stream_list["streams"]):
                 id = instance["id"]
                 name = instance["name"]
                 max_name_len = len(max(name, key=len))
-                print(f"(idx: {cnt:{max_name_len}}), stream_name: {name:{max_name_len}}, stream_id: {id}")
+                logger.info(f"(idx: {cnt:{max_name_len}}), stream_name: {name:{max_name_len}}, stream_id: {id}")
             ## create interface directory
             try:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+                logger.error(f"Failed to generate interface directory: \n {e}")
             ## save json to file 
             path = REGISTER_INTERFACE_PATH + self.STREAM_LIST_FILE
             with open(path, 'w') as f:
               json.dump(self.stream_list, f, indent=4)
-              print_color(f"[SYSTEM] list 결과를 {path} 에 저장합니다.",  color='green')
+              logger.info(f"[SYSTEM] save stream list result to {path}")
         elif response.status_code == 400:
-            print_color("[ERROR] stream list 조회를 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.stream_list["detail"])
+            logger.info("Error message: {}".format(self.stream_list["detail"]))
+            logger.error("[ERROR] Bad request. Failed to get stream list")
         elif response.status_code == 422:
-            print_color("[ERROR] stream list 조회를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.stream_list["detail"])
-            raise NotImplementedError(f"Failed to delete solution: \n {response.status_code}")
+            logger.info("Error message: {}".format(self.stream_list["detail"]))
+            logger.error(f"[ERROR] Failed to validate. Failed to get stream list. \n {response.status_code}")
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
 
     def list_stream_history(self, id=''): 
         """ list stream history
@@ -2426,7 +2389,7 @@ class SolutionRegister:
             "stream_id": id,
             "workspace_name": self.infra_setup['WORKSPACE_NAME']
         }
-        print_color(f"\n[INFO] AI solution interface information: \n {self.stream_run_params}", color='blue')
+        logger.info(f"\n[INFO] AI solution interface information: \n {self.stream_run_params}")
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["STREAM_RUN"]
         response = requests.get(aic+api, 
@@ -2434,32 +2397,32 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         self.stream_history_list = response.json()
         if response.status_code == 200:
-            print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
-            pprint("[INFO] response: ")
+            logger.info("[SUCCESS] got stream histoy")
+            logger.info("[INFO] response: ")
             for cnt, instance in enumerate(self.stream_history_list["stream_histories"]):
                 id = instance["id"]
                 name = instance["name"]
                 max_name_len = len(max(name, key=len))
-                print(f"(idx: {cnt:{max_name_len}}), history_name: {name:{max_name_len}}, history_id: {id}")
+                logger.info(f"(idx: {cnt:{max_name_len}}), history_name: {name:{max_name_len}}, history_id: {id}")
             ## create interface directory
             try:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {e}")
+                logger.error(f"Failed to generate interface directory: \n {e}")
             ## save json file 
             path = REGISTER_INTERFACE_PATH + self.STREAM_HISTORY_LIST_FILE
             with open(path, 'w') as f:
               json.dump(self.stream_history_list, f, indent=4)
-              print_color(f"[SYSTEM] list 결과를 {path} 에 저장합니다.",  color='green')
+              logger.info(f"[SYSTEM] save stream history list to {path}")
         elif response.status_code == 400:
-            print_color("[ERROR] stream history 조회를 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.stream_history_list["detail"])
+            logger.info("Error message: {}".format(self.stream_history_list["detail"]))
+            logger.error("[ERROR] Bad request. Failed to get stream history list")
         elif response.status_code == 422:
-            print_color("[ERROR] stream history 조회를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.stream_history_list["detail"])
+            logger.info("Error message: {}".format(self.stream_history_list["detail"]))
+            logger.error("[ERROR] Failed to validate. Failed to get stream history list")
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
 
     def list_solution_instance(self): 
         """ list solution instance
@@ -2473,7 +2436,7 @@ class SolutionRegister:
         self.solution_instance_params = {
             "workspace_name": self.infra_setup['WORKSPACE_NAME']
         }
-        print_color(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}", color='blue')
+        logger.info(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}")
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["SOLUTION_INSTANCE"]
         response = requests.get(aic+api, 
@@ -2481,32 +2444,32 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         self.response_instance_list = response.json()
         if response.status_code == 200:
-            print_color("[SUCCESS] AI solution instance 등록을 성공하였습니다. ", color='cyan')
-            pprint("[INFO] response: ")
+            logger.info("[SUCCESS] got AI solution instance list")
+            logger.info("[INFO] response: ")
             for cnt, instance in enumerate(self.response_instance_list["instances"]):
                 id = instance["id"]
                 name = instance["name"]
                 max_name_len = len(max(name, key=len))
-                print(f"(idx: {cnt:{max_name_len}}), instance_name: {name:{max_name_len}}, instance_id: {id}")
+                logger.info(f"(idx: {cnt:{max_name_len}}), instance_name: {name:{max_name_len}}, instance_id: {id}")
             ## create interface directory
             try:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
+                logger.error(f"Failed to generate interface directory: \n {str(e)}")
             ## save to file
             path = REGISTER_INTERFACE_PATH + self.INSTANCE_LIST_FILE
             with open(path, 'w') as f:
               json.dump(self.response_instance_list, f, indent=4)
-              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+              logger.info(f"[SYSTEM] save instance list result to {path}")
         elif response.status_code == 400:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", self.response_instance_list["detail"])
+            logger.info("Error message: {}".format(self.response_instance_list["detail"]))
+            logger.error("[ERROR] Bad Request. Failed to get  AI solution instance list")
         elif response.status_code == 422:
-            print_color("[ERROR] AI solution instance 등록을 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", self.response_instance_list["detail"])
+            logger.info("Error message: {}".format(self.response_instance_list["detail"]))
+            logger.error("[ERROR] Failed to validate. Failed to get AI solution instance list")
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
 
     def list_solution(self): 
         """ list solution 
@@ -2522,7 +2485,7 @@ class SolutionRegister:
             "with_pulic": 1, 
             "page_size": 100
         }
-        print_color(f"\n[INFO] AI solution interface information: \n {params}", color='blue')
+        logger.info(f"\n[INFO] AI solution interface information: \n {params}")
         aic = self.infra_setup["AIC_URI"]
         api = self.api_uri["SOLUTION_LIST"]
         response = requests.get(aic+api, 
@@ -2530,33 +2493,33 @@ class SolutionRegister:
                                  cookies=self.aic_cookie)
         response_json = response.json()
         if response.status_code == 200:
-            print_color("[SUCCESS] solution list 조회를 성공하였습니다. ", color='cyan')
-            pprint("[INFO] response: ")
+            logger.info("[SUCCESS] got AI solution list")
+            logger.info("[INFO] response: ")
             for cnt, instance in enumerate(response_json["solutions"]):
                 id = instance["id"]
                 name = instance["name"]
                 latest_version = instance["versions"][0]["version"]
                 max_name_len = len(max(name, key=len))
-                print(f"(idx: {cnt:{max_name_len}}), solution_name: {name:{max_name_len}}, solution_id: {id}, latest_version: {latest_version}")
+                logger.info(f"(idx: {cnt:{max_name_len}}), solution_name: {name:{max_name_len}}, solution_id: {id}, latest_version: {latest_version}")
             ## create interface directory
             try:
                 if not os.path.exists(REGISTER_INTERFACE_PATH):
                     os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                raise NotImplementedError(f"Failed to generate interface directory: \n {str(e)}")
+                logger.error(f"Failed to generate interface directory: \n {str(e)}")
             ## save to file 
             path = REGISTER_INTERFACE_PATH + self.SOLUTION_LIST_FILE
             with open(path, 'w') as f:
               json.dump(response_json, f, indent=4)
-              print_color(f"[SYSTEM] register 결과를 {path} 에 저장합니다.",  color='green')
+              logger.info(f"[SYSTEM] save solution list result to {path}")
         elif response.status_code == 400:
-            print_color("[ERROR] solution list 조회를 실패하였습니다. 잘못된 요청입니다. ", color='red')
-            print("Error message: ", response_json["detail"])
+            logger.info("Error message: {}".format(response_json["detail"]))
+            logger.error("[ERROR] Bad request. Failed to get solution list")
         elif response.status_code == 422:
-            print_color("[ERROR] solution list 조회를 실패하였습니다. 유효성 검사를 실패 하였습니다.. ", color='red')
-            print("Error message: ", response_json["detail"])
+            logger.info("Error message: {}".format(response_json["detail"]))
+            logger.error("[ERROR] Failed to validate. Failed to get solution list")
         else:
-            print_color(f"[ERROR] 미지원 하는 응답 코드입니다. (code: {response.status_code})", color='red')
+            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
             
     #####################################
     ######    Internal Functions   ######
@@ -2576,10 +2539,10 @@ class SolutionRegister:
         try:
             with open(path) as f:
                 data = json.load(f)
-                print_color(msg, color='green')
+                logger.info(msg)
             return data
         except:
-            raise ValueError(f"[ERROR] {path} 를 읽기 실패 하였습니다.")
+            logger.error(f"[ERROR] Failed to read {path}")
     
     def _init_solution_metadata(self):
         """ initialize solution metadata
@@ -2592,13 +2555,13 @@ class SolutionRegister:
         ## Iterate over each directory and delete it if it exists.
         for dir_path in [REGISTER_ARTIFACT_PATH, REGISTER_SOURCE_PATH, REGISTER_INTERFACE_PATH]:
             if os.path.isdir(dir_path):
-                print(f"Removing directory: {dir_path}")
+                logger.info(f"Removing directory: {dir_path}")
                 shutil.rmtree(dir_path, ignore_errors=False)
-                print(f"Directory {dir_path} has been removed successfully.")
+                logger.info(f"Directory {dir_path} has been removed successfully.")
             else:
-                print(f"Directory {dir_path} does not exist, no action taken.")
+                logger.info(f"Directory {dir_path} does not exist, no action taken.")
         if not type(self.infra_setup['VERSION']) == float:
-            raise ValueError("solution_metadata 의 VERSION 은 float 타입이어야 합니다.")
+            logger.error("VERSION in solution_metadata.yaml must be float type")
         self.sm_yaml['metadata_version'] = self.infra_setup['VERSION']
         self.sm_yaml['name'] = self.solution_name
         self.sm_yaml['description'] = {}
@@ -2606,9 +2569,9 @@ class SolutionRegister:
         try: 
             self._save_yaml()
             if self.debugging:
-                print_color(f"\n << solution_metadata.yaml >> generated. - current version: v{self.infra_setup['VERSION']}", color='green')
+                logger.info(f"\n << solution_metadata.yaml >> generated. - current version: v{self.infra_setup['VERSION']}")
         except: 
-            raise NotImplementedError("Failed to generate << solution_metadata.yaml >>")
+            logger.error("Failed to generate << solution_metadata.yaml >>")
 
     def _sm_append_pipeline(self, pipeline_name): 
         """ append pipeline to solution metadata
@@ -2620,7 +2583,7 @@ class SolutionRegister:
 
         """
         if not pipeline_name in ['train', 'inference']:
-            raise ValueError(f"Invalid value ({pipeline_name}). Only one of 'train' or 'inference' is allowed as input.")
+            logger.error(f"Invalid value ({pipeline_name}). Only one of 'train' or 'inference' is allowed as input.")
         self.sm_yaml['pipeline'].append({'type': pipeline_name})
         ## e.g. when adding an inference pipeline, change the pipeline attribute of the instance to 'inference'.
         self.pipeline = pipeline_name
@@ -2629,7 +2592,7 @@ class SolutionRegister:
         try: 
             self._save_yaml()
         except: 
-            raise NotImplementedError("Failed to update << solution_metadata.yaml >>")
+            logger.error("Failed to update << solution_metadata.yaml >>")
     
     def _save_yaml(self):
         """ save into yaml file
@@ -2667,14 +2630,18 @@ class SolutionRegister:
                     register_solution_path = REGISTER_SOURCE_PATH + 'solution/'
                     os.makedirs(register_solution_path , exist_ok=True)
                     shutil.copy2(src_path, register_solution_path)
-                    print_color(f'[INFO] copy from " {src_path} "  -->  " {register_solution_path} " ', color='blue')
+                    logger.info(f'[INFO] copy from " {src_path} "  -->  " {register_solution_path} " ')
                 else: 
                     shutil.copy2(src_path, REGISTER_SOURCE_PATH)
-                    print_color(f'[INFO] copy from " {src_path} "  -->  " {REGISTER_SOURCE_PATH} " ', color='blue')
+                    logger.info(f'[INFO] copy from " {src_path} "  -->  " {REGISTER_SOURCE_PATH} " ')
             elif os.path.isdir(src_path):
                 dst_path = REGISTER_SOURCE_PATH  + os.path.basename(src_path)
-                shutil.copytree(src_path, dst_path)
-                print_color(f'[INFO] copy from " {src_path} "  -->  " {REGISTER_SOURCE_PATH} " ', color='blue')
+                ## [NOTE] do not copy .git in asset directory
+                if item == 'assets':
+                    shutil.copytree(src_path, dst_path, ignore=shutil.ignore_patterns('.git'))
+                else: 
+                    shutil.copytree(src_path, dst_path)
+                logger.info(f'[INFO] copy from " {src_path} "  -->  " {REGISTER_SOURCE_PATH} " ')
     
     def _reset_alo_solution(self):
         """ reset experimental plan solution info.
@@ -2690,13 +2657,13 @@ class SolutionRegister:
         exp_plan_dict['control'] = [{'get_asset_source': 'once'}, {'backup_artifacts': False}, \
                                     {'backup_log': False}, {'backup_size':1000}, {'interface_mode': 'memory'}, \
                                     {'save_inference_format': 'zip'}, {'check_resource': False}]
-        print_color(f"[INFO] reset experimental plan control for edgeapp inference: {exp_plan_dict['control']}", color='blue')
+        logger.info(f"[INFO] reset experimental plan control for edgeapp inference: {exp_plan_dict['control']}")
         ## experimental_plan.yaml external_path_permission reset 
         for idx, _dict in enumerate(exp_plan_dict['external_path_permission']):
             if list(map(str, _dict.keys()))[0] == 'aws_key_profile':
                 if list(map(str, _dict.values()))[0] is not None:
                     exp_plan_dict['external_path_permission'][idx]['aws_key_profile'] = None
-        print_color("[INFO] reset aws key profile", color='blue')
+        logger.info("[INFO] reset aws key profile")
         ## pipeline tobe deleted
         if self.pipeline == 'train':
             delete_pipeline = 'inference'
@@ -2713,7 +2680,7 @@ class SolutionRegister:
         ## save to yaml 
         with open(REGISTER_EXPPLAN, 'w') as file:
             yaml.safe_dump(exp_plan_dict, file)
-        print_color("[SUCCESS] Success ALO directory setting.", color='green')
+        logger.info("[SUCCESS] Success ALO directory setting.")
 
     def _set_dockerfile(self):
         """ setup dockerfile
@@ -2729,7 +2696,7 @@ class SolutionRegister:
             elif self.pipeline == 'inference':
                 dockerfile = "InferenceDockerfile"
             else:
-                raise ValueError(f"Invalid value ({self.pipeline}). Only one of 'train' or 'inference' is allowed as input.")
+                logger.error(f"Invalid value ({self.pipeline}). Only one of 'train' or 'inference' is allowed as input.")
             if os.path.isfile(PROJECT_HOME + dockerfile):
                 os.remove(PROJECT_HOME + dockerfile)
             shutil.copy(REGISTER_DOCKER_PATH + dockerfile, PROJECT_HOME)
@@ -2749,9 +2716,9 @@ class SolutionRegister:
                 content = content.replace(search_string, replace_string + "\n" + pip_install_commands)
                 with open(PROJECT_HOME + 'Dockerfile', 'w', encoding='utf-8') as file:
                     file.write(content)
-            print_color(f"[SUCESS] set DOCKERFILE for ({self.pipeline}) pipeline", color='green')
+            logger.info(f"[SUCCESS] set Dockerfile for ({self.pipeline}) pipeline")
         except Exception as e: 
-            raise NotImplementedError(f"Failed DOCKERFILE setting. \n - pipeline: {self.pipeline} \n {str(e)}")
+            logger.error(f"Failed Dockerfile setting. \n - pipeline: {self.pipeline} \n {str(e)}")
 
     def _check_parammeter(self, param):
         """ check parameter if it is string
@@ -2768,7 +2735,7 @@ class SolutionRegister:
         if _check_str(param):
             return param
         else:
-            raise ValueError("You should enter only string value for parameter.")
+            logger.error("You should enter only string value for parameter")
     
     def check_single_pipeline(self):
         """check whether it is single pipeline solution 
@@ -2788,7 +2755,7 @@ class SolutionRegister:
         elif (not user_param_exist) and (not asset_source_exist):
             return True 
         else: 
-            raise ValueError("Pipelines list in user_parameters and asset_source must be same")
+            logger.error("Pipelines list in < user_parameters > and < asset_source > must be same")
 
 #####################################
 ######     Common Functions    ######
@@ -2806,29 +2773,29 @@ def check_and_load_yaml(path_or_dict, mode=''):
 
     """
     if not mode in ['infra_setup', 'solution_info', 'experimental_plan']:
-        raise ValueError("The mode must be infra_setup, solution_info, or experimental_plan. (type: {})".format(type))
+        logger.error("The mode must be infra_setup, solution_info, or experimental_plan. (type: {})".format(type))
     if path_or_dict == None or path_or_dict == '' :
         if mode == 'infra_setup': path = DEFAULT_INFRA_SETUP
         elif mode == 'solution_info': path = DEFAULT_SOLUTION_INFO
         else: path = DEFAULT_EXP_PLAN
-        print(f"{mode} 파일이 존재 하지 않으므로, Default 파일을 load 합니다. (path: {path})")
+        logger.info(f"{mode} file does not exist. Default file is loaded (path: {path})")
         try:    
             with open(path) as f:
                 result_dict = yaml.safe_load(f)
         except Exception as e : 
-            raise ValueError(str(e))
+            logger.error(str(e))
     else:
         if isinstance(path_or_dict, str):
-            print(f"{mode} 파일을 load 합니다. (path: {path_or_dict})")
+            logger.info(f"{mode} file is loaded (path: {path_or_dict})")
             try:    
                 with open(path_or_dict) as f:
                     result_dict = yaml.safe_load(f)
             except Exception as e : 
-                raise ValueError(str(e))
+                logger.error(str(e))
         elif isinstance(path_or_dict, dict):
             result_dict = path_or_dict
         else:
-            raise ValueError(f"{mode} 파일이 유효하지 않습니다. (infra_setup: {path_or_dict})")
+            logger.error(f"{mode} is invalid (path: {path_or_dict})")
     return result_dict
 
 def convert_to_float(input_str):
@@ -2876,9 +2843,9 @@ def make_art(msg):
 
     """
     ascii_art = pyfiglet.figlet_format(msg, font="slant")
-    print("*" * 80)
-    print(ascii_art)
-    print("*" * 80)
+    logger.info("*" * 80)
+    logger.info(ascii_art)
+    logger.info("*" * 80)
             
 def _tar_dir(_path): 
     """ compress dir into tar.gz
@@ -3046,7 +3013,7 @@ def convert_args_type(values: dict):
                     output[k] = [""] 
                 else: 
                     ## FIXME For now, we have determined that there must always be a default value for single(multi)-selection, int, and float types.
-                    raise ValueError(f"Default value needed for arg. type: << {arg_type} >>")
+                    logger.error(f"Default value needed for arg. type: << {arg_type} >>")
             else:  
                 ## FIXME What if a selection contains a mix of types like float and str? \
                 ## Would it be clear whether the user intended the number 1 or the string '1'?
@@ -3066,11 +3033,10 @@ def convert_args_type(values: dict):
                 for i in converted:
                     ## when string type, range means for # characters
                     if not is_int(i): 
-                        raise ValueError("<< range >> value must be int")
+                        logger.error("<< range >> value must be int")
             elif arg_type == 'float':
                 for i in converted:
                     if not is_float(i): 
-                        raise ValueError("<< range >> value must be float")
+                        logger.error("<< range >> value must be float")
             output[k] = converted 
     return output
-        

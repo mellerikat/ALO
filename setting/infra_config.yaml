@@ -1,6 +1,6 @@
 'AIC_URI': "https://aicond.meerkat-ai.com/"
 "REGION": "ap-northeast-2"
-"WORKSPACE_NAME": "meerkat-ws" ## 현재 생성되어있는 workspace
+"WORKSPACE_NAME": "meerkat-ws" 
 "BUILD_METHOD": "codebuild" # docker, buildah, codebuild
 "LOGIN_MODE": "static"
 "VERSION": 1.1

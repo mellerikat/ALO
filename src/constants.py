@@ -6,7 +6,7 @@ import os
 ## alolib url candidates
 ## 1. http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git
 ## 2. https://github.com/meerkat-alo/alolib-source.git
-ALO_LIB_URI = "https://github.com/meerkat-alo/alolib-source.git"
+ALO_LIB_URI = "http://mod.lge.com/hub/dxadvtech/aicontents-framework/alolib-source.git"
 TIME_FORMAT = "%Y%m%dT%H%M%SZ"
 TIME_FORMAT_DISPLAY = "%Y-%m-%d %H:%M:%S"
 ## interface mode support type 

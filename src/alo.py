@@ -121,7 +121,7 @@ class ALO:
             else:
                 self.system_envs['inference_history']['train_id'] = 'none'
         if experimental_plan in [{}, "", None]: 
-            experimental_plan = self.exp_yaml
+            experimental_plan = self.exp_plan
         ## make pipeline instance
         pipeline = Pipeline(experimental_plan, pipeline_type, self.system_envs)
         return pipeline
@@ -139,6 +139,7 @@ class ALO:
         if self.enable_loop: 
             ## boot-on process
             try:
+                self.proc_logger.process_message(f"experimental plan in boot: {self.exp_plan}")
                 ## inference_pipeline only 
                 pipe = self.system_envs['pipeline_list'][0] 
                 # set current pipeline into system envs
@@ -149,19 +150,21 @@ class ALO:
                 _log_process(f"Finish boot-on", highlight=True)
                 ## cancel boot_on mode after finish booting
                 self.system_envs['boot_on'] = False
-            except: 
+            except Exception as e: 
                 try: 
-                    self.proc_logger.process_error("Failed to boot-on.")
+                    self.proc_logger.process_error(f"Failed to boot-on - {str(e)}")
                 finally: 
                     self._error_backup(pipe)
             ## infinite loop
             self._publish_redis_msg("alo_status", "waiting")
             while True: 
                 try:
-                    ## wait redis message from edgeapp
-                    sol_meta_str = self._lget_redis_msg("request_inference")['solution_metadata']
-                    sol_meta_dict = self.load_solution_metadata(sol_meta_str)    
-                    self.set_metadata(sol_meta=sol_meta_dict, pipeline_type=pipe.split('_')[0])
+                    ## wait redis message from edgeapp (dict)
+                    sol_meta_dict = self._lget_redis_msg("request_inference")['solution_metadata']    
+                    self.proc_logger.process_message(f"solution metadata received in loop: {sol_meta_dict}")
+                    ## overwrite_solution_meta --> self.exp_plan (do not read plan yaml again)
+                    self.set_metadata(sol_meta=sol_meta_dict, pipeline_type=pipe.split('_')[0], exp_plan=self.exp_plan)
+                    self.proc_logger.process_message(f"experimental plan in loop: {self.exp_plan}")
                     ## _empty_artifacts() (@ pipeline.py - pipeline_setup()) does not refresh log directory. Refresh log here.
                     refresh_log(pipe) 
                     pipeline = self._execute_pipeline(pipe)
@@ -259,6 +262,13 @@ class ALO:
         ## do not kill main.py process when loop mode is True (only warning)
         self.proc_logger.process_warning(f"==========       Error occurs in loop        ==========") 
         self.proc_logger.process_warning(traceback.format_exc())
+        ## save error artifacts first 
+        try: 
+            self._error_backup(pipe)
+        except Exception as e: 
+            ## do not kill main.py process when loop mode is True (only warning)
+            self.proc_logger.process_warning(f"Failed to error backup in loop mode: {str(e)}")
+        ## [NOTE] fail redis sent after saving error artifact zip completes
         ## (redis) send error status to edgeapp 
         fail_str = json.dumps({'status':'fail', 'message':traceback.format_exc()})
         if self.system_envs['runs_status'] == 'init':
@@ -267,12 +277,6 @@ class ALO:
         ## summary success message already sent  
         elif self.system_envs['runs_status'] == 'summary': 
             self.system_envs['redis_list_instance'].rput('inference_artifacts', fail_str)
-        ## backup error history & save error artifacts 
-        try: 
-            self._error_backup(pipe)
-        except: 
-            ## do not kill main.py process when loop mode is True (only warning)
-            self.proc_logger.process_warning("Faild to error backup in loop mode")
         return "loop"
         
     def error_batch(self, pipe): 
@@ -306,12 +310,13 @@ class ALO:
             curr = self.system_envs['current_pipeline'].split('_')[0]
             random_number = '{:08}'.format(random.randint(0, 99999999))
             self.system_envs[f"{curr}_history"]['id'] = f'{sttime}-{random_number}-{exp_name}'
-            ## always error backup (directory name ends with "_error") - regardless of control['backup_artifacts'] (True or False)
-            self.artifact.backup_history(pipe, self.system_envs, backup_exp_plan=self.exp_yaml, error=True, size=self.control['backup_size'])
+            ## error backup (directory name ends with "_error") - depends on control['backup_artifacts'] (True or False)
+            if self.control['backup_artifacts']:
+                self.artifact.backup_history(pipe, self.system_envs, backup_exp_plan=self.exp_plan, error=True, size=self.control['backup_size'])
             # external save artifacts when error occurs
             # format conversion for external_save_artifacts [{k1:v1}, {k2:v2}, ..] --> {k1:v1, k2:v2, ..}    
-            external_path = {list(item.keys())[0]:list(item.values())[0] for item in self.exp_yaml['external_path']}
-            external_path_permission = {list(item.keys())[0]:list(item.values())[0] for item in self.exp_yaml['external_path_permission']}
+            external_path = {list(item.keys())[0]:list(item.values())[0] for item in self.exp_plan['external_path']}
+            external_path_permission = {list(item.keys())[0]:list(item.values())[0] for item in self.exp_plan['external_path_permission']}
             ext_type, ext_saved_path = self.ext_data.external_save_artifacts(pipe, external_path, external_path_permission, self.control['save_inference_format'])
         except Exception as e: 
             raise NotImplementedError(str(e))
@@ -536,7 +541,7 @@ class ALO:
         self.proc_logger.process_message(f"ALO version = {self.system_envs['alo_version']}")
         _log_process("Finish ALO version check")
 
-    def set_metadata(self, exp_plan_path = DEFAULT_EXP_PLAN, sol_meta = {}, pipeline_type = 'train_pipeline'):
+    def set_metadata(self, exp_plan_path = DEFAULT_EXP_PLAN, sol_meta = {}, pipeline_type = 'train_pipeline', exp_plan = {}):
         """ Read & update experimental plan  
             (The information of solution metadata ins overwritten onto experimental plan) 
 
@@ -544,7 +549,7 @@ class ALO:
             exp_plan_path   (str): experimental_plan.yaml path 
             sol_meta        (dict): solution metadata dict 
             pipeline_type   (str): pipeline type (train_pipeline, inference_pipeline)
-            
+            exp_plan        (dict): current experimental plan dict 
         Returns: -
 
         """
@@ -553,10 +558,14 @@ class ALO:
         self.system_envs['solution_metadata'] = sol_meta
         self.system_envs['experimental_plan_path'] = exp_plan_path
         ## load experimental_plan.yaml
-        _log_process("Load experimental_plan.yaml")
+        _log_process("Load & update experimental_plan")
         ## solution metadata overwitten into experimental plan
-        self.exp_yaml = self.meta.read_yaml(sol_meta = sol_meta, exp_plan_file = exp_plan_path, system_envs = self.system_envs)
-        _log_process("Finish loading experimental_plan.yaml")
+        if not exp_plan:
+            self.exp_plan = self.meta.read_yaml(exp_plan_file = exp_plan_path, sol_meta = sol_meta, system_envs = self.system_envs)
+        else: 
+            ## update solution metadata --> experimental plan from memory base (not re-load plan yaml file)
+            self.exp_plan = self.meta.overwrite_solution_meta(exp_plan = exp_plan, sol_meta = sol_meta, system_envs = self.system_envs)
+        _log_process("Finish loading & updating experimental_plan")
         ## FIXME if 'COMPUTING' os environmental variable already in use, it can cause some problems.
         if os.getenv('COMPUTING') == 'sagemaker': 
             ## update experimental plan yaml for sagemaker mode
@@ -629,15 +638,14 @@ class ALO:
             json_loaded (dict): solution metadata dict from json
 
         """
+        json_loaded = {}
         try: 
             ## if solution metadata is ~.yaml (file format), load it 
             _log_process("Start loading solution-metadata")
             if system_value is None:
-                json_loaded = {} 
                 self.proc_logger.process_message("Solution metadata file name not entered. Skip updating solution metadata into experimental_plan.")
             ## empty dict
             elif len(system_value) == 0: 
-                json_loaded = {}
                 self.proc_logger.process_message("Empty solution metadata file name entered. Skip updating solution metadata into experimental_plan.")
             else:
                 ## load from yaml file   
@@ -653,9 +661,10 @@ class ALO:
                     json_loaded = json.loads(system_value) 
                 _log_process("Finish loading solution-metadata")
                 self.proc_logger.process_message(f"==========        Loaded solution_metadata: \n{json_loaded}")
-        except: 
+        except Exception as e:
             if self.redis_pubsub is not None:
                 self.redis_pubsub.publish("alo_fail", json.dumps(self.redis_error_table["E111"])) 
+                self.proc_logger.process_error(f"Failed to load solution metadata: {str(e)}")
         ## dict from json 
         return json_loaded 
     
@@ -669,25 +678,25 @@ class ALO:
         """
         from sagemaker_training import environment      
         sagemaker_output_path = environment.Environment().model_dir
-        for i, v in enumerate(self.exp_yaml['external_path']):
+        for i, v in enumerate(self.exp_plan['external_path']):
             ## since data is uploaded into sagemaker docker's input directory, do not enter the external data path at experimental plan
             if 'load_train_data_path' in v.keys(): 
-                self.exp_yaml['external_path'][i] = {'load_train_data_path': None}
+                self.exp_plan['external_path'][i] = {'load_train_data_path': None}
             elif 'load_inference_data_path' in v.keys(): 
-                self.exp_yaml['external_path'][i] = {'load_inference_data_path': None}
+                self.exp_plan['external_path'][i] = {'load_inference_data_path': None}
             ## (NOTE **) whether to external save train, inference each or both is determined in pipeline_list created at set_system_envs 
             ## converts save_train_artifacts_path to sagemaker model save directory
             elif 'save_train_artifacts_path' in v.keys(): 
-                self.exp_yaml['external_path'][i] = {'save_train_artifacts_path': sagemaker_output_path}
+                self.exp_plan['external_path'][i] = {'save_train_artifacts_path': sagemaker_output_path}
             ## converts inference_artifacts_path to sagemaker model save directory
             elif 'save_inference_artifacts_path' in v.keys(): 
-                self.exp_yaml['external_path'][i] = {'save_inference_artifacts_path': sagemaker_output_path}      
+                self.exp_plan['external_path'][i] = {'save_inference_artifacts_path': sagemaker_output_path}      
         ## get_asset_source to once (git clone asset may not implements in sagemaker docker)
-        for i, v in enumerate(self.exp_yaml['control']):
+        for i, v in enumerate(self.exp_plan['control']):
             if 'get_asset_source' in v.keys(): 
-                self.exp_yaml['control'][i] = {'get_asset_source': 'once'}
+                self.exp_plan['control'][i] = {'get_asset_source': 'once'}
         ## (NOTE **) save experimental plan yaml since it should be loaded at pipline.py (in sagemaker docker)
-        self.meta.save_yaml(self.exp_yaml, DEFAULT_EXP_PLAN)
+        self.meta.save_yaml(self.exp_plan, DEFAULT_EXP_PLAN)
         
     def _load_history_model(self, train_id):
         """ load model from history by train id

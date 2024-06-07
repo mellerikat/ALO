@@ -1,19 +1,15 @@
-# 실행할 Python 파일 이름 설정
+## python file name to be executed
 PYTHON_FILE = main.py
 FOLDER_PATH = ./assets/
-
-# 기본 타겟 설정
+## basic target
 all : 
 	run
-
-# Python 프로그램 실행 규칙
+## execution rule  
 run : 
 	python $(PYTHON_FILE)
-
 del :
 	rm -rf ./alolib
-
-# "make clean" 명령을 실행할 때 실행되는 규칙
+# "make clean" command rule 
 clean : 
 	rm -rf $(FOLDER_PATH)* ./.TEMP_MODEL_PATH ./history ./.asset_interface ./inference_artifacts ./.temp_artifacts_dir ./train_artifacts ./input/ ./assets/ ./alolib ./.register_* 
 	rm -rf $(FOLDER_PATH)* ./solution
