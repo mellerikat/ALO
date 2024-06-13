@@ -1677,7 +1677,11 @@ class SolutionRegister:
                                             for user_params_step in pipe_dict[f'candidate_parameters']:
                                                 if user_params_step['step'] == new_step['step']: 
                                                     if 'ui_args' in user_params_step.keys():
-                                                        assert type(user_params_step['ui_args']) == list
+                                                        if user_params_step['ui_args'] is None: 
+                                                            logger.info("Type of << ui_args >> should be list (not null)")
+                                                            continue 
+                                                        else: 
+                                                            assert type(user_params_step['ui_args']) == list
                                                         for user_ui_arg in user_params_step['ui_args']:
                                                             if user_ui_arg not in user_names:
                                                                 user_names.append(user_ui_arg)
