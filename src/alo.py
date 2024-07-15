@@ -221,20 +221,21 @@ class ALO:
         """
         pipeline_start_time = time()
         pipeline = self.pipeline(pipeline_type=pipe)
+        is_booting = self.enable_loop and self.system_envs['boot_on'] 
         ## setup 
-        self._publish_redis_msg("alo_status", "setup")
+        self._publish_redis_msg("alo_status", "booting" if is_booting else "setup")
         pipeline.setup()
         pipeline_setup_time = time()
         ## load
-        self._publish_redis_msg("alo_status", "load")
+        self._publish_redis_msg("alo_status", "booting" if is_booting else "load")
         pipeline.load()
         pipeline_load_time = time()
         ## run
-        self._publish_redis_msg("alo_status", "run")
+        self._publish_redis_msg("alo_status", "booting" if is_booting else "run")
         pipeline.run()
         pipeline_run_time = time()
         ## save 
-        self._publish_redis_msg("alo_status", "save")
+        self._publish_redis_msg("alo_status", "booting" if is_booting else "save")
         pipeline.save()
         pipeline_save_time = time()
         ## execution time logging
@@ -378,7 +379,7 @@ class ALO:
         """
         ## Search train_id / read experimental plan
         meta = Metadata()
-        exp_plan = meta.read_yaml(exp_plan_file=None)
+        exp_plan = meta.read_yaml(exp_plan_file=None, system_envs=self.system_envs ,update_envs=False)
         def _load_pipeline_expplan(pipeline_type, history_id, meta):
             if not pipeline_type in ['train', 'inference']:
                 raise ValueError("pipeline_type must be 'train' or 'inference'.")
@@ -403,13 +404,12 @@ class ALO:
             train_exp_plan = _load_pipeline_expplan('train', train_id, meta)
             _pipe_run(train_exp_plan, 'train_pipeline')    
         else:
-            _pipe_run(exp_plan, 'train_pipeline')    
+            pass
         if inference_id != '':
             inference_exp_plan = _load_pipeline_expplan('inference', inference_id, meta)
             _pipe_run(inference_exp_plan, 'inference_pipeline')
         else:
-            print_color('experimental_plan: \n {}'.format(exp_plan), 'BOLD')
-            _pipe_run(exp_plan, 'inference_pipeline')
+            pass
         ## make experimental plan for solution registration
         if train_id != '':
             if inference_id != '':
@@ -424,7 +424,8 @@ class ALO:
         register = SolutionRegister(infra_setup=infra_setup, solution_info=solution_info, experimental_plan=exp_plan_register)
         if upload:
             register.login(username, password)
-            register.run(username=username, password=password)
+            register.run()
+            #register.run(username=username, password=password)
         return register
         
     #####################################
@@ -573,7 +574,7 @@ class ALO:
         ## set meta attributes into alo class attributes
         self._set_attr()
         ## sagemaker mode 
-        if self.computing_mode != 'local': 
+        if self.computing_mode == 'sagemaker': 
             self.system_envs = self._set_system_envs(pipeline_type, True, self.system_envs)
         else:
             ## (loop mode) after boot-on sequence (boot-on off status at system_envs (=False))

@@ -93,9 +93,11 @@ class SagemakerHandler:
         alo_src = ['main.py', 'src', 'solution', 'assets', 'alolib', '.git', 'input', 'requirements.txt']
         ## assumption required for 'inference only' is that the training should already be completed
         if pipeline_list == ['inference_pipeline']:
-            alo_src.append('train_artifacts')
+            ## single pipeline 
             if (not os.path.isdir(TRAIN_MODEL_PATH)) or (len(os.listdir(TRAIN_MODEL_PATH)) == 0):
-                PROC_LOGGER.process_error("Train first. Sagemaker & Inference mode needs trained model")
+                PROC_LOGGER.process_warning("There is no trained model")
+            elif os.path.isdir('train_artifacts'): 
+                alo_src.append('train_artifacts')
         for item in alo_src:
             src_path = PROJECT_HOME + item
             if os.path.isfile(src_path):

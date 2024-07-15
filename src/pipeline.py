@@ -350,10 +350,10 @@ class Pipeline:
             meta = Metadata()
             if os.path.exists(file_exp):
                 ## upon read_yaml(), file_exp becomes internalized as a variable within meta
-                meta.read_yaml(exp_plan_file=file_exp, update_envs=False)  
+                meta.read_yaml(exp_plan_file=file_exp, system_envs=self.system_envs ,update_envs=False)
                 value_empty = False
             else:
-                meta.read_yaml(exp_plan_file=DEFAULT_EXP_PLAN, update_envs=False)
+                meta.read_yaml(exp_plan_file=DEFAULT_EXP_PLAN, system_envs=self.system_envs ,update_envs=False)
                 value_empty = True
             for pipe, steps_dict in meta.user_parameters.items():
                 if pipe == self.pipeline_type:
@@ -514,9 +514,9 @@ class Pipeline:
             output_extension = set([os.path.splitext(i)[-1] for i in output_files]) 
             allowed_extensions = [set(TABULAR_OUTPUT_FORMATS + [i]) for i in IMAGE_OUTPUT_FORMATS]
             if output_extension not in allowed_extensions:
-                PROC_LOGGER.process_error(f"[Failed] output files extension must be one of << {allowed_extensions} >>. \n Your output: {output_files}")
+                PROC_LOGGER.process_error(f"[Failed] Output files extension must be one of << {allowed_extensions} >>. \n Your output: {output_files}")
         else:
-            PROC_LOGGER.process_error(f"[Failed] the number of output files must be 1 or 2. \n Your output: {output_files}")
+            PROC_LOGGER.process_error(f"[Failed] You have to save inference output file. The number of output files must be 1 or 2. \n Your output: {output_files}")
 
     def _send_redis_summary(self):
         """ Once save artifacts is complete, put OK into the Redis queue. 
@@ -592,7 +592,10 @@ class Pipeline:
         for step in self.user_parameters[self.pipeline_type]:
             if step['step'] == step_name:
                 if type(step['args']) == list:
-                    return step['args'][0]
+                    if len(step['args']) > 0:
+                        return step['args'][0]
+                    else:
+                        return dict()
                 else:
                     return dict()
         ## if not returned, raise error 

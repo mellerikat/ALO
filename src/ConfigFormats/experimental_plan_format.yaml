@@ -32,4 +32,3 @@ control:
     - save_inference_format: tar.gz ## tar.gz, zip
     ## 7. resource check 
     - check_resource: False ## True: measure memory, cpu / False  
-ui_args_detail: []

@@ -24,14 +24,29 @@ from src.constants import *
 #    GLOBAL VARIABLE
 #--------------------------------------------------------------------------------------------------------------------------
 KUBEFLOW_STATUS = ("pending", "running", "succeeded", "skipped", "failed", "error")
+
+class ErrorRaisingHandler(logging.Handler):
+    def emit(self, record):
+        if record.levelno == logging.ERROR:
+            raise Exception(record.getMessage())
+        
 ## setup logger
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 if not logger.handlers:
-    stream_handler = logging.StreamHandler()
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setLevel(logging.DEBUG) 
+    stream_formatter = logging.Formatter('%(asctime)s | %(levelname)s - %(message)s')
+    stream_handler.setFormatter(stream_formatter)
+    file_handler = logging.FileHandler(PROJECT_HOME + '.solution_register.log')
+    file_handler.setLevel(logging.DEBUG)  
+    file_formatter = logging.Formatter('%(asctime)s | %(levelname)s - %(message)s')
+    file_handler.setFormatter(file_formatter)
     logger.addHandler(stream_handler)
+    logger.addHandler(file_handler)
+    error_raising_handler = ErrorRaisingHandler()
+    logger.addHandler(error_raising_handler)
 #--------------------------------------------------------------------------------------------------------------------------
-
 class SolutionRegister:
     ## class const. variables
     SOLUTION_FILE = '.response_solution.json'
@@ -1160,7 +1175,7 @@ class SolutionRegister:
                 logger.error(output.decode('utf-8'))
             logger.info(f"Successfully logged in - {self.ecr_url} with Buildah")
         except subprocess.CalledProcessError as e:
-            logger.info(f"An error occurred during Buildah login: \n {e.output.decode('utf-8')}")
+            logger.warning(f"Buildah login failed: \n {e.output.decode('utf-8')}")
         except RuntimeError as e:
             logger.error(str(e))
     
@@ -1182,7 +1197,7 @@ class SolutionRegister:
             import base64
             user, password = base64.b64decode(token).decode('utf-8').split(':')
         except ClientError as e:
-            logger.info(f"An error occurred: {str(e)}")
+            logger.warning(f"Failed to get user info: \n {str(e)}")
             return None
         return user, password
     
@@ -1207,7 +1222,7 @@ class SolutionRegister:
                 logger.info(f'[SYSTEM] AWS ECR | {builder} login result: {login_results}')
                 logger.info(f"[SUCCESS] logged in to {self.ecr_url}")
             except APIError as e:
-                logger.error(f"An error occurred during {builder} login: {e}")
+                logger.warning(f"Failed to {builder} login: {e}")
         else:
             self.buildah_login(password)
 
@@ -1540,7 +1555,7 @@ class SolutionRegister:
                                 last_update_time = time.time()
                     sys.stdout.write(' Done!\n')
             except Exception as e:
-                logger.info(f"An error occurred: {str(e)}")
+                logger.warning(f"Failed to build docker: \n {str(e)}")
         else:
             with open(log_file_path, "wb") as log_file:
                 command = ['sudo', 'buildah', 'bud', '--isolation', 'chroot', '-t', image_tag, '.']
@@ -2609,7 +2624,7 @@ class SolutionRegister:
         class NoAliasDumper(Dumper):
             def ignore_aliases(self, data):
                 return True
-        with open('solution_metadata.yaml', 'w', encoding='utf-8') as yaml_file:
+        with open(PROJECT_HOME + 'solution_metadata.yaml', 'w', encoding='utf-8') as yaml_file:
             yaml.dump(self.sm_yaml, yaml_file, allow_unicode=True, default_flow_style=False, Dumper=NoAliasDumper)
     
     def _set_alo(self):

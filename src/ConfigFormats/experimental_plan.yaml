@@ -1,0 +1,83 @@
+name: titanic-sample
+external_path:
+    - load_train_data_path: ./solution/sample_data/train_data/
+    - load_inference_data_path: ./solution/sample_data/inference_data/
+    - save_train_artifacts_path:
+    - save_inference_artifacts_path:
+    - load_model_path: 
+
+version: 1.0.0
+
+external_path_permission:
+    - aws_key_profile:
+ 
+user_parameters:
+    - train_pipeline:
+      - step: input 
+        args: 
+          - x_columns: ['Pclass', 'Sex', 'SibSp', 'Parch']
+            y_column: Survived
+      
+      - step: train 
+        args: 
+          - n_estimators: 100
+      
+    - inference_pipeline:
+      - step: input 
+        args: 
+          - x_columns: ['Pclass', 'Sex', 'SibSp', 'Parch']
+            y_column: 
+      
+      - step: inference
+        args: 
+
+      - step: output 
+        args:
+
+asset_source:
+    - train_pipeline:
+      - step: input
+        source: 
+          code: http://mod.lge.com/hub/dxadvtech/assets/alo-guide-input.git
+          branch: release_1.0
+          requirements:
+            - pandas==2.2.2
+      
+      - step: train 
+        source:
+          code: http://mod.lge.com/hub/dxadvtech/assets/alo-guide-train.git
+          branch: release_1.0
+          requirements:
+            - scikit-learn
+
+    - inference_pipeline:
+      - step: input
+        source: 
+          code: http://mod.lge.com/hub/dxadvtech/assets/alo-guide-input.git
+          branch: release_1.0
+          requirements:
+            - pandas==2.2.2
+
+      - step: inference 
+        source: 
+          code: http://mod.lge.com/hub/dxadvtech/assets/alo-guide-inference.git
+          branch: release_1.0
+          requirements: 
+            - scikit-learn
+
+      - step: output 
+        source: 
+          code: http://mod.lge.com/hub/dxadvtech/assets/alo-guide-output.git
+          branch: release_1.0
+          requirements: []
+
+control:
+    - get_asset_source: once ## once, every
+    - backup_artifacts: True
+    - backup_log: True
+    - backup_size: 1000
+    - interface_mode: memory
+    - save_inference_format: tar.gz 
+    - check_resource: False 
+  
+ui_args_detail:

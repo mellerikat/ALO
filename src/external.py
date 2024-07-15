@@ -156,7 +156,7 @@ class S3Handler:
         self.s3 = self.create_s3_session() 
         ## last folder name in s3 uri 
         s3_basename = os.path.basename(os.path.normpath(self.s3_folder)) 
-        target = os.path.join(input_path, s3_basename) 
+        target = os.path.join(input_path, s3_basename)
         if os.path.exists(target):
             PROC_LOGGER.process_error(f"{s3_basename} already exists in the << input >> folder.")    
         def _download_folder_from_s3_recursively(s3_dir_path):
@@ -174,7 +174,8 @@ class S3Handler:
                     ## iterate the files
                     for i, each_file in enumerate(dir_list['Contents']):  
                         ## keep the names of directories and files among the s3 uri & local path  
-                        sub_folder, filename = each_file['Key'].split('/')[-2:] 
+                        sub_folder = os.path.dirname(os.path.relpath(each_file['Key'], self.s3_folder))
+                        filename = os.path.basename(each_file['Key']) 
                         ## logging every 10 files
                         if i % 10 == 0: 
                             PROC_LOGGER.process_message('>>>> S3 downloading file << {} >> | Progress: ( {} / {} total file )'.format(filename, i+1, len(dir_list['Contents'])))
