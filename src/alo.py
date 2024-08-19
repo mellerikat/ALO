@@ -175,8 +175,6 @@ class ALO:
                     self.system_envs['runs_status'] = pipeline.system_envs['runs_status']
                     ## return to loop & continue (do not kill main.py process when error occurs in loop mode)
                     _ = self.error_loop(pipe)  
-                    ## initialize inference pipeline's metadata
-                    self.set_metadata(pipeline_type=pipe.split('_')[0]) 
         ## modes except for loop mode
         else:
             ## (sagemaker mode) boot_on is True at initial
