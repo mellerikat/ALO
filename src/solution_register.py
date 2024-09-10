@@ -343,7 +343,7 @@ class SolutionRegister:
                     if name == sol['name']: 
                         self.solution_name = name
                         ## latest check ([0])
-                        self.solution_version_new = int(sol['versions'][0]['version']) + 1  
+                        self.solution_version_new = int(sol['versions'][0]['version_num']) + 1  
                         self.solution_version_id = sol['id']
                         logger.info(f"[SUCCESS] The solution name ({name}) already exists. It can be upgraded.")
         else: 
