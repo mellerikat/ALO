@@ -140,7 +140,7 @@ class Pipeline:
             if len(data_path) > 0:
                 ## update external path 
                 self.external_path[f'load_{ptype}_data_path'] = data_path
-            if self.system_envs['boot_on'] == False: 
+            if not self.system_envs['boot_on']: 
                 data_checksums = self.external.external_load_data(self.pipeline_type, self.external_path, self.external_path_permission)
                 ## generate a {data_id} for the experiment history
                 ptype = self.pipeline_type.split('_')[0]
@@ -234,14 +234,14 @@ class Pipeline:
         """  
         _log_process(f"<< SAVE >> {self.pipeline_type} start", highlight=True)
         ## check for proper creation of summary yaml file and output
-        if (self.pipeline_type == 'inference_pipeline') and (self.system_envs['boot_on'] == False):
+        if (self.pipeline_type == 'inference_pipeline') and (not self.system_envs['boot_on']):
             self._check_output()
         ## send a success message to the edge app \
         ## indicating that the creation of inference output is complete.
         if self.system_envs['loop'] and (self.system_envs['boot_on'] == False):
             self.system_envs['success_str'] = self._send_redis_summary()
         ## save artifacts
-        if self.system_envs['boot_on'] == False:
+        if not self.system_envs['boot_on']:
             ## (Note) within save_artifacts, there is also transmission to the edge app via Redis
             self._save_artifacts()
             ## define up to backup as the final execution time
@@ -630,7 +630,7 @@ class Pipeline:
 
         """
         assert self.control['check_resource'] in CHECK_RESOURCE_LIST
-        self._publish_redis_msg("alo_status", f"run.{asset_config['step']}")
+        self._publish_redis_msg("alo_status", "booting" if self.system_envs['boot_on'] else f"run.{asset_config['step']}")
         self.asset_structure.envs['pipeline'] = self.pipeline_type
         _path = ASSET_HOME + asset_config['step'] + "/"
         _file = "asset_" + asset_config['step']
@@ -656,7 +656,7 @@ class Pipeline:
         asset_structure.envs = self.asset_structure.envs
         asset_structure.args = self.asset_structure.args[self.user_parameters[self.pipeline_type][step]['step']]
         ## just return if boot mode 
-        if self.system_envs['boot_on'] == True:
+        if self.system_envs['boot_on']:
             _log_process(f"Booting... completes importing << {_file} >>")
             return
         ## declare user asset

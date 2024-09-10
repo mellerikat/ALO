@@ -4,7 +4,6 @@
 "WORKSPACE_NAME": "cism-ws"  ## magna-ws, cism-ws
 "BUILD_METHOD": "docker"  ## docker, buildah, codebuild
 "LOGIN_MODE": "static" ## ldap, static
-"VERSION": 1.1
 "REPOSITORY_TAGS": 
   - "Key=Description,Value=Kubeflow Study"
   - "Key=Owner,Value=DX엔지니어링팀"

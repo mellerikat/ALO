@@ -1,6 +1,6 @@
 'inference_only': False # True, False
 'solution_update': False
-'solution_name': titanic-demo-1
+'solution_name': my-solution 
 'solution_type': private
 'contents_type': 
     'support_labeling': False

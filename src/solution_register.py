@@ -50,13 +50,6 @@ if not logger.handlers:
 class SolutionRegister:
     ## class const. variables
     SOLUTION_FILE = '.response_solution.json'
-    SOLUTION_INSTANCE_FILE = '.response_solution_instance.json'
-    STREAM_FILE = '.response_stream.json'
-    STREAM_RUN_FILE = '.response_stream_run.json'
-    STREAM_STATUS_FILE = '.response_stream_status.json'
-    STREAM_HISTORY_LIST_FILE = '.response_stream_history_list.json'
-    STREAM_LIST_FILE = '.response_stream_list.json'
-    INSTANCE_LIST_FILE = '.response_instance_list.json'
     SOLUTION_LIST_FILE = '.response_solution_list.json'
     
     def __init__(self, infra_setup=None, solution_info=None, experimental_plan=None):
@@ -77,41 +70,29 @@ class SolutionRegister:
         self.solution_info = check_and_load_yaml(solution_info, mode='solution_info')
         self.exp_yaml = check_and_load_yaml(experimental_plan, mode='experimental_plan')
         logger.info(f"[SYSTEM] infra setup: \n {self.infra_setup} ")
-        ## Setup AIConductor API
-        file_name = SOURCE_HOME + 'config/ai_conductor_api.json'
-        ## read json from file 
-        with open(file_name, 'r') as file:
-            data = json.load(file)
-        self.api_uri = data['API']
-        ## If the version is lower than the legacy version, change the API.
-        self.api_uri_legacy_version = 1.5
-        version = self.check_version()
-        max_val = find_max_value(list(data.keys()))
-        if version >max_val:
-            version = max_val
-        self.register_solution_api = data[f'{version}']['REGISTER_SOLUTION']
-        self.register_solution_instance_api = data[f'{version}']['REGISTER_SOLUTION_INSTANCE']
-        self.register_stream_api = data[f'{version}']['REGISTER_STREAM']
-        self.request_run_stream_api = data[f'{version}']['REQUEST_RUN_STREAM']
-        self.api_uri_legacy = {
-            'STATIC_LOGIN': 'api/v1/auth/static/login',  
-        }
+        ## Setup AIC API
+        with open(SOURCE_HOME + 'config/aic_api.json', 'r') as file:
+            aic_api = json.load(file)
+        self.api_uri = aic_api['API']
+        aic_ver = self.get_aic_version()
+        latest_supported_ver = find_latest_supported_ver(list(aic_api.keys()))
+        if aic_ver > latest_supported_ver:
+            logger.warning(f"AI Conductor version of {aic_ver} may not be supported.")
+            aic_ver = latest_supported_ver
+        self.register_solution_api = aic_api[f'{aic_ver}']['REGISTER_SOLUTION']
+        self.sm_ver = aic_api[f'{aic_ver}']["SOLUTION_METADATA_VERSION"]
         ## Configuration 
         self.sm_yaml = {}  
         self.pipeline = None 
         self.aic_cookie = None
         self.solution_name = None
-        self.icon_filenames = []
         self.sm_pipe_pointer = -1  
-        self.resource_list = []
         self.bucket_name = None
-        self.bucket_name_icon = None 
         self.ecr_name= None
-        self.solution_version_new = 1   
+        self.solution_version_new = 1 
+        self.workspace_id = None   
         ## used in solution update
         self.solution_version_id = None  
-        ## for debugging 
-        self.debugging = False 
         self.skip_generation_docker = False        
         make_art("Register AI Solution !")
         self._s3_access_check()
@@ -141,8 +122,6 @@ class SolutionRegister:
         self._init_solution_metadata()
         self._set_alo()  
         self.set_description()
-        ## FIXME icon out of spec
-        self.select_icon(name='ic_artificial_intelligence')
         self.set_wrangler()
         self.set_edge()
     
@@ -159,15 +138,12 @@ class SolutionRegister:
         """
         self.login()
         self._sm_append_pipeline(pipeline_name=pipe) 
-        ## FIXME resource selection spec-out
-        self.set_resource(resource='high')  
         ## solution metadata
         self.set_user_parameters() 
         ## aws s3 upload data, artifacts
         self.s3_upload_data() 
         self.s3_upload_artifacts()
-        skip_build = (self.debugging or self.skip_generation_docker)
-        codebuild_client, build_id = self.make_docker(skip_build)
+        codebuild_client, build_id = self.make_docker(self.skip_generation_docker)
         self.docker_push()
         self._set_container_uri()
         return codebuild_client, build_id
@@ -184,8 +160,6 @@ class SolutionRegister:
         self.set_solution_settings()
         ## FIXME set description & wrangler (spec-out)
         self.set_solution_metadata()
-        ## set resource list to upload 
-        self.set_resource_list()
         ## run solution registration pipeline 
         pipelines = ["train", "inference"]
         codebuild_run_meta = {} 
@@ -198,41 +172,8 @@ class SolutionRegister:
         for pipe in codebuild_run_meta:
             if codebuild_run_meta[pipe][0] != None and codebuild_run_meta[pipe][1] != None: 
                 self._batch_get_builds(codebuild_run_meta[pipe][0], codebuild_run_meta[pipe][1])
-        if not self.debugging:
-            ## Since it is before solution registration, code to delete the solution cannot be included.
-            self.register_solution()
-            ## Since it is before solution registration, code to delete the solution instance cannot be included.
-            ## If registration fails, delete the solution.
-            self.register_solution_instance()  
-
-    def run_train(self, status_period=30, delete_solution=False):
-        """ request running train docker in AI conductor infra
-        
-        Args: 
-            status_period   (int): check train status period
-            delete_solution (bool): whether to delete solution after train
-        
-        Returns: -
-
-        """
-        if self.solution_info['inference_only']:
-            logger.error("run-train request allowed when inference_only=False")
-        else:
-            try: 
-                self.login()
-                self.register_stream()
-                self.register_solution_instance()
-                self.request_run_stream()
-                self.get_stream_status(status_period=status_period)
-                ## artifacts download before stream deletion  
-                self.download_artifacts()
-                ## FIXME self.delete_stream_history() not called: if stream removed, history also removed
-            finally: 
-                ## Regardless of whether the training is successful or not, the stream is deleted anyway.
-                self.delete_stream()
-                if delete_solution:
-                    self.delete_solution_instance()
-                    self.delete_solution()
+        ## Since it is before solution registration, code to delete the solution cannot be included.
+        self.register_solution()
 
     def print_step(self, step_name, sub_title=False):
         """ print registration step info
@@ -251,7 +192,7 @@ class SolutionRegister:
         else:
             logger.info(f'\n######  {step_name}')
 
-    def check_version(self):
+    def get_aic_version(self):
         """ Check AIC version and convert API 
         
         Args: -
@@ -273,11 +214,6 @@ class SolutionRegister:
                 version = float(match.group(1))
             else:
                 version = float(version_str)
-            ## FIXME legacy version ?
-            if self.api_uri_legacy_version >= version:
-                self.api_uri.update(self.api_uri_legacy)
-                logger.info(f"[INFO] API URI changed")
-                logger.info(f"changed uri:{self.api_uri_legacy}")
         elif response.status_code == 400:
             logger.error("[ERROR] Failed to check AIC version ")
         else:
@@ -288,9 +224,9 @@ class SolutionRegister:
         """ login to AIC (get session).
             Login access is divided into cases where an account exists and where permissions exist.
             - case1: account O / authority X 
-            - case2: accoun O / authority single (ex cism-ws) 
-            - case3: accoun O / authority multi (ex cism-ws, magna-ws) - authority is depended on workspace 
-            - case4: accoun X  ()
+            - case2: account O / authority single (ex cism-ws) 
+            - case3: account O / authority multi (ex cism-ws, magna-ws) - authority is depended on workspace 
+            - case4: account X  ()
         
         Args: 
             id  (str): user entered id  
@@ -311,10 +247,10 @@ class SolutionRegister:
         try:
             if self.infra_setup["LOGIN_MODE"] == 'ldap':
                 response = requests.post(self.infra_setup["AIC_URI"] + self.api_uri["LDAP_LOGIN"], data = self.login_data)
-            else:
+            elif self.infra_setup["LOGIN_MODE"] == 'static':
                 response = requests.post(self.infra_setup["AIC_URI"] + self.api_uri["STATIC_LOGIN"], data = self.login_data)
         except Exception as e:
-            logger.error(str(e))
+            logger.error(f"Failed to login: \n {e}")
         response_login = response.json()
         cookies = response.cookies.get_dict()
         access_token = cookies.get('access-token', None)
@@ -323,15 +259,15 @@ class SolutionRegister:
         }
         if response.status_code == 200:
             logger.info("[SUCCESS] login OK")
-            ws_list = []
+            ws_dict = {} 
             for ws in response_login["workspace"]:
-                ws_list.append(ws["name"])
-            logger.info(f"Workspace list: {ws_list}")
+                ws_dict[ws["name"]] =  ws["id"] # {name: id}
+            logger.info(f"Workspaces: {ws_dict}")
             if response_login['account_id']:
-                if self.debugging:
-                    logger.info(f'[SYSTEM] Success getting cookie from AI Conductor:\n {self.aic_cookie}')
-                    logger.info(f'[SYSTEM] Success Login: {response_login}')
-                if self.infra_setup["WORKSPACE_NAME"] in ws_list:
+                logger.info(f'[SYSTEM] Success getting cookie from AI Conductor:\n {self.aic_cookie}')
+                logger.info(f'[SYSTEM] Success Login: {response_login}')
+                if self.infra_setup["WORKSPACE_NAME"] in ws_dict:
+                    self.workspace_id = ws_dict[self.infra_setup["WORKSPACE_NAME"]] 
                     msg = f'[SYSTEM] workspace ({self.infra_setup["WORKSPACE_NAME"]}) is accessible'
                     logger.info(msg)
                 else:
@@ -390,10 +326,8 @@ class SolutionRegister:
         if not pattern.match(name):
             logger.error("The solution name can only contain lowercase letters / dash / number (ex. my-solution-v0)")
         ## solution name uniqueness check 
-        ## {only_public} - 1: public, private / 0: only workspace 
         solution_data = {
-            "workspace_name": self.infra_setup["WORKSPACE_NAME"], 
-            "only_public": 0,  
+            "workspace_id": self.workspace_id, 
             "page_size": 100
         }
         aic = self.infra_setup["AIC_URI"]
@@ -465,7 +399,7 @@ class SolutionRegister:
         self.print_step("Set AI Solution Description")
         ##  Automatically fetch contents_name and contents_version from the experimental plan.
         def _add_descr_keys(d):
-            required_keys = ['title', 'problem', 'data', 'key_feature', 'value', 'note_and_contact']
+            required_keys = ['title', 'overview']
 
             for key in required_keys:
               if key not in d:
@@ -476,7 +410,21 @@ class SolutionRegister:
         description['contents_name'] = self.exp_yaml['name']
         description['contents_version'] = str(self.exp_yaml['version'])
         description['alo_version'] = self._get_alo_version()
-        description['inference_build_type'] =  'arm64' if self.solution_info['inference_arm'] == True  else 'amd64'
+        description['inference_build_type'] = 'arm64' if self.solution_info['inference_arm'] == True else 'amd64'
+        # check overview length < 500
+        assert type(self.solution_info['overview']) == str 
+        if not check_str_len(self.solution_info['overview'], len_limit = 500):
+            raise ValueError("[ERROR] The length of overview must be under 500.") 
+        # check title, content in detail are all under the 5000 bytes 
+        assert type(self.solution_info['detail']) == list
+        for d in self.solution_info['detail']:
+            assert type(d) == dict 
+            for k, v in d.items(): 
+                assert type(k) == str and type(v) == str
+                if (not check_str_bytes(k, bytes_limit = 5000)) or (not check_str_bytes(v, bytes_limit = 5000)):
+                    raise ValueError("[ERROR] The title and content in detail must be under 5000 bytes.")
+        description['overview'] = self.solution_info['overview']
+        description['detail'] = self.solution_info['detail']
         try: 
             self.sm_yaml['description'].update(description)
             self._save_yaml()
@@ -552,71 +500,6 @@ class SolutionRegister:
         logger.info("[SUCCESS] contents_type --> solution_metadata updated")
         logger.info(f"edgeconductor_interface: {metadata_value}")
 
-    def set_resource_list(self):
-        """ list up AIC train resource 
-        
-        Args: -
-            
-        Returns: -
-
-        """
-        self.print_step(f"Display resource list")
-        self.login()
-        params = {
-            "workspace_name": self.infra_setup["WORKSPACE_NAME"],
-            "page_size": 100
-        }
-        aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["SYSTEM_INFO"]
-        try: 
-            response = requests.get(aic+api, params=params, cookies=self.aic_cookie)
-            response_json = response.json()
-        except: 
-            logger.error("[ERROR] Failed to get workspaces info.")
-        resource_list = []
-        try: 
-            for spec in response_json["specs"]:
-                resource_list.append(spec["name"])
-        except: 
-            logger.error("Got wrong workspace info.")
-        logger.info(f"{self.pipeline} available resource types list: \n {resource_list}")
-        logger.info(f"< Allowed Specs >")
-        logger.info(response_json["specs"])
-        ## as self variable
-        self.resource_list = resource_list
-        return resource_list
-        
-
-    def set_resource(self, resource= ''):
-        ## FIXME sepc-out ?
-        """ Select the resources to be used for training in AI Conductor. 
-            Allow the user to make the choice, providing abstract options like low, standard, high.
-        
-        Args: 
-            resource (str): low, standard, high
-            
-        Returns: -
-
-        """
-        self.print_step(f"Set {self.pipeline} Resource")
-        if len(self.resource_list) == 0: 
-            logger.error(f"[ERROR] set_resource_list() function must precede")
-        ## erorr when input is empty 
-        if resource == '':
-            logger.error(f"[ERROR] {self.pipeline}_resource is empty. Select spec. (supported: {self.resource_list})")
-        if not resource in self.resource_list:
-            logger.error(f"[ERROR] {self.pipeline}_resource is {resource} which is not supported. (supported: {self.resource_list})")
-        self.sm_yaml['pipeline'][self.sm_pipe_pointer]["resource"] = {"default": resource}
-        ## There is no scenario for selecting resources for inference. It is forcibly fixed to standard.
-        if self.pipeline == "inference":
-            self.sm_yaml['pipeline'][self.sm_pipe_pointer]["resource"] = {"default": 'standard'}
-            resource = 'standard'
-            msg = f"EdgeApp resource selection is not supported. << resource = standard >> is fixed"
-            logger.info(msg)
-        logger.info(f"[SUCCESS] Update solution_metadat.yaml")
-        logger.info(f"Set resource: {resource}")
-        self._save_yaml()
-
     def load_system_resource(self): 
         """ return available ecr, s3 uri 
         
@@ -627,7 +510,7 @@ class SolutionRegister:
         """
         self.print_step("Check ECR & S3 Resource")
         params = {
-            "workspace_name": self.infra_setup["WORKSPACE_NAME"],
+            "workspace_id": self.workspace_id,
             "page_size": 100
 
         }
@@ -640,25 +523,14 @@ class SolutionRegister:
             logger.error("Failed to get workspaces info.")
         ## workspace ecr, s3 info as self variables
         try:
-            solution_type = self.solution_info["solution_type"]
-            ## bucket_scope: private, public
-            self.bucket_name = response_json["s3_bucket_name"][solution_type] 
-            ## FIXME icon is only in public
-            self.bucket_name_icon = response_json["s3_bucket_name"]["public"] 
-            self.ecr_name = response_json["ecr_base_path"][solution_type]
+            self.bucket_name = response_json["s3_bucket_name"]
+            self.ecr_name = response_json["ecr_base_path"]
         except Exception as e:
             logger.error(f"Wrong format of << workspaces >> received from REST API:\n {e}")
-        ## debugging mode 
-        if self.debugging:
-            logger.info(f"\n[INFO] S3_BUCUKET_URI:") 
-            logger.info(f'- public: {response_json["s3_bucket_name"]["public"]}') 
-            logger.info(f'- private: {response_json["s3_bucket_name"]["public"]}') 
-
-            logger.info(f"\n[INFO] ECR_URI:") 
-            logger.info(f'- public: {response_json["ecr_base_path"]["public"]}') 
-            logger.info(f'- private: {response_json["ecr_base_path"]["public"]}') 
-        logger.info(f"[SYSTEM] AWS ECR: \n {self.ecr_name}") 
-        logger.info(f"[SYSTEM] AWS S3 bucket: \n {self.bucket_name}") 
+            logger.info(f"\n[INFO] S3_BUCUKET_URI:\n {response_json['s3_bucket_name']}")  
+            logger.info(f"\n[INFO] ECR_URI:\n {response_json['ecr_base_path']}") 
+            logger.info(f"[SYSTEM] AWS ECR: \n {self.ecr_name}") 
+            logger.info(f"[SYSTEM] AWS S3 bucket: \n {self.bucket_name}") 
     
     def set_pipeline_uri(self, mode, data_paths = [], skip_update=False):
         """ If one of the dataset, artifacts, or model is selected, 
@@ -734,19 +606,18 @@ class SolutionRegister:
         self.login()
         try: 
             ## change status for registration 
-            self.register_solution_api["scope_ws"] = self.infra_setup["WORKSPACE_NAME"]
             self.register_solution_api["metadata_json"] = self.sm_yaml
             data =json.dumps(self.register_solution_api)
             aic = self.infra_setup["AIC_URI"]
             if self.solution_info["solution_update"]:
                 solution_params = {
                     "solution_id": self.solution_version_id,
-                    "workspace_name": self.infra_setup["WORKSPACE_NAME"]
+                    "workspace_id": self.workspace_id
                 }
                 api = self.api_uri["REGISTER_SOLUTION"] + f"/{self.solution_version_id}/version"
             else:
                 solution_params = {
-                    "workspace_name": self.infra_setup["WORKSPACE_NAME"]
+                    "workspace_id": self.workspace_id
                 }
                 api = self.api_uri["REGISTER_SOLUTION"]
             ## register request
@@ -763,7 +634,7 @@ class SolutionRegister:
                     shutil.rmtree(REGISTER_INTERFACE_PATH)
                 os.mkdir(REGISTER_INTERFACE_PATH)
             except Exception as e:
-                logger.error(f"Failed to generate interface directory while registering solution instance: \n {str(e)}")
+                logger.error(f"Failed to generate interface directory while registering solution: \n {str(e)}")
             ## json data file save 
             path = REGISTER_INTERFACE_PATH + self.SOLUTION_FILE
             with open(path, 'w') as f:
@@ -778,21 +649,6 @@ class SolutionRegister:
         else:
             logger.info(f"[ERROR] Unsupported error code: {response.status_code}")
             logger.error("Error message: {}".format(self.response_solution["detail"]))
- 
-    def select_icon(self, name):
-        # FIXME spec-out  
-        """ select icon 
-        
-        Args: -
-            
-        Returns: -
-
-        """
-        if not ".svg" in name:
-            name = name+".svg"
-        icon_s3_uri = "s3://" + self.bucket_name_icon + '/icons/' + name  
-        self.sm_yaml['description']['icon'] = icon_s3_uri
-        self._save_yaml()
         
     def _s3_access_check(self):
         """ check aws s3 access, generate s3 client instance
@@ -842,8 +698,8 @@ class SolutionRegister:
                     if idx % log_interval == 0:
                         logger.info(f'[SYSTEM] Deleted pre-existing S3 objects --- ( {idx} / {len_obj} )')
             s3.delete_object(Bucket=bucket_name, Key=s3_path)
-        except: 
-            logger.error("Failed to s3-delete") 
+        except Exception as e: 
+            logger.error(f"Failed to s3-delete: \n {str(e)}") 
             
     def _s3_update(self, s3, bucket_name, local_folder, s3_path, log_interval=50):
         """ upload data to s3 path.
@@ -914,43 +770,6 @@ class SolutionRegister:
                 logger.error(f'[ERROR] Failed to upload local data into S3: \n {str(e)}') 
         else:
             logger.error(f"[ERROR] Not allowed value for << pipeline >>: {self.pipeline}")
-
-    def s3_upload_stream_data(self, stream_id='stream_id', instance_id='insatsnce_id'):
-        """ Upload the data existing in the input folder to s3 for streaming.
-        
-        Args: 
-            stream_id   (str): stream id
-            instance_id (str): instance id
-        
-        Returns: 
-            uri (dict): dataset uri dict 
-
-        """
-        self.print_step(f"Upload {self.pipeline} data to S3")
-        ## only upload train data 
-        local_folder = INPUT_DATA_HOME + "train/"
-        logger.info(f'[SYSTEM] Start uploading data into S3 from local folder:\n {local_folder}')
-        try:
-            s3_prefix_uri = "streams/" + f"{stream_id}/{instance_id}/train/data/"
-            ## delete & upload data to S3
-            self._s3_delete(self.s3_client, self.bucket_name, s3_prefix_uri) 
-            self._s3_update(self.s3_client, self.bucket_name, local_folder, s3_prefix_uri)
-        except Exception as e: 
-            logger.error(f'[ERROR] Failed to upload local data into S3') 
-        ## dict for updating solution metadata 
-        data_paths = []
-        for item in os.listdir(local_folder):
-            sub_folder = os.path.join(local_folder, item)
-            if os.path.isdir(sub_folder):
-                data_paths.append(item+"/")
-        if len(data_paths) ==0 :
-            uri = {'dataset_uri': ["s3://" + self.bucket_name + "/" + s3_prefix_uri]}
-        else:
-            uri = {'dataset_uri': []}
-            data_path_base = "s3://" + self.bucket_name + "/" +  s3_prefix_uri
-            for data_path_sub in data_paths:
-                uri['dataset_uri'].append(data_path_base + data_path_sub)
-        return uri
 
     def s3_process(self, bucket_name, data_path, local_folder, s3_path, delete=True):
         """ delete and upload data to s3 
@@ -1555,7 +1374,7 @@ class SolutionRegister:
                                 last_update_time = time.time()
                     sys.stdout.write(' Done!\n')
             except Exception as e:
-                logger.warning(f"Failed to build docker: \n {str(e)}")
+                logger.error(f"Failed to build docker: \n {str(e)}")
         else:
             with open(log_file_path, "wb") as log_file:
                 command = ['sudo', 'buildah', 'bud', '--isolation', 'chroot', '-t', image_tag, '.']
@@ -1753,216 +1572,6 @@ class SolutionRegister:
             for i in item_list: 
                 logger.info(f"{i}")
         return self.candidate_format
-    
-    def register_solution_instance(self): 
-        """ register solution instance
-        
-        Args: -
-        
-        Returns: -
-
-        """
-        self.print_step("Register AI solution instance")
-        self.login()
-        if os.path.exists(REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE):
-            path = REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE
-            logger.info(f'[SYSTEM] AI solution instance already registered. (register path: {path})')
-            return 
-        else:
-            path = REGISTER_INTERFACE_PATH + self.SOLUTION_FILE
-            msg = f"[SYSTEM] Check AI solution register info. at {path}"
-            load_response = self._load_response_yaml(path, msg)
-        logger.info(f'load_response: \n {load_response}')
-        ## instance name
-        name = load_response['name'] + \
-            "-" + f'v{load_response["versions"][0]["version"]}'
-        self.solution_instance_params = {
-            "workspace_name": load_response['scope_ws']
-        }
-        logger.info(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}")
-        ## read solution metadata  
-        with open(SOLUTION_META, 'r') as file:
-            yaml_data = yaml.safe_load(file)
-        
-        self.register_solution_instance_api["name"] = name
-        self.register_solution_instance_api["solution_version_id"] = load_response['versions'][0]['id']
-        self.register_solution_instance_api["metadata_json"] = yaml_data
-        ## FIXME resource
-        if 'train_resource' in self.register_solution_instance_api:
-            self.register_solution_instance_api['train_resource'] = "standard"
-            yaml_data['pipeline'][0]["resource"]['default'] = self.register_solution_instance_api['train_resource']
-        ## json dump
-        data =json.dumps(self.register_solution_instance_api)
-        ## register solution instance 
-        aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["SOLUTION_INSTANCE"]
-        response = requests.post(aic+api, 
-                                 params=self.solution_instance_params, 
-                                 data=data,
-                                 cookies=self.aic_cookie)
-        self.response_solution_instance = response.json()
-        if response.status_code == 200:
-            logger.info(f"[INFO] response: \n {self.response_solution_instance}")
-            logger.info("[SUCCESS] AI solution instance is registered")
-            ## create interface directory
-            try:
-                if not os.path.exists(REGISTER_INTERFACE_PATH):
-                    os.mkdir(REGISTER_INTERFACE_PATH)
-            except Exception as e:
-                logger.error(f"Failed to generate interface directory: \n {str(e)}")
-            ## save json to file
-            path = REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE
-            with open(path, 'w') as f:
-              json.dump(self.response_solution_instance, f, indent=4)
-              logger.info(f"[SYSTEM] save register result at {path}")
-        elif response.status_code == 400:
-            logger.error("[ERROR] Bad Request. Failed to register AI solution instance.")
-            self.delete_stream()
-            self.delete_solution()
-            logger.error("Error message: {}".format(self.response_solution_instance["detail"]))
-        elif response.status_code == 422:
-            logger.error("[ERROR] Failed to validate. Failed to register AI solution instance.")
-            self.delete_stream()
-            self.delete_solution()
-            logger.error("Error message: {}".format(self.response_solution_instance["detail"]))
-        else:
-            logger.info(f"[ERROR] Unsupported error code: {response.status_code}")
-            self.delete_stream()
-            self.delete_solution()
-    
-    def register_stream(self): 
-        """ register solution stream
-        
-        Args: -
-        
-        Returns: -
-
-        """
-        self.print_step("Register AI solution stream")
-        ## file load 
-        if os.path.exists(REGISTER_INTERFACE_PATH + self.STREAM_FILE):
-            path = REGISTER_INTERFACE_PATH + self.STREAM_FILE
-            logger.info(f'[SYSTEM] AI solution stream is already registered (register path: {path})')
-            return 
-        else:
-            path = REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE
-            msg = f"[SYSTEM] Check AI solution stream register info at {path}"
-            load_response = self._load_response_yaml(path, msg)
-        ## register stream  
-        params = {
-            "workspace_name": load_response['workspace_name']
-        }
-        ## prefix name already added in solution instance
-        data = {
-            "instance_id": load_response['id'],
-            "name": load_response['name']  
-        }
-        ## json dump
-        data =json.dumps(data) 
-        aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["STREAMS"]
-        response = requests.post(aic+api, 
-                                 params=params, 
-                                 data=data,
-                                 cookies=self.aic_cookie)
-        self.response_stream = response.json()
-        if response.status_code == 200:
-            logger.info(f"[INFO] response: \n {self.response_stream}")
-            logger.info("[SUCCESS] Stream is registered")
-            ## create interface directory
-            try:
-                if not os.path.exists(REGISTER_INTERFACE_PATH):
-                    os.mkdir(REGISTER_INTERFACE_PATH)
-            except Exception as e:
-                logger.error(f"Failed to generate interface directory: \n {str(e)}")
-            ## save json to file 
-            path = REGISTER_INTERFACE_PATH + self.STREAM_FILE
-            with open(path, 'w') as f:
-              json.dump(self.response_stream, f, indent=4)
-              logger.info(f"[SYSTEM] save register result at {path}")
-        elif response.status_code == 400:
-            self.delete_solution()
-            logger.info("Error message: {}".format(self.response_stream["detail"]))
-            logger.error(f"[ERROR] Bad request. Failed to register stream.")
-        elif response.status_code == 422:
-            self.delete_solution()
-            logger.info("Error message: {}".format(self.response_stream["detail"]))
-            logger.error("[ERROR] Failed to validate. Failed to register stream.")
-        else:
-            self.delete_solution()
-            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
-    
-    def request_run_stream(self): 
-        """ request train for stream
-        
-        Args: -
-        
-        Returns: -
-
-        """
-        self.print_step("Request AI solution stream run")
-        ## stream info. file load 
-        path = REGISTER_INTERFACE_PATH + self.STREAM_FILE
-        msg = f"[SYSTEM] Check stream register info at {path}"
-        load_response = self._load_response_yaml(path, msg)
-        ## stream params
-        stream_params = {
-            "stream_id": load_response['id'],
-            "workspace_name": load_response['workspace_name']
-        }
-        logger.info("{}".format(stream_params))
-        ## Upload train sample data to the s3 path required by the stream (similar to edge conductor).
-        dataset_uri = self.s3_upload_stream_data(stream_id=load_response['id'], instance_id=load_response['instance_id'])
-        ## read solution metadata  
-        with open(SOLUTION_META, 'r') as file:
-            yaml_data = yaml.safe_load(file)
-        ## + dataset_uri update and register
-        for pip in yaml_data['pipeline']:
-            if pip['type'] == 'train':
-                pip['dataset_uri'] = dataset_uri['dataset_uri']
-        ## FIXME config_path ?
-        data = {
-            "metadata_json": yaml_data,
-            "config_path": ""
-        }
-        ## json dump
-        data =json.dumps(data) 
-        aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["STREAM_RUN"] + f"/{load_response['id']}"
-        response = requests.post(aic+api, params=stream_params, data=data, cookies=self.aic_cookie)
-        response_json = response.json()
-
-        if response.status_code == 200:
-            logger.info("[SUCCESS] Stream-run requested")
-            logger.info(f"[INFO] response: \n {response_json}")
-            ## create interface directory
-            try:
-                if not os.path.exists(REGISTER_INTERFACE_PATH):
-                    os.mkdir(REGISTER_INTERFACE_PATH)
-            except Exception as e:
-                logger.error(f"Failed to generate interface directory: \n {str(e)}")
-            ## save json to file
-            path = REGISTER_INTERFACE_PATH + self.STREAM_RUN_FILE
-            with open(path, 'w') as f:
-              json.dump(response_json, f, indent=4)
-              logger.info(f"[SYSTEM] save stream-run result at {path}")
-        elif response.status_code == 400:
-            self.delete_stream()
-            self.delete_solution_instance()
-            self.delete_solution()
-            logger.info("Error message: {}".format(response_json["detail"]))
-            logger.error("[ERROR] Bad request. Failed to requeset stream-run")
-        elif response.status_code == 422:
-            self.delete_stream()
-            self.delete_solution_instance()
-            self.delete_solution()
-            logger.info("Error message: {}".format(response_json["detail"]))
-            logger.error("[ERROR] Failed to validate. Failed to requeset stream-run")
-        else:
-            self.delete_stream()
-            self.delete_solution_instance()
-            self.delete_solution()
-            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
 
     def get_log_error(self):
         """ get error log
@@ -2008,94 +1617,6 @@ class SolutionRegister:
                         logger.info(f'log file is not exist in the tar archive')
         except Exception as e:
             logger.error(str(e))
-        
-    def get_stream_status(self, status_period=30):
-        """ Proceed with the action handling for each status supported by KUBEFLOW_STATUS. KUBEFLOW_STATUS options include 
-            ("Pending", "Running", "Succeeded", "Skipped", "Failed", "Error"). 
-                Pending: Notifies that the docker container is about to run.
-                Running: Notifies that it is currently in execution.
-                Succeeded: Indicates successful status.
-                Skipped: Entity has been skipped. For example, due to caching.
-                Stopped: Indicates stopped status.
-                Failed: Indicates a failed status.
-
-        Args: 
-            status_period   (int): stream status check period
-        
-        Returns: -
-
-        """
-        self.print_step("Get AI solution stream status")
-        ## stream file load 
-        path = REGISTER_INTERFACE_PATH + self.STREAM_RUN_FILE
-        msg = f"[SYSTEM] Check stream status at {path}"
-        load_response = self._load_response_yaml(path, msg)
-
-        stream_history_params = {
-            "stream_history_id": load_response['id'],
-            "workspace_name": load_response['workspace_name']
-        }
-        aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["STREAM_RUN"] + f"/{load_response['id']}/info"
-        start_time = time.time()
-        time_format = "%Y-%m-%d %H:%M:%S"
-        start_time_str = time.strftime(time_format, time.localtime(start_time))
-        while True: 
-            time.sleep(status_period)
-            self.login()
-            response = requests.get(aic+api, 
-                                    params=stream_history_params, 
-                                    cookies=self.aic_cookie)
-            self.response_stream_status = response.json()
-            if response.status_code == 200:
-                status = self.response_stream_status["status"]
-                status = status.lower()
-                if not status in KUBEFLOW_STATUS:
-                    logger.error(f"[ERROR] Unsupported stream status (status: {status})")
-                end_time = time.time()
-                elapsed_time = end_time - start_time
-                elapsed_time_str = time.strftime(time_format, time.localtime(elapsed_time))
-                if status == "succeeded":
-                    logger.info(f"[SUCCESS] (run_time: {elapsed_time_str}) Train pipeline succeeds (status:{status})")
-                    ## save json to file 
-                    path = REGISTER_INTERFACE_PATH + self.STREAM_STATUS_FILE
-                    with open(path, 'w') as f:
-                      json.dump(self.response_stream_status, f, indent=4)
-                      logger.info(f"[SYSTEM] Save stream status result at {path}")
-                    return status 
-                elif status == "failed":
-                    logger.info(f"[ERROR] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline failed (status:{status})")
-                    return status 
-                elif status == "pending":
-                    logger.info(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline is pending (status:{status})")
-                    continue
-                elif status == "running":
-                    logger.info(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline is running (status:{status})")
-                    continue
-                elif status == "skipped":
-                    logger.info(f"[INFO] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline is skipped (status:{status})")
-                    return status 
-                elif status == "error":
-                    logger.info(f"[ERROR] (start: {start_time_str}, run: {elapsed_time_str}) Train pipeline error (status:{status})")
-                    return status 
-                else:
-                    logger.error(f"[ERROR] Unsupported stream status (status: {status})")
-            elif response.status_code == 400:
-                self.delete_stream()
-                self.delete_solution_instance()
-                self.delete_solution()
-                logger.error(f"[ERROR] Bad request. Failed to get stream status")
-            elif response.status_code == 422:
-                self.delete_stream()
-                self.delete_solution_instance()
-                self.delete_solution()
-                logger.info("Error message: {}".format(self.response_stream_status["detail"]))
-                logger.error("[ERROR] Failed to validate. Failed to get Stream status")
-            else:
-                self.delete_stream()
-                self.delete_solution_instance()
-                self.delete_solution()
-                logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
     
     def download_artifacts(self): 
         """ download artifacts
@@ -2131,155 +1652,6 @@ class SolutionRegister:
         except: 
             logger.error("Failed to download train artifacts.")
 
-    def delete_stream_history(self): 
-        """ delete stream history
-
-        Args: -
-        
-        Returns: -
-
-        """
-        self.print_step("Delete stream history")
-        self.login()
-        ## file load 
-        path = REGISTER_INTERFACE_PATH + self.STREAM_RUN_FILE
-        msg = f"[SYSTEM] Check stream info at {path}"
-        load_response = self._load_response_yaml(path, msg)
-        ## stream register 
-        stream_params = {
-            "stream_history_id": load_response['id'],
-            "workspace_name": load_response['workspace_name']
-        }
-        aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["STREAMS"] + f"/{load_response['id']}"
-        response = requests.delete(aic+api, 
-                                 params=stream_params, 
-                                 cookies=self.aic_cookie)
-        response_delete_stream_history = response.json()
-        if response.status_code == 200:
-            logger.info(f"[INFO] response: \n {response_delete_stream_history}")
-            logger.info("[SUCCESS] Deleted stream history")
-            ## if success deletion, delete files in path  
-            if os.path.exists(path):
-                os.remove(path)
-                logger.info(f'[SUCCESS] File removed (file: {path})')
-            else:
-                logger.info(f'File does not exist (file: {path})')
-        elif response.status_code == 400:
-            logger.info("Error message: {}".format(response_delete_stream_history["detail"]))
-            logger.error("[ERROR] Bad request. Failed to delete stream history")
-            ## althogh fails, delete stream history
-        elif response.status_code == 422:
-            logger.info("Error message: {}".format(response_delete_stream_history["detail"]))
-            logger.error(f"[ERROR] Failed to delete stream: \n {response_delete_stream_history}")
-        else:
-            logger.info(f"[ERROR] Unsupported error code: {response.status_code}")
-            logger.error(f"[ERROR] Failed to delete stream history: \n {response_delete_stream_history}")
-
-    def delete_stream(self,solution_id=None): 
-        """ delete stream 
-
-        Args: 
-            solution_id (str): solution id 
-        
-        Returns: -
-
-        """
-        self.print_step("Delete stream")
-        self.login()
-        if not solution_id:  
-            ## file load 
-            path = REGISTER_INTERFACE_PATH + self.STREAM_FILE
-            msg = f"[SYSTEM] Check stream register info at {path}"
-            load_response = self._load_response_yaml(path, msg)
-            params = {
-                "stream_id": load_response['id'],
-                "workspace_name": load_response['workspace_name']
-            }
-            api = self.api_uri["STREAMS"] + f"/{load_response['id']}"
-        else:
-            params = {
-                "instance_id": solution_id,
-                "workspace_name": self.infra_setup['WORKSPACE_NAME']
-            }
-            api = self.api_uri["STREAMS"] + f"/{solution_id}"
-        ## stream register
-        aic = self.infra_setup["AIC_URI"]
-        response = requests.delete(aic+api, 
-                                 params=params, 
-                                 cookies=self.aic_cookie)
-        response_delete_stream = response.json()
-        if response.status_code == 200:
-            logger.info(f"[INFO] response: \n {response_delete_stream}")
-            logger.info("[SUCCESS] Stream is deleted")
-            if not solution_id:  
-                ## if success deletion, delete files in path 
-                if os.path.exists(path):
-                    os.remove(path)
-                    logger.info(f'File removed successfully (file: {path})')
-                else:
-                    logger.info(f'File does not exist (file: {path})')
-        elif response.status_code == 400:
-            logger.info("Error message: {}".format(response_delete_stream["detail"]))
-            logger.error("[ERROR] Bad request. Failed to delete stream")
-        elif response.status_code == 422:
-            logger.info("Error message: {}".format(response_delete_stream["detail"]))
-            logger.error(f"[ERROR] Failed to validate. Failed to delete stream. \n {response_delete_stream}")
-        else:
-            logger.info(f"[ERROR] Unsupported error code: \n {response.status_code}")
-            logger.error(f"[ERROR] Failed to delete stream: \n {response_delete_stream}")
-
-    def delete_solution_instance(self, solution_id=None): 
-        """ delete instance
-
-        Args: 
-            solution_id (str): solution id 
-        
-        Returns: -
-
-        """
-        self.print_step("Delete AI solution instance")
-        self.login()
-        if not solution_id: 
-            ## file load 
-            path = REGISTER_INTERFACE_PATH + self.SOLUTION_INSTANCE_FILE
-            msg = f"[SYSTEM] Check AI solution instance register info at {path}"
-            load_response = self._load_response_yaml(path, msg)
-            params = {
-                "instance_id": load_response['id'],
-                "workspace_name": load_response['workspace_name']
-            }
-            api = self.api_uri["SOLUTION_INSTANCE"] + f"/{load_response['id']}"
-        else:
-            params = {
-                "instance_id": solution_id,
-                "workspace_name": self.infra_setup['WORKSPACE_NAME']
-            }
-            api = self.api_uri["SOLUTION_INSTANCE"] + f"/{solution_id}"
-        aic = self.infra_setup["AIC_URI"]
-        response = requests.delete(aic+api, 
-                                 params=params, 
-                                 cookies=self.aic_cookie)
-        response_delete_instance = response.json()
-        if response.status_code == 200:
-            logger.info(f"[INFO] response: \n {response_delete_instance}")
-            logger.info("[SUCCESS] AI solution instance is deleted")
-            if not solution_id:  
-                if os.path.exists(path):
-                    os.remove(path)
-                    logger.info(f'File removed successfully (file: {path})')
-                else:
-                    logger.info(f'File does not exist (file: {path})')
-        elif response.status_code == 400:
-            logger.info("Error message: {}".format(response_delete_instance["detail"]))
-            logger.error("[ERROR] Bad request. Failed to delete AI solution insatnce")
-        elif response.status_code == 422:
-            logger.info("Error message: {}".format(response_delete_instance["detail"]))
-            logger.error(f"[ERROR] Failed to validate. Failed to delete AI solution instance: \n {response_delete_instance}")
-        else:
-            logger.info(f"[ERROR] Unsupported error code: \n {response.status_code}")
-            logger.error(f"[ERROR] Failed to delete AI solution instance: \n {response_delete_instance}")
-
     def delete_solution(self, delete_all=False, solution_id=None): 
         ## FIXME delete_all ? 
         """ delete solution
@@ -2301,7 +1673,7 @@ class SolutionRegister:
             version_id = load_response['versions'][0]['id']
             params = {
                 "solution_version_id": version_id,
-                "workspace_name": load_response['scope_ws']
+                "workspace_id": load_response['workspace_id']
             }
             api = self.api_uri["REGISTER_SOLUTION"] + f"/{version_id}/version"
         else:
@@ -2309,13 +1681,13 @@ class SolutionRegister:
                 load_response = self._load_response_yaml(path, msg)
                 params = {
                     "solution_id": load_response['id'],
-                    "workspace_name": load_response['scope_ws']
+                    "workspace_id": load_response['scope_ws']
                 }
                 api = self.api_uri["REGISTER_SOLUTION"] + f"/{load_response['id']}"
             else:
                 params = {
                     "solution_id": solution_id,
-                    "workspace_name": self.infra_setup["WORKSPACE_NAME"]
+                    "workspace_id": self.workspace_id
                 }
                 api = self.api_uri["REGISTER_SOLUTION"] + f"/{solution_id}"
         aic = self.infra_setup["AIC_URI"]
@@ -2347,149 +1719,6 @@ class SolutionRegister:
             logger.info(f"[ERROR] Unsupported error code: \n {response.status_code}")
             logger.error(f"[ERROR] Failed to delete solution: \n {response_delete_solution}")
 
-    def list_stream(self): 
-        """ list stream
-
-        Args: -
-        
-        Returns: -
-
-        """
-        self.print_step("List stream ")
-        self.stream_params = {
-            "workspace_name": self.infra_setup['WORKSPACE_NAME']
-        }
-        logger.info(f"\n[INFO] AI solution interface information: \n {self.stream_params}")
-        aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["STREAMS"]
-        response = requests.get(aic+api, 
-                                 params=self.stream_params, 
-                                 cookies=self.aic_cookie)
-        self.stream_list = response.json()
-        if response.status_code == 200:
-            logger.info("[SUCCESS] got stream list")
-            logger.info("[INFO] response: ")
-            for cnt, instance in enumerate(self.stream_list["streams"]):
-                id = instance["id"]
-                name = instance["name"]
-                max_name_len = len(max(name, key=len))
-                logger.info(f"(idx: {cnt:{max_name_len}}), stream_name: {name:{max_name_len}}, stream_id: {id}")
-            ## create interface directory
-            try:
-                if not os.path.exists(REGISTER_INTERFACE_PATH):
-                    os.mkdir(REGISTER_INTERFACE_PATH)
-            except Exception as e:
-                logger.error(f"Failed to generate interface directory: \n {e}")
-            ## save json to file 
-            path = REGISTER_INTERFACE_PATH + self.STREAM_LIST_FILE
-            with open(path, 'w') as f:
-              json.dump(self.stream_list, f, indent=4)
-              logger.info(f"[SYSTEM] save stream list result to {path}")
-        elif response.status_code == 400:
-            logger.info("Error message: {}".format(self.stream_list["detail"]))
-            logger.error("[ERROR] Bad request. Failed to get stream list")
-        elif response.status_code == 422:
-            logger.info("Error message: {}".format(self.stream_list["detail"]))
-            logger.error(f"[ERROR] Failed to validate. Failed to get stream list. \n {response.status_code}")
-        else:
-            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
-
-    def list_stream_history(self, id=''): 
-        """ list stream history
-
-        Args: 
-            id  (str): stream id 
-        
-        Returns: -
-
-        """
-        self.print_step("List stream history")
-        self.stream_run_params = {
-            "stream_id": id,
-            "workspace_name": self.infra_setup['WORKSPACE_NAME']
-        }
-        logger.info(f"\n[INFO] AI solution interface information: \n {self.stream_run_params}")
-        aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["STREAM_RUN"]
-        response = requests.get(aic+api, 
-                                 params=self.stream_run_params, 
-                                 cookies=self.aic_cookie)
-        self.stream_history_list = response.json()
-        if response.status_code == 200:
-            logger.info("[SUCCESS] got stream histoy")
-            logger.info("[INFO] response: ")
-            for cnt, instance in enumerate(self.stream_history_list["stream_histories"]):
-                id = instance["id"]
-                name = instance["name"]
-                max_name_len = len(max(name, key=len))
-                logger.info(f"(idx: {cnt:{max_name_len}}), history_name: {name:{max_name_len}}, history_id: {id}")
-            ## create interface directory
-            try:
-                if not os.path.exists(REGISTER_INTERFACE_PATH):
-                    os.mkdir(REGISTER_INTERFACE_PATH)
-            except Exception as e:
-                logger.error(f"Failed to generate interface directory: \n {e}")
-            ## save json file 
-            path = REGISTER_INTERFACE_PATH + self.STREAM_HISTORY_LIST_FILE
-            with open(path, 'w') as f:
-              json.dump(self.stream_history_list, f, indent=4)
-              logger.info(f"[SYSTEM] save stream history list to {path}")
-        elif response.status_code == 400:
-            logger.info("Error message: {}".format(self.stream_history_list["detail"]))
-            logger.error("[ERROR] Bad request. Failed to get stream history list")
-        elif response.status_code == 422:
-            logger.info("Error message: {}".format(self.stream_history_list["detail"]))
-            logger.error("[ERROR] Failed to validate. Failed to get stream history list")
-        else:
-            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
-
-    def list_solution_instance(self): 
-        """ list solution instance
-
-        Args: -
-        
-        Returns: -
-
-        """
-        self.print_step("Load AI solution instance list")
-        self.solution_instance_params = {
-            "workspace_name": self.infra_setup['WORKSPACE_NAME']
-        }
-        logger.info(f"\n[INFO] AI solution interface information: \n {self.solution_instance_params}")
-        aic = self.infra_setup["AIC_URI"]
-        api = self.api_uri["SOLUTION_INSTANCE"]
-        response = requests.get(aic+api, 
-                                 params=self.solution_instance_params, 
-                                 cookies=self.aic_cookie)
-        self.response_instance_list = response.json()
-        if response.status_code == 200:
-            logger.info("[SUCCESS] got AI solution instance list")
-            logger.info("[INFO] response: ")
-            for cnt, instance in enumerate(self.response_instance_list["instances"]):
-                id = instance["id"]
-                name = instance["name"]
-                max_name_len = len(max(name, key=len))
-                logger.info(f"(idx: {cnt:{max_name_len}}), instance_name: {name:{max_name_len}}, instance_id: {id}")
-            ## create interface directory
-            try:
-                if not os.path.exists(REGISTER_INTERFACE_PATH):
-                    os.mkdir(REGISTER_INTERFACE_PATH)
-            except Exception as e:
-                logger.error(f"Failed to generate interface directory: \n {str(e)}")
-            ## save to file
-            path = REGISTER_INTERFACE_PATH + self.INSTANCE_LIST_FILE
-            with open(path, 'w') as f:
-              json.dump(self.response_instance_list, f, indent=4)
-              logger.info(f"[SYSTEM] save instance list result to {path}")
-        elif response.status_code == 400:
-            logger.info("Error message: {}".format(self.response_instance_list["detail"]))
-            logger.error("[ERROR] Bad Request. Failed to get  AI solution instance list")
-        elif response.status_code == 422:
-            logger.info("Error message: {}".format(self.response_instance_list["detail"]))
-            logger.error("[ERROR] Failed to validate. Failed to get AI solution instance list")
-        else:
-            logger.error(f"[ERROR] Unsupported error code: {response.status_code}")
-
     def list_solution(self): 
         """ list solution 
 
@@ -2498,10 +1727,9 @@ class SolutionRegister:
         Returns: -
 
         """
-        self.print_step("Load AI solution instance list")
+        self.print_step("Load AI solution list")
         params = {
-            "workspace_name": self.infra_setup['WORKSPACE_NAME'],
-            "with_pulic": 1, 
+            "workspace_id": self.workspace_id,
             "page_size": 100
         }
         logger.info(f"\n[INFO] AI solution interface information: \n {params}")
@@ -2514,10 +1742,10 @@ class SolutionRegister:
         if response.status_code == 200:
             logger.info("[SUCCESS] got AI solution list")
             logger.info("[INFO] response: ")
-            for cnt, instance in enumerate(response_json["solutions"]):
-                id = instance["id"]
-                name = instance["name"]
-                latest_version = instance["versions"][0]["version"]
+            for cnt, sol in enumerate(response_json["solutions"]):
+                id = sol["id"]
+                name = sol["name"]
+                latest_version = sol["versions"][0]["version"]
                 max_name_len = len(max(name, key=len))
                 logger.info(f"(idx: {cnt:{max_name_len}}), solution_name: {name:{max_name_len}}, solution_id: {id}, latest_version: {latest_version}")
             ## create interface directory
@@ -2579,16 +1807,14 @@ class SolutionRegister:
                 logger.info(f"Directory {dir_path} has been removed successfully.")
             else:
                 logger.info(f"Directory {dir_path} does not exist, no action taken.")
-        if not type(self.infra_setup['VERSION']) == float:
-            logger.error("VERSION in solution_metadata.yaml must be float type")
-        self.sm_yaml['metadata_version'] = self.infra_setup['VERSION']
+        assert type(self.sm_ver) == float
+        self.sm_yaml['metadata_version'] = self.sm_ver
         self.sm_yaml['name'] = self.solution_name
         self.sm_yaml['description'] = {}
         self.sm_yaml['pipeline'] = []
         try: 
             self._save_yaml()
-            if self.debugging:
-                logger.info(f"\n << solution_metadata.yaml >> generated. - current version: v{self.infra_setup['VERSION']}")
+            logger.info(f"\n << solution_metadata.yaml >> generated. - current version: v{self.sm_ver}")
         except: 
             logger.error("Failed to generate << solution_metadata.yaml >>")
 
@@ -2833,7 +2059,7 @@ def convert_to_float(input_str):
     except ValueError:
         pass
 
-def find_max_value(input_list):
+def find_latest_supported_ver(input_list):
     """ Find max value in input list. 
         If value is string, convert it into float
 
@@ -3059,3 +2285,29 @@ def convert_args_type(values: dict):
                         logger.error("<< range >> value must be float")
             output[k] = converted 
     return output
+
+def check_str_bytes(s, encoding='utf-8', bytes_limit = 5000):
+    """ Check if string bytes is under 5000 
+
+    Args:
+        s: string tobe checked
+        encoding: method of string encoding(default: 'utf-8')
+
+    Returns:
+        True: bytes < 5000
+        False: bytes >= 5000
+    """
+    byte_length = len(s.encode(encoding))
+    return byte_length < bytes_limit
+
+def check_str_len(s, len_limit = 500):
+    """ Check if string length is under 500
+
+    Args:
+        s: string tobe checked
+
+    Returns:
+        True: length < 500
+        False: length >= 500
+    """
+    return len(s) < len_limit 
