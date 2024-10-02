@@ -105,7 +105,7 @@ SAGEMKAER_DOCKERFILE = PROJECT_HOME + "src/Dockerfiles/SagemakerDockerfile"
 SAGEMAKER_EXP_PLAN = SAGEMAKER_PATH + 'solution/experimental_plan.yaml'
 ## AI solution registration related file
 DEFAULT_INFRA_SETUP = PROJECT_HOME + "setting/infra_config.yaml"
-DEFAULT_SOLUTION_INFO = PROJECT_HOME + "setting/solution_info.yaml"
+DEFAULT_SOLUTION_INFO = PROJECT_HOME + "setting/format_solution_info.yaml"
 REGISTER_WRANGLER_PATH = SOLUTION_HOME + "wrangler/wrangler.py"
 REGISTER_EXPPLAN = REGISTER_SOURCE_PATH + "solution/experimental_plan.yaml"
 ## Redis pubsub error code table
