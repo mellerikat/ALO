@@ -1,10 +1,10 @@
-'AIC_URI': "https://aicond.meerkat-ai.com/"
+'AIC_URI': " https://aicond.try-mellerikat.com/"
 "REGION": "ap-northeast-2"
-"WORKSPACE_NAME": "meerkat-ws" 
+"WORKSPACE_NAME": "poc-ws" 
 "BUILD_METHOD": "codebuild" ## docker, buildah, codebuild
 "LOGIN_MODE": "static" 
 "REPOSITORY_TAGS": 
-  - "Key=Owner,Value=Meerkat"
+  - "Key=Owner,Value=Mellerikat"
 "AWS_KEY_PROFILE": "alo-aws-profile"
 ## 'type': 'WINDOWS_CONTAINER'|'LINUX_CONTAINER'|'LINUX_GPU_CONTAINER'|'ARM_CONTAINER'|'WINDOWS_SERVER_2019_CONTAINER'|'LINUX_LAMBDA_CONTAINER'|'ARM_LAMBDA_CONTAINER',
 "CODEBUILD_ENV_TYPE": "LINUX_CONTAINER"
