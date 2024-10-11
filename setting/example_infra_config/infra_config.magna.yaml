@@ -3,6 +3,7 @@
 "WORKSPACE_NAME": "magna-ws"  
 "BUILD_METHOD": "buildah"  ## docker, buildah, codebuild
 "LOGIN_MODE": "ldap" 
+"VERSION": 1.1
 "REPOSITORY_TAGS": 
   - "Key=Company,Value=LGE"
   - "Key=Owner,Value=IC360"

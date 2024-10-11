@@ -1,0 +1,79 @@
+description:
+  alo_version: develop
+  contents_name: titanic
+  contents_version: 1.0.0
+  detail: ''
+  inference_build_type: amd64
+  overview: ''
+  title: v2-inference-titanic
+edgeapp_interface:
+  redis_db_number: 0
+  redis_server_uri: ''
+  single_pipeline: false
+edgeconductor_interface:
+  inference_result_datatype: table
+  labeling_column_name: null
+  support_labeling: false
+  train_datatype: table
+metadata_version: 1.2
+name: v2-inference-titanic
+pipeline:
+- artifact_uri: s3://s3-an2-meerkat-dev-common/ai-solutions/v2-inference-titanic/v1/train/artifacts/
+  container_uri: 339713051385.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-meerkat-dev/common/ai-solutions/v2-inference-titanic/train/v2-inference-titanic:v1
+  parameters:
+    candidate_parameters:
+    - args:
+      - x_columns:
+        - Pclass
+        - Sex
+        - SibSp
+        y_column: Survived
+      step: alo_preprocess
+    - args:
+      - x_columns:
+        - Pclass
+        - Sex
+        - SibSp
+        y_column: Survived
+      step: alo_train
+    selected_user_parameters:
+    - args: {}
+      step: alo_preprocess
+    - args: {}
+      step: alo_train
+    user_parameters:
+    - args: []
+      step: alo_preprocess
+    - args: []
+      step: alo_train
+  type: train
+- artifact_uri: s3://s3-an2-meerkat-dev-common/ai-solutions/v2-inference-titanic/v1/inference/artifacts/
+  container_uri: 339713051385.dkr.ecr.ap-northeast-2.amazonaws.com/ecr-repo-an2-meerkat-dev/common/ai-solutions/v2-inference-titanic/inference/v2-inference-titanic:v1
+  model_uri: s3://s3-an2-meerkat-dev-common/ai-solutions/v2-inference-titanic/v1/train/artifacts/
+  parameters:
+    candidate_parameters:
+    - args:
+      - x_columns:
+        - Pclass
+        - Sex
+        - SibSp
+      step: alo_preprocess
+    - args:
+      - x_columns:
+        - Pclass
+        - Sex
+        - SibSp
+      step: alo_inference
+    selected_user_parameters:
+    - args: {}
+      step: alo_preprocess
+    - args: {}
+      step: alo_inference
+    user_parameters:
+    - args: []
+      step: alo_preprocess
+    - args: []
+      step: alo_inference
+  type: inference
+wrangler_code_uri: ''
+wrangler_dataset_uri: ''

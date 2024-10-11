@@ -1,0 +1,12 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2024, AI Advisor. LGE
+# This file is distributed under the same license as the ALO(AI Learning
+# Organizer) package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2024.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+
+msgid "Creating an AI Solution"
+msgstr "AI Solution 생성"

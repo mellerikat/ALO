@@ -1,0 +1,18 @@
+contents_type:
+  inference_result_datatype: table
+  labeling_column_name: null
+  support_labeling: false
+  train_datatype: table
+detail:
+- content: content001
+  title: title001
+- content: content002
+  title: title002
+inference_arm: false
+inference_gpu: false
+inference_only: false
+overview: "Write an overall description of the AI \u200B\u200BSolution."
+solution_name: v2-inference-titanic
+solution_type: private
+solution_update: false
+train_gpu: false

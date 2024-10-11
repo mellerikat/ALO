@@ -3,6 +3,7 @@
 "WORKSPACE_NAME": "meerkat-ws" 
 "BUILD_METHOD": "codebuild" ## docker, buildah, codebuild
 "LOGIN_MODE": "static" 
+"VERSION": 1.1
 "REPOSITORY_TAGS": 
   - "Key=Owner,Value=Meerkat"
 "AWS_KEY_PROFILE": "alo-aws-profile"

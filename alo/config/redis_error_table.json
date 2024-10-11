@@ -1,0 +1,62 @@
+{
+    "E000": {
+        "ERROR_CODE": "E000",
+        "ERROR_NAME": "AloError",
+        "COMMENT": "Failed to run"
+    },
+    "E111": {
+        "ERROR_CODE": "E111",
+        "ERROR_NAME": "SolutionMetadataReadError",
+        "COMMENT": "Failed to read Solution Metadata"
+    },
+    "E112": {
+        "ERROR_CODE": "E112",
+        "ERROR_NAME": "SolutionMetadataOverwriteError",
+        "COMMENT": "Failed to overwrite Solution Metadata into Experimental Plan"
+    },
+    "E121": {
+        "ERROR_CODE": "E121",
+        "ERROR_NAME": "ExperimentalPlanLoadError",
+        "COMMENT": "Failed to read Experimental Plan"
+    },
+    "E122": {
+        "ERROR_CODE": "E122",
+        "ERROR_NAME": "ExperimentalPlanPathUnspecified ",
+        "COMMENT": "Experimental Plan - external path unspecified"
+    },
+    "E131": {
+        "ERROR_CODE": "E131",
+        "ERROR_NAME": "AIPackageSetupFailure",
+        "COMMENT": "Failed to setup AI solution package"
+    },
+    "E132": {
+        "ERROR_CODE": "E132",
+        "ERROR_NAME": "AssetCodeSetupFailure",
+        "COMMENT": "Failed to setup AI solution asset code"
+    },  
+    "E141": {
+        "ERROR_CODE": "E141",
+        "ERROR_NAME": "PipelineDataLoadError",
+        "COMMENT": "Failed to load data from external path"
+    }, 
+    "E151": {
+        "ERROR_CODE": "E151",
+        "ERROR_NAME": "AssetInitMethodFailure",
+        "COMMENT": "Failed to init asset"
+    }, 
+    "E152": {
+        "ERROR_CODE": "E152",
+        "ERROR_NAME": "AssetRunMethodFailure",
+        "COMMENT": "Failed to run asset"
+    }, 
+    "E161": {
+        "ERROR_CODE": "E161",
+        "ERROR_NAME": "InferenceSummaryCreationFailure",
+        "COMMENT": "Failed to create inference summary"
+    },
+    "E162": {
+        "ERROR_CODE": "E162",
+        "ERROR_NAME": "InferenceArtifactsCreationFailure",
+        "COMMENT": "Failed to create inference artifacts"
+    }
+}

@@ -1,0 +1,127 @@
+##############################
+############ Usage ###########
+## Tag 목록
+# !Env OS 환경 변수 값을 참조하기 위한 태그
+# !Python python 코드 동작 실행 결과 값 반환(yaml 파일을 읽는 시점에 값으로 치환됨)
+##############################
+
+name: titanic
+version: 1.0.0
+
+control:
+# 실행 이력 관리
+#  backup:        # Optional) 디스크 사용량 기준 백업 수행
+#    type: size     # Required) 백업 방식(size, count, day)
+#    value: 5MB     # Required)저장 용량. Default 1GB. ex) 1000000000, 1GB, 1MB, 1KB
+  backup:        # Optional) 수행 횟수 기준 백업 수행
+    type: count    # Required) 백업 방식(size, count, day)
+    value: 5       # Optional) default 1000
+#  backup:        # Optional) 마지막 실행일 기준 기간(일)동안 백업
+#    type: day      # Required) 백업 방식(size, count, day)
+#    value: 7       # Optional) default: 7일
+
+  check_resource: True  # Optional) 실행시 사용된 CPU, Memory resource 사용량 로그 출력. Default: False
+
+solution:
+  pip:                       # Optional) 사용자 정의 함수의 3rd Party libs 를 내려 받기 위한 설정
+#    requirements: False        # Optional) 사용자 소스코드 git 코드 이하 requirements.txt 를 설치하고 싶은 경우 True로 설정
+    requirements:             # Optional) 개별 library를 설치하고자 하는 경우
+      - numpy==1.26.4
+      - pandas==1.5.3
+      - scikit-learn
+#      - scikit-learn --index-url https://my.local.mirror.com/simple
+#  git:                      # Optional) 사용자 정의 함수 repository
+#    url: http://mod.lge.com/hub/dxadvtech/assets/alo-guide-input.git
+#    branch: main              # Optional) 브랜치명. Default: main
+#    option:                   # Optional) git 상세 수행 옵션 정의
+#      refresh: True             # Optional) 소스코드를 항상 최신으로 유지 여부. Default: True. False인 경우 최초 1회 복사 후 더이상 업데이트 되지 않음
+#      reset: False              # Optional) 임의의 소스코드 변경 사항이 존재하는 경우 origin 기준으로 강제 reset 수행 여부. Default: False. True인 경우 사용자에 의해 수정된 소스코드가 origin 기준 최신 코드로 강제 업데이트됨
+#      clean: False              # Optional) 소스코드내 추적대상 파일이 아닌 파일에 대한 삭제 여부. Default: False. True인 경우 .git에 등록되지 않고 생성된 파일은 모두 삭제됨
+
+  credential:                # Optional) Credential(train/inferenece의 input, output의 파일이 S3인 경우 공통 적용되는 인증 정보)
+    profile_name: meerkat-dev
+  function:                  # Required) 사용자 정의 함수
+    alo_preprocess:                # 함수 이름 -> train.pipeline의 이름으로 사용됨
+      def: titanic.preprocess    # Required) 사용자 모듈에서 실행 대상 함수
+    alo_train:
+      def: titanic.train
+      argument:
+        x_columns: [ 'Pclass', 'Sex', 'SibSp']
+        y_column: Survived
+    alo_inference:
+      def: titanic.inference
+      argument:
+        x_columns: [ 'Pclass', 'Sex', 'SibSp']
+  train:
+    dataset_uri: !Env ${ALO_HOME}/solution/data/train/dataset/     # Optional) S3 또는 로컬 파일 경로. 디렉토리를 지정시 이하 파일 모두 지정 가능
+    artifact_uri: !Env ${ALO_HOME}/train_artifacts/train/output/
+#    model_uri:
+#    dataset_uri: s3://mellerikat-test/tmp/alo/train.csv       # 예제1) S3 key(prefix) 파일
+#    dataset_uri: s3://mellerikat-test/tmp/alo/                # 예제1) S3 key(prefix) 이하 경로 모든 파일
+#    dataset_uri: /data001/project/alo2/titanic/preprocess/train.csv    # 예제2) 로컬 파일
+#    dataset_uri: /data001/project/alo2/titanic/preprocess/             # 예제3) 로컬 폴더 이하 경로 모든 파일(현재 미구현)
+#    dataset_uri:                                                       # 예제4) 복수개의 파일(S3, 로컬 파일 혼합 가능)
+#      - s3://bucket/test1.csv
+#      - /data001/project/alo2/titanic/preprocess/
+#    dataset_uri:                                                       # 예제5) S3 object 상세 설정. profile_name 또는 aws access/secret key를 개별 설정하고자 하는 경우
+#      bucket: bucket
+#      key: test.csv
+#      credential:
+#        profile_name: AKIEXAMPLE12345
+#        aws_access_key_id: asdf
+#        aws_secret_access_key: awsSecretAccessKey
+#    dataset_uri:                                                       # 예제6) S3 object 목록(multi source인 경우 상세 정의)
+#      - bucket: bucket1
+#        key: path/
+#        credential:
+#          profile_name: AWS_PROFILE1         aws_access_key_id: AKIEXAMPLE12345
+#          aws_secret_access_key: awsSecretAccessKey
+#      - bucket: bucket2
+#        key: test2.csv
+#        credential:
+#          profile_name: !Env ${AWS_PROFILE}
+#          aws_access_key_id: !Env ${ACCESS_KEY}
+#          aws_secret_access_key: !Env ${SECRET_KEY}
+#    output: ~
+  # Optional) S3 또는 로컬 파일 경로. 디렉토리를 지정시 이하 파일 모두 지정 가능
+    #    model_uri:
+    #    dataset_uri: s3://mellerikat-test/tmp/alo/train.csv       # 예제1) S3 key(prefix) 파일
+    #    dataset_uri: s3://mellerikat-test/tmp/alo/                # 예제1) S3 key(prefix) 이하 경로 모든 파일
+    #    dataset_uri: /data001/project/alo2/titanic/preprocess/train.csv    # 예제2) 로컬 파일
+    #    dataset_uri: /data001/project/alo2/titanic/preprocess/             # 예제3) 로컬 폴더 이하 경로 모든 파일(현재 미구현)
+    #    dataset_uri:                                                       # 예제4) 복수개의 파일(S3, 로컬 파일 혼합 가능)
+    #      - s3://bucket/test1.csv
+    #      - /data001/project/alo2/titanic/preprocess/
+    #    dataset_uri:                                                       # 예제5) S3 object 상세 설정. profile_name 또는 aws access/secret key를 개별 설정하고자 하는 경우
+    #      bucket: bucket
+    #      key: test.csv
+    #      credential:
+    #        profile_name: AKIEXAMPLE12345
+    #        aws_access_key_id: asdf
+    #        aws_secret_access_key: awsSecretAccessKey
+    #    dataset_uri:                                                       # 예제6) S3 object 목록(multi source인 경우 상세 정의)
+    #      - bucket: bucket1
+    #        key: path/
+    #        credential:
+    #          profile_name: AWS_PROFILE1         aws_access_key_id: AKIEXAMPLE12345
+    #          aws_secret_access_key: awsSecretAccessKey
+    #      - bucket: bucket2
+    #        key: test2.csv
+    #        credential:
+    #          profile_name: !Env ${AWS_PROFILE}
+    #          aws_access_key_id: !Env ${ACCESS_KEY}
+    #          aws_secret_access_key: !Env ${SECRET_KEY}
+    #    output: ~
+    pipeline: [alo_preprocess, alo_train]   # 실행 대상 function 목록
+  inference:
+    dataset_uri: !Env ${ALO_HOME}/solution/data/inference/dataset/
+    # model_uri: !Env ${ALO_HOME}/model_artifacts/n100_depth5.pkl ## 사용자가 코드 하기 나름
+    artifact_uri: !Env ${ALO_HOME}/inference_artifacts/inference/output/ #  Optional) pipeline['artifact']['workspace'] 경로 이하에 저장된 파일에 대해 압축 및 업로드 경로 정의. default 경로 이하 inferenece.tar.gz으로 업로드 됨
+# 압축 및 업로드 상세 정의 방법
+#    artifact_uri:
+#      bucket: bucket-name  # 업로드 대상 버킷
+#      key: path            # 업로드 버킷 이하 경로
+#      compress: false      # 업로드시 압축 적용 유무. default) 파일 압축 적용됨. Optional)
+#        type: zip            # or tar.gz default: zip
+
+    pipeline: [alo_preprocess, alo_inference]
