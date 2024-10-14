@@ -1,0 +1,32 @@
+name: new_solution 
+version: 1.0.0
+
+control:
+  backup:        
+    type: count    
+    value: 1000      
+solution:
+  pip:                       
+    requirements: 
+      - requirements.txt
+
+  credential:                
+    profile_name: AWS_PROFILE
+
+  function:          
+    alo_train:
+      def: pipeline.alo_train
+      argument:
+        alo_sample_arg: 'sample_value'
+       
+    alo_inference:
+      def: pipeline.alo_inference
+      argument:
+        alo_sample_arg: 'sample_value'
+        
+  train:
+    dataset_uri: ${train_dataset_uri} 
+    pipeline: [alo_train] 
+  inference:
+    dataset_uri: ${inference_dataset_uri} 
+    pipeline: [alo_inference]

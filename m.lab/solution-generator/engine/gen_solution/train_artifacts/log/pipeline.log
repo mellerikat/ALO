@@ -1,0 +1,13 @@
+[2024-08-29 02:20:44,339|root|INFO|logger.py(173)|decorator()] 
+----------------------------------------------------------------------------------------------------------------------
+                                        Start train
+----------------------------------------------------------------------------------------------------------------------
+[2024-08-29 02:20:44,339|root|DEBUG|alo.py(628)|stage()] [PIPELINE]      train :           train - pipeline.train
+[2024-08-29 02:20:44,339|root|DEBUG|model.py(333)|get()] [FILE] Import complete: /home/ws.jang/alo_dev/mellerilab/0829/solution-generator/engine/alo_engine/solution/data/train/ to /home/ws.jang/alo_dev/mellerilab/0829/solution-generator/engine/gen_solution/.workspace/advertising_sales_prediction/history/2024-08-29T02:20:44.338389/train/dataset/
+[2024-08-29 02:20:44,339|root|DEBUG|alo.py(634)|stage()] [PIPELINE] List of imported dataset:
+
+[2024-08-29 02:20:44,340|root|DEBUG|alo.py(637)|stage()] [PIPELINE] List of imported model:
+
+[2024-08-29 02:20:44,340|root|INFO|logger.py(173)|decorator()] --------------------     Start train pipline
+[2024-08-29 02:20:44,340|root|DEBUG|alo.py(660)|pipeline()] [PIPELINE] Call pipeline.train({'arg_0': 'value_0'})
+[2024-08-29 02:20:44,340|root|INFO|pipeline.py(33)|train()] ===== train start =====

@@ -1,0 +1,18 @@
+{
+    "serverProxy": {
+        "targets": [
+            {
+                "name": "VS Code",
+                "launcher_entry": {
+                    "enabled": true,
+                    "icon_path": "/opt/conda/lib/python3.8/site-packages/jupyterlab_server_proxy/static/vscode.svg",  # 필요한 경우 적절한 이미지 경로를 수정
+                    "title": "VS Code"
+                },
+                "command": ["code-server", "--auth", "none", "--disable-telemetry", "--bind-addr", "0.0.0.0:8080"],
+                "timeout": 5000,
+                "absolute_url": true,
+                "new_browser_tab": true
+            }
+        ]
+    }
+}

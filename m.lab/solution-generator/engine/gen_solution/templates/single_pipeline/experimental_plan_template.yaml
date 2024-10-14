@@ -1,0 +1,59 @@
+name: new_solution
+version: 1.0.0
+
+control:
+  backup:        
+    type: count    
+    value: 1000      
+
+solution:
+  pip:                       
+    requirements:             
+
+  credential:                
+    profile_name: AWS_PROFILE
+
+  function:          
+    inference:
+      def: pipeline.inference
+      argument:
+        arg_0: 'value_0'
+        
+  inference:
+    dataset_uri: ${single_dataset_uri} 
+    pipeline: [inference]
+
+
+  
+    name: new_solution 
+version: 1.0.0
+
+control:
+  backup:        
+    type: count    
+    value: 1000      
+solution:
+  pip:                       
+    requirements: 
+      - requirements.txt 
+
+  credential:                
+    profile_name: AWS_PROFILE
+
+  function:          
+    train:
+      def: pipeline.train
+      argument:
+        arg_0: 'value_0'
+       
+    inference:
+      def: pipeline.inference
+      argument:
+        arg_0: 'value_0'
+        
+  train:
+    dataset_uri: ${train_dataset_uri} 
+    pipeline: [train] 
+  inference:
+    dataset_uri: ${inference_dataset_uri} 
+    pipeline: [inference]
